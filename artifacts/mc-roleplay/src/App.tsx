@@ -168,13 +168,13 @@ function ClerkProviderWithRoutes() {
       localization={{
         signIn: {
           start: {
-            title: "Enter Nusantara",
+            title: "Enter Arcadia",
             subtitle: "Sign in to access your player profile",
           },
         },
         signUp: {
           start: {
-            title: "Join NusantaraRP",
+            title: "Join Arcadia Studio",
             subtitle: "Forge your legend today",
           },
         },

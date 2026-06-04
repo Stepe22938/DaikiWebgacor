@@ -1,6 +1,6 @@
-# NusantaraRP
+# Arcadia Studio
 
-Website server Minecraft roleplay Indonesia dengan sistem login/register, member area pengumuman, showcase pengembangan server, dan admin panel.
+Website server Minecraft roleplay dengan sistem login/register, member area pengumuman, showcase pengembangan server, dan admin panel oleh Arcadia Studio.
 
 ## Run & Operate
 

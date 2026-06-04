@@ -11,8 +11,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border bg-card/50 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <img src={`${basePath}/logo.svg`} alt="NusantaraRP" className="w-8 h-8" />
-            <span className="font-bold text-xl text-primary tracking-wider">NusantaraRP</span>
+            <img src={`${basePath}/logo.svg`} alt="Arcadia Studio" className="w-8 h-8" />
+            <span className="font-bold text-xl text-primary tracking-wider">Arcadia Studio</span>
           </Link>
           
           <nav className="flex items-center gap-4">
@@ -42,7 +42,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       
       <footer className="border-t border-border bg-card/80 py-8">
         <div className="container mx-auto px-4 text-center text-muted-foreground text-sm">
-          <p>NusantaraRP &copy; {new Date().getFullYear()}. Forged in myth.</p>
+          <p>Arcadia Studio &copy; {new Date().getFullYear()}. Forged in myth.</p>
         </div>
       </footer>
     </div>
