@@ -34,25 +34,40 @@ export default function Member() {
   const [savingPassword, setSavingPassword] = useState(false);
 
   const handleSaveProfile = async () => {
+    if (!displayName.trim() && bio === "" && !username.trim()) {
+      toast({ title: "Nothing to save", description: "Fill in at least one field to update." });
+      return;
+    }
     setSavingProfile(true);
     try {
-      const updates: { displayName?: string; bio?: string; username?: string } = {};
-      if (displayName.trim()) updates.displayName = displayName.trim();
-      if (bio.trim() !== undefined) updates.bio = bio.trim();
+      const apiUpdates: { displayName?: string; bio?: string; username?: string } = {};
+      if (displayName.trim()) apiUpdates.displayName = displayName.trim();
+      if (bio !== "") apiUpdates.bio = bio;
+
       if (username.trim()) {
-        updates.username = username.trim();
-        await clerkUser?.update({ username: username.trim() });
+        try {
+          await clerkUser?.update({ username: username.trim() });
+          apiUpdates.username = username.trim();
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Username update failed.";
+          toast({ title: "Username error", description: msg, variant: "destructive" });
+          setSavingProfile(false);
+          return;
+        }
       }
-      if (Object.keys(updates).length > 0) {
-        await updateMe.mutateAsync({ data: updates });
+
+      if (Object.keys(apiUpdates).length > 0) {
+        await updateMe.mutateAsync({ data: apiUpdates });
         await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
       }
+
       toast({ title: "Profile updated", description: "Your profile has been saved." });
       setDisplayName("");
       setBio("");
       setUsername("");
-    } catch {
-      toast({ title: "Error", description: "Failed to update profile.", variant: "destructive" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to update profile.";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     } finally {
       setSavingProfile(false);
     }
