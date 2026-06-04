@@ -3,20 +3,28 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: MC Roleplay Server API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: developments
+    description: Server development items
+  - name: announcements
+    description: Server announcements
+  - name: users
+    description: User management
+  - name: stats
+    description: Server stats
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +32,266 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /me:
+    get:
+      operationId: getMe
+      tags: [users]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+    patch:
+      operationId: updateMe
+      tags: [users]
+      summary: Update current user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users (admin only)
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /users/{id}/role:
+    patch:
+      operationId: updateUserRole
+      tags: [users]
+      summary: Update user role (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRoleUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /developments:
+    get:
+      operationId: listDevelopments
+      tags: [developments]
+      summary: List all server developments
+      responses:
+        "200":
+          description: List of developments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Development"
+    post:
+      operationId: createDevelopment
+      tags: [developments]
+      summary: Create a development item (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevelopmentInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Development"
+
+  /developments/{id}:
+    get:
+      operationId: getDevelopment
+      tags: [developments]
+      summary: Get a development item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Development item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Development"
+    patch:
+      operationId: updateDevelopment
+      tags: [developments]
+      summary: Update a development item (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevelopmentUpdate"
+      responses:
+        "200":
+          description: Updated development
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Development"
+    delete:
+      operationId: deleteDevelopment
+      tags: [developments]
+      summary: Delete a development item (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /announcements:
+    get:
+      operationId: listAnnouncements
+      tags: [announcements]
+      summary: List announcements
+      responses:
+        "200":
+          description: List of announcements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Announcement"
+    post:
+      operationId: createAnnouncement
+      tags: [announcements]
+      summary: Create an announcement (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnouncementInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+
+  /announcements/{id}:
+    get:
+      operationId: getAnnouncement
+      tags: [announcements]
+      summary: Get an announcement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Announcement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+    patch:
+      operationId: updateAnnouncement
+      tags: [announcements]
+      summary: Update an announcement (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnouncementUpdate"
+      responses:
+        "200":
+          description: Updated announcement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+    delete:
+      operationId: deleteAnnouncement
+      tags: [announcements]
+      summary: Delete an announcement (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [stats]
+      summary: Get server stats
+      responses:
+        "200":
+          description: Server stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +302,175 @@ components:
       required:
         - status
 
+    User:
+      type: object
+      required: [id, clerkId, username, role, createdAt]
+      properties:
+        id:
+          type: integer
+        clerkId:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [member, admin]
+        bio:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    UserUpdate:
+      type: object
+      properties:
+        displayName:
+          type: string
+        bio:
+          type: string
+
+    UserRoleUpdate:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [member, admin]
+
+    Development:
+      type: object
+      required: [id, title, description, category, status, order, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: [planned, in_progress, completed, paused]
+        progress:
+          type: ["integer", "null"]
+        iconName:
+          type: ["string", "null"]
+        order:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    DevelopmentInput:
+      type: object
+      required: [title, description, category, status]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: [planned, in_progress, completed, paused]
+        progress:
+          type: integer
+        iconName:
+          type: string
+        order:
+          type: integer
+
+    DevelopmentUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: [planned, in_progress, completed, paused]
+        progress:
+          type: integer
+        iconName:
+          type: string
+        order:
+          type: integer
+
+    Announcement:
+      type: object
+      required: [id, title, content, type, pinned, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        content:
+          type: string
+        type:
+          type: string
+          enum: [update, event, maintenance, general]
+        pinned:
+          type: boolean
+        authorId:
+          type: ["integer", "null"]
+        authorName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    AnnouncementInput:
+      type: object
+      required: [title, content, type]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+        type:
+          type: string
+          enum: [update, event, maintenance, general]
+        pinned:
+          type: boolean
+
+    AnnouncementUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+        type:
+          type: string
+          enum: [update, event, maintenance, general]
+        pinned:
+          type: boolean
+
+    ServerStats:
+      type: object
+      required: [totalMembers, totalAnnouncements, totalDevelopments, completedDevelopments, inProgressDevelopments]
+      properties:
+        totalMembers:
+          type: integer
+        totalAnnouncements:
+          type: integer
+        totalDevelopments:
+          type: integer
+        completedDevelopments:
+          type: integer
+        inProgressDevelopments:
+          type: integer

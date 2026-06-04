@@ -1,6 +1,6 @@
-# [Project name]
+# NusantaraRP
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Website server Minecraft roleplay Indonesia dengan sistem login/register, member area pengumuman, showcase pengembangan server, dan admin panel.
 
 ## Run & Operate
 
@@ -10,11 +10,14 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY` — Clerk auth
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
+- Frontend: React + Vite + Tailwind CSS (artifacts/mc-roleplay)
+- API: Express 5 (artifacts/api-server)
+- Auth: Clerk (Replit-managed)
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
@@ -22,15 +25,25 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `lib/api-spec/openapi.yaml` — source of truth for all API contracts
+- `lib/db/src/schema/` — DB schema (users, developments, announcements)
+- `artifacts/api-server/src/routes/` — API route handlers
+- `artifacts/mc-roleplay/src/` — React frontend
+- `artifacts/mc-roleplay/src/App.tsx` — Router + Clerk Provider setup
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Clerk auth is cookie-based on web; `clerkProxyMiddleware` proxies Clerk FAPI through the API server for prod
+- Dates returned from DB (JS Date objects) must be serialized with `serializeDates()` before Zod `.parse()` — Zod schemas expect strings
+- Users are auto-created in the DB on first `/api/me` call after Clerk sign-in (JIT provisioning)
+- Admin role is stored in the `users` table; only admins can create/edit/delete developments and announcements
+- `serializeDates` helper in `artifacts/api-server/src/lib/serialize.ts` handles `Date → string` conversion
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Landing page** — public, showcases server developments and stats with CTAs to register
+- **Member area** — authenticated, view announcements and server development roadmap, manage profile
+- **Admin panel** — admin-only, manage developments (CRUD), announcements (CRUD), user roles
 
 ## User preferences
 
@@ -38,7 +51,9 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Always run `pnpm run typecheck:libs` after changing any `lib/*` schema before typechecking artifacts — stale lib declarations cause false errors
+- After OpenAPI spec changes, run codegen before using updated types
+- Clerk dev key warning in console is normal and expected in development
 
 ## Pointers
 
