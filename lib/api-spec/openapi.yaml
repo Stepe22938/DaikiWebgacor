@@ -375,6 +375,50 @@ paths:
         "201":
           description: Follow created
 
+  /admin/bulk-followers:
+    post:
+      operationId: adminBulkCreateFollowers
+      tags: [follows]
+      summary: Generate N bot accounts and auto-follow a target user (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminBulkFollowInput"
+      responses:
+        "201":
+          description: Bulk followers created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBulkFollowResult"
+
+  /admin/users/{id}:
+    patch:
+      operationId: adminUpdateUser
+      tags: [users]
+      summary: Edit any user profile (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
   /stats:
     get:
       operationId: getStats
@@ -467,6 +511,39 @@ components:
       properties:
         userId:
           type: integer
+
+    AdminBulkFollowInput:
+      type: object
+      required: [targetUserId, count]
+      properties:
+        targetUserId:
+          type: integer
+        count:
+          type: integer
+          minimum: 1
+          maximum: 10000
+
+    AdminBulkFollowResult:
+      type: object
+      required: [botsCreated, followsCreated]
+      properties:
+        botsCreated:
+          type: integer
+        followsCreated:
+          type: integer
+
+    AdminUserUpdate:
+      type: object
+      properties:
+        username:
+          type: string
+        displayName:
+          type: string
+        bio:
+          type: string
+        role:
+          type: string
+          enum: [member, admin]
 
     AdminFollowInput:
       type: object

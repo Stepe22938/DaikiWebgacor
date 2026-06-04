@@ -20,7 +20,10 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AdminBulkFollowInput,
+  AdminBulkFollowResult,
   AdminFollowInput,
+  AdminUserUpdate,
   Announcement,
   AnnouncementInput,
   AnnouncementUpdate,
@@ -1598,6 +1601,149 @@ export const useAdminCreateFollow = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAdminCreateFollowMutationOptions(options));
+    }
+
+export const getAdminBulkCreateFollowersUrl = () => {
+
+
+
+
+  return `/api/admin/bulk-followers`
+}
+
+/**
+ * @summary Generate N bot accounts and auto-follow a target user (admin only)
+ */
+export const adminBulkCreateFollowers = async (adminBulkFollowInput: AdminBulkFollowInput, options?: RequestInit): Promise<AdminBulkFollowResult> => {
+
+  return customFetch<AdminBulkFollowResult>(getAdminBulkCreateFollowersUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminBulkFollowInput,)
+  }
+);}
+
+
+
+
+export const getAdminBulkCreateFollowersMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminBulkCreateFollowers>>, TError,{data: BodyType<AdminBulkFollowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminBulkCreateFollowers>>, TError,{data: BodyType<AdminBulkFollowInput>}, TContext> => {
+
+const mutationKey = ['adminBulkCreateFollowers'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminBulkCreateFollowers>>, {data: BodyType<AdminBulkFollowInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminBulkCreateFollowers(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminBulkCreateFollowersMutationResult = NonNullable<Awaited<ReturnType<typeof adminBulkCreateFollowers>>>
+    export type AdminBulkCreateFollowersMutationBody = BodyType<AdminBulkFollowInput>
+    export type AdminBulkCreateFollowersMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Generate N bot accounts and auto-follow a target user (admin only)
+ */
+export const useAdminBulkCreateFollowers = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminBulkCreateFollowers>>, TError,{data: BodyType<AdminBulkFollowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminBulkCreateFollowers>>,
+        TError,
+        {data: BodyType<AdminBulkFollowInput>},
+        TContext
+      > => {
+      return useMutation(getAdminBulkCreateFollowersMutationOptions(options));
+    }
+
+export const getAdminUpdateUserUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/users/${id}`
+}
+
+/**
+ * @summary Edit any user profile (admin only)
+ */
+export const adminUpdateUser = async (id: number,
+    adminUserUpdate: AdminUserUpdate, options?: RequestInit): Promise<User> => {
+
+  return customFetch<User>(getAdminUpdateUserUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminUserUpdate,)
+  }
+);}
+
+
+
+
+export const getAdminUpdateUserMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateUser>>, TError,{id: number;data: BodyType<AdminUserUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdateUser>>, TError,{id: number;data: BodyType<AdminUserUpdate>}, TContext> => {
+
+const mutationKey = ['adminUpdateUser'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdateUser>>, {id: number;data: BodyType<AdminUserUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adminUpdateUser(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdateUserMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdateUser>>>
+    export type AdminUpdateUserMutationBody = BodyType<AdminUserUpdate>
+    export type AdminUpdateUserMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Edit any user profile (admin only)
+ */
+export const useAdminUpdateUser = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateUser>>, TError,{id: number;data: BodyType<AdminUserUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdateUser>>,
+        TError,
+        {id: number;data: BodyType<AdminUserUpdate>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdateUserMutationOptions(options));
     }
 
 export const getGetStatsUrl = () => {

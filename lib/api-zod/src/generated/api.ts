@@ -355,6 +355,45 @@ export const AdminCreateFollowBody = zod.object({
 
 
 /**
+ * @summary Generate N bot accounts and auto-follow a target user (admin only)
+ */
+export const adminBulkCreateFollowersBodyCountMax = 10000;
+
+
+
+export const AdminBulkCreateFollowersBody = zod.object({
+  "targetUserId": zod.number(),
+  "count": zod.number().min(1).max(adminBulkCreateFollowersBodyCountMax)
+})
+
+
+/**
+ * @summary Edit any user profile (admin only)
+ */
+export const AdminUpdateUserParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminUpdateUserBody = zod.object({
+  "username": zod.string().optional(),
+  "displayName": zod.string().optional(),
+  "bio": zod.string().optional(),
+  "role": zod.enum(['member', 'admin']).optional()
+})
+
+export const AdminUpdateUserResponse = zod.object({
+  "id": zod.number(),
+  "clerkId": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "role": zod.enum(['member', 'admin']),
+  "bio": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary Get server stats
  */
 export const GetStatsResponse = zod.object({

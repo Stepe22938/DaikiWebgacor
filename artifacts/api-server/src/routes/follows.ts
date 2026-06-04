@@ -9,6 +9,7 @@ import {
   GetMyFollowingResponse,
   GetMyFollowersResponse,
   AdminCreateFollowBody,
+  AdminBulkCreateFollowersBody,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -180,6 +181,42 @@ router.get("/me/followers", async (req, res): Promise<void> => {
   }
   const result = await buildPublicUsers(me.id, ids);
   res.json(GetMyFollowersResponse.parse(result));
+});
+
+router.post("/admin/bulk-followers", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!me || me.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const parsed = AdminBulkCreateFollowersBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const { targetUserId, count } = parsed.data;
+  const BATCH = 500;
+  let botsCreated = 0;
+  let followsCreated = 0;
+
+  for (let offset = 0; offset < count; offset += BATCH) {
+    const batchSize = Math.min(BATCH, count - offset);
+    const botValues = Array.from({ length: batchSize }, () => {
+      const rand = Math.random().toString(36).slice(2, 10);
+      return { clerkId: `bot_${rand}_${Date.now()}`, username: `bot_${rand}`, role: "bot" as const };
+    });
+
+    const inserted = await db.insert(usersTable).values(
+      botValues.map((b) => ({ clerkId: b.clerkId, username: b.username, role: "member" }))
+    ).returning({ id: usersTable.id });
+
+    botsCreated += inserted.length;
+
+    const followValues = inserted.map((b) => ({ followerId: b.id, followingId: targetUserId }));
+    await db.insert(followsTable).values(followValues);
+    followsCreated += followValues.length;
+  }
+
+  res.status(201).json({ botsCreated, followsCreated });
 });
 
 router.post("/admin/follows", async (req, res): Promise<void> => {

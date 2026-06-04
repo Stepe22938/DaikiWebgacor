@@ -68,6 +68,35 @@ export interface FollowInput {
   userId: number;
 }
 
+export interface AdminBulkFollowInput {
+  targetUserId: number;
+  /**
+     * @minimum 1
+     * @maximum 10000
+     */
+  count: number;
+}
+
+export interface AdminBulkFollowResult {
+  botsCreated: number;
+  followsCreated: number;
+}
+
+export type AdminUserUpdateRole = typeof AdminUserUpdateRole[keyof typeof AdminUserUpdateRole];
+
+
+export const AdminUserUpdateRole = {
+  member: 'member',
+  admin: 'admin',
+} as const;
+
+export interface AdminUserUpdate {
+  username?: string;
+  displayName?: string;
+  bio?: string;
+  role?: AdminUserUpdateRole;
+}
+
 export interface AdminFollowInput {
   followerId: number;
   followingId: number;

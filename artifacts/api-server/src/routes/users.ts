@@ -11,6 +11,9 @@ import {
   UpdateUserRoleParams,
   UpdateUserRoleBody,
   UpdateUserRoleResponse,
+  AdminUpdateUserParams,
+  AdminUpdateUserBody,
+  AdminUpdateUserResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -129,6 +132,35 @@ router.patch("/users/:id/role", async (req, res): Promise<void> => {
   }
 
   res.json(UpdateUserRoleResponse.parse(serializeDates(updated)));
+});
+
+router.patch("/admin/users/:id", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const currentUser = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!currentUser || currentUser.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const params = AdminUpdateUserParams.safeParse({ id: parseInt(rawId, 10) });
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
+  const body = AdminUpdateUserBody.safeParse(req.body);
+  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.data.username !== undefined) updateData.username = body.data.username;
+  if (body.data.displayName !== undefined) updateData.displayName = body.data.displayName;
+  if (body.data.bio !== undefined) updateData.bio = body.data.bio;
+  if (body.data.role !== undefined) updateData.role = body.data.role;
+
+  const [updated] = await db.update(usersTable)
+    .set(updateData)
+    .where(eq(usersTable.id, params.data.id))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "User not found" }); return; }
+  res.json(AdminUpdateUserResponse.parse(serializeDates(updated)));
 });
 
 export default router;
