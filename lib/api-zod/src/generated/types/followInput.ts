@@ -6,8 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface UserUpdate {
-  displayName?: string;
-  bio?: string;
-  username?: string;
+export interface FollowInput {
+  userId: number;
 }

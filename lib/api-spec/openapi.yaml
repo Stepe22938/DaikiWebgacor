@@ -18,6 +18,8 @@ tags:
     description: User management
   - name: stats
     description: Server stats
+  - name: follows
+    description: Follow system
 
 paths:
   /healthz:
@@ -104,6 +106,85 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+
+  /members:
+    get:
+      operationId: listMembers
+      tags: [users]
+      summary: List all members with follow status (authenticated)
+      responses:
+        "200":
+          description: List of members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicUser"
+
+  /follows:
+    post:
+      operationId: followUser
+      tags: [follows]
+      summary: Follow a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FollowInput"
+      responses:
+        "201":
+          description: Followed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowResult"
+
+  /follows/{userId}:
+    delete:
+      operationId: unfollowUser
+      tags: [follows]
+      summary: Unfollow a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Unfollowed
+
+  /me/following:
+    get:
+      operationId: getMyFollowing
+      tags: [follows]
+      summary: Get list of users I follow
+      responses:
+        "200":
+          description: Following list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicUser"
+
+  /me/followers:
+    get:
+      operationId: getMyFollowers
+      tags: [follows]
+      summary: Get list of users following me
+      responses:
+        "200":
+          description: Followers list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicUser"
 
   /developments:
     get:
@@ -331,6 +412,8 @@ components:
           type: string
         bio:
           type: string
+        username:
+          type: string
 
     UserRoleUpdate:
       type: object
@@ -339,6 +422,45 @@ components:
         role:
           type: string
           enum: [member, admin]
+
+    PublicUser:
+      type: object
+      required: [id, username, createdAt, isFollowing, followerCount, followingCount]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        bio:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        isFollowing:
+          type: boolean
+        followerCount:
+          type: integer
+        followingCount:
+          type: integer
+
+    FollowInput:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: integer
+
+    FollowResult:
+      type: object
+      required: [followerId, followingId]
+      properties:
+        followerId:
+          type: integer
+        followingId:
+          type: integer
 
     Development:
       type: object

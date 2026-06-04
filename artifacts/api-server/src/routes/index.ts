@@ -4,6 +4,7 @@ import usersRouter from "./users";
 import developmentsRouter from "./developments";
 import announcementsRouter from "./announcements";
 import statsRouter from "./stats";
+import followsRouter from "./follows";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(usersRouter);
 router.use(developmentsRouter);
 router.use(announcementsRouter);
 router.use(statsRouter);
+router.use(followsRouter);
 
 export default router;

@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/toaster";
 import Home from "@/pages/home";
 import Member from "@/pages/member";
 import Admin from "@/pages/admin";
+import Friends from "@/pages/friends";
 import NotFound from "@/pages/not-found";
 
 const clerkPubKey = publishableKeyFromHost(
@@ -155,6 +156,19 @@ function AdminProtected() {
   );
 }
 
+function FriendsProtected() {
+  return (
+    <>
+      <Show when="signed-in">
+        <Friends />
+      </Show>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+    </>
+  );
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -188,6 +202,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/" component={HomeRedirect} />
           <Route path="/member" component={MemberProtected} />
           <Route path="/admin" component={AdminProtected} />
+          <Route path="/friends" component={FriendsProtected} />
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />
           <Route component={NotFound} />

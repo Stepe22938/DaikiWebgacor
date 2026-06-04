@@ -63,8 +63,12 @@ router.patch("/me", async (req, res): Promise<void> => {
     return;
   }
 
+  const { username, ...rest } = parsed.data;
+  const updateData: Record<string, unknown> = { ...rest, updatedAt: new Date() };
+  if (username !== undefined) updateData.username = username;
+
   const [updated] = await db.update(usersTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set(updateData)
     .where(eq(usersTable.clerkId, auth.userId))
     .returning();
 

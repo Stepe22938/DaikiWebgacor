@@ -34,6 +34,7 @@ export interface User {
 export interface UserUpdate {
   displayName?: string;
   bio?: string;
+  username?: string;
 }
 
 export type UserRoleUpdateRole = typeof UserRoleUpdateRole[keyof typeof UserRoleUpdateRole];
@@ -46,6 +47,30 @@ export const UserRoleUpdateRole = {
 
 export interface UserRoleUpdate {
   role: UserRoleUpdateRole;
+}
+
+export interface PublicUser {
+  id: number;
+  username: string;
+  /** @nullable */
+  displayName?: string | null;
+  /** @nullable */
+  avatarUrl?: string | null;
+  /** @nullable */
+  bio?: string | null;
+  createdAt: string;
+  isFollowing: boolean;
+  followerCount: number;
+  followingCount: number;
+}
+
+export interface FollowInput {
+  userId: number;
+}
+
+export interface FollowResult {
+  followerId: number;
+  followingId: number;
 }
 
 export type DevelopmentStatus = typeof DevelopmentStatus[keyof typeof DevelopmentStatus];

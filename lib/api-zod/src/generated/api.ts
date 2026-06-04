@@ -36,7 +36,8 @@ export const GetMeResponse = zod.object({
  */
 export const UpdateMeBody = zod.object({
   "displayName": zod.string().optional(),
-  "bio": zod.string().optional()
+  "bio": zod.string().optional(),
+  "username": zod.string().optional()
 })
 
 export const UpdateMeResponse = zod.object({
@@ -88,6 +89,73 @@ export const UpdateUserRoleResponse = zod.object({
   "bio": zod.string().nullish(),
   "createdAt": zod.string()
 })
+
+
+/**
+ * @summary List all members with follow status (authenticated)
+ */
+export const ListMembersResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "isFollowing": zod.boolean(),
+  "followerCount": zod.number(),
+  "followingCount": zod.number()
+})
+export const ListMembersResponse = zod.array(ListMembersResponseItem)
+
+
+/**
+ * @summary Follow a user
+ */
+export const FollowUserBody = zod.object({
+  "userId": zod.number()
+})
+
+
+/**
+ * @summary Unfollow a user
+ */
+export const UnfollowUserParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+
+/**
+ * @summary Get list of users I follow
+ */
+export const GetMyFollowingResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "isFollowing": zod.boolean(),
+  "followerCount": zod.number(),
+  "followingCount": zod.number()
+})
+export const GetMyFollowingResponse = zod.array(GetMyFollowingResponseItem)
+
+
+/**
+ * @summary Get list of users following me
+ */
+export const GetMyFollowersResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "isFollowing": zod.boolean(),
+  "followerCount": zod.number(),
+  "followingCount": zod.number()
+})
+export const GetMyFollowersResponse = zod.array(GetMyFollowersResponseItem)
 
 
 /**
