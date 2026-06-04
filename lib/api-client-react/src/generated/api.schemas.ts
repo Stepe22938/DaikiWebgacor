@@ -68,6 +68,11 @@ export interface FollowInput {
   userId: number;
 }
 
+export interface AdminFollowInput {
+  followerId: number;
+  followingId: number;
+}
+
 export interface FollowResult {
   followerId: number;
   followingId: number;

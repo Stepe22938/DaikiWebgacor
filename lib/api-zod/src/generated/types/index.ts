@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './adminFollowInput';
 export * from './announcement';
 export * from './announcementInput';
 export * from './announcementInputType';

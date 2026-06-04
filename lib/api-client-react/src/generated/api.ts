@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AdminFollowInput,
   Announcement,
   AnnouncementInput,
   AnnouncementUpdate,
@@ -1526,6 +1527,77 @@ export const useDeleteAnnouncement = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteAnnouncementMutationOptions(options));
+    }
+
+export const getAdminCreateFollowUrl = () => {
+
+
+
+
+  return `/api/admin/follows`
+}
+
+/**
+ * @summary Force a follow between two users (admin only)
+ */
+export const adminCreateFollow = async (adminFollowInput: AdminFollowInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getAdminCreateFollowUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminFollowInput,)
+  }
+);}
+
+
+
+
+export const getAdminCreateFollowMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminCreateFollow>>, TError,{data: BodyType<AdminFollowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminCreateFollow>>, TError,{data: BodyType<AdminFollowInput>}, TContext> => {
+
+const mutationKey = ['adminCreateFollow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminCreateFollow>>, {data: BodyType<AdminFollowInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminCreateFollow(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminCreateFollowMutationResult = NonNullable<Awaited<ReturnType<typeof adminCreateFollow>>>
+    export type AdminCreateFollowMutationBody = BodyType<AdminFollowInput>
+    export type AdminCreateFollowMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Force a follow between two users (admin only)
+ */
+export const useAdminCreateFollow = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminCreateFollow>>, TError,{data: BodyType<AdminFollowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminCreateFollow>>,
+        TError,
+        {data: BodyType<AdminFollowInput>},
+        TContext
+      > => {
+      return useMutation(getAdminCreateFollowMutationOptions(options));
     }
 
 export const getGetStatsUrl = () => {

@@ -8,6 +8,7 @@ import {
   FollowUserBody,
   GetMyFollowingResponse,
   GetMyFollowersResponse,
+  AdminCreateFollowBody,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -179,6 +180,43 @@ router.get("/me/followers", async (req, res): Promise<void> => {
   }
   const result = await buildPublicUsers(me.id, ids);
   res.json(GetMyFollowersResponse.parse(result));
+});
+
+router.post("/admin/follows", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!me || me.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsed = AdminCreateFollowBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { followerId, followingId } = parsed.data;
+  if (followerId === followingId) {
+    res.status(400).json({ error: "Cannot follow yourself" });
+    return;
+  }
+
+  const existing = await db.query.followsTable.findFirst({
+    where: and(eq(followsTable.followerId, followerId), eq(followsTable.followingId, followingId)),
+  });
+  if (existing) {
+    res.status(409).json({ error: "Already following" });
+    return;
+  }
+
+  const [follow] = await db.insert(followsTable).values({ followerId, followingId }).returning();
+  res.status(201).json({ followerId: follow.followerId, followingId: follow.followingId });
 });
 
 export default router;

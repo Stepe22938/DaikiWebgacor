@@ -360,6 +360,21 @@ paths:
         "204":
           description: Deleted
 
+  /admin/follows:
+    post:
+      operationId: adminCreateFollow
+      tags: [follows]
+      summary: Force a follow between two users (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminFollowInput"
+      responses:
+        "201":
+          description: Follow created
+
   /stats:
     get:
       operationId: getStats
@@ -451,6 +466,15 @@ components:
       required: [userId]
       properties:
         userId:
+          type: integer
+
+    AdminFollowInput:
+      type: object
+      required: [followerId, followingId]
+      properties:
+        followerId:
+          type: integer
+        followingId:
           type: integer
 
     FollowResult:

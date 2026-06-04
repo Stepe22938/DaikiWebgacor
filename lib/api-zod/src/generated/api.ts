@@ -346,6 +346,15 @@ export const DeleteAnnouncementParams = zod.object({
 
 
 /**
+ * @summary Force a follow between two users (admin only)
+ */
+export const AdminCreateFollowBody = zod.object({
+  "followerId": zod.number(),
+  "followingId": zod.number()
+})
+
+
+/**
  * @summary Get server stats
  */
 export const GetStatsResponse = zod.object({
