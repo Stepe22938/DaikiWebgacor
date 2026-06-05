@@ -20,6 +20,10 @@ tags:
     description: Server stats
   - name: follows
     description: Follow system
+  - name: messaging
+    description: Chat and messaging
+  - name: settings
+    description: User settings
 
 paths:
   /healthz:
@@ -432,6 +436,285 @@ paths:
               schema:
                 $ref: "#/components/schemas/ServerStats"
 
+  /me/settings:
+    get:
+      operationId: getMySettings
+      tags: [settings]
+      summary: Get current user settings
+      responses:
+        "200":
+          description: User settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSettings"
+    patch:
+      operationId: updateMySettings
+      tags: [settings]
+      summary: Update current user settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserSettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSettings"
+
+  /conversations:
+    get:
+      operationId: listConversations
+      tags: [messaging]
+      summary: List my conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConversationSummary"
+    post:
+      operationId: createGroup
+      tags: [messaging]
+      summary: Create a group conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGroupInput"
+      responses:
+        "201":
+          description: Created group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+
+  /conversations/dm:
+    post:
+      operationId: createOrGetDm
+      tags: [messaging]
+      summary: Start or get existing DM conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDmInput"
+      responses:
+        "200":
+          description: Existing or new DM conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+
+  /conversations/{id}:
+    get:
+      operationId: getConversation
+      tags: [messaging]
+      summary: Get conversation details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+    patch:
+      operationId: updateGroup
+      tags: [messaging]
+      summary: Update group name or icon
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGroupInput"
+      responses:
+        "200":
+          description: Updated conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+    delete:
+      operationId: deleteConversation
+      tags: [messaging]
+      summary: Delete a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /conversations/{id}/messages:
+    get:
+      operationId: listMessages
+      tags: [messaging]
+      summary: Get messages in a conversation (last 50)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: sendMessage
+      tags: [messaging]
+      summary: Send a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageInput"
+      responses:
+        "201":
+          description: Sent message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /conversations/{id}/messages/{messageId}:
+    delete:
+      operationId: deleteMessage
+      tags: [messaging]
+      summary: Delete a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /conversations/{id}/members:
+    get:
+      operationId: listConversationMembers
+      tags: [messaging]
+      summary: List members of a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConversationMemberInfo"
+    post:
+      operationId: addConversationMember
+      tags: [messaging]
+      summary: Add a member to a group
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMemberInput"
+      responses:
+        "201":
+          description: Member added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationMemberInfo"
+
+  /conversations/{id}/members/{userId}:
+    delete:
+      operationId: removeConversationMember
+      tags: [messaging]
+      summary: Remove a member from a group
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed
+
+  /me/friends:
+    get:
+      operationId: getMyFriends
+      tags: [follows]
+      summary: Get mutual followers (friends)
+      responses:
+        "200":
+          description: Friends list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicUser"
+
 components:
   schemas:
     HealthStatus:
@@ -696,4 +979,135 @@ components:
         completedDevelopments:
           type: integer
         inProgressDevelopments:
+          type: integer
+
+    UserSettings:
+      type: object
+      required: [messagePrivacy]
+      properties:
+        messagePrivacy:
+          type: string
+          enum: [everyone, friends_only, nobody]
+
+    UserSettingsUpdate:
+      type: object
+      properties:
+        messagePrivacy:
+          type: string
+          enum: [everyone, friends_only, nobody]
+
+    ConversationSummary:
+      type: object
+      required: [id, type, createdAt, memberCount]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [dm, group]
+        name:
+          type: ["string", "null"]
+        iconUrl:
+          type: ["string", "null"]
+        ownerId:
+          type: ["integer", "null"]
+        memberCount:
+          type: integer
+        otherUserId:
+          type: ["integer", "null"]
+        otherUsername:
+          type: ["string", "null"]
+        otherDisplayName:
+          type: ["string", "null"]
+        otherAvatarUrl:
+          type: ["string", "null"]
+        lastMessageContent:
+          type: ["string", "null"]
+        lastMessageAt:
+          type: ["string", "null"]
+        lastMessageSenderId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    Message:
+      type: object
+      required: [id, conversationId, content, createdAt]
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        senderId:
+          type: ["integer", "null"]
+        content:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: ["string", "null"]
+        senderUsername:
+          type: ["string", "null"]
+        senderDisplayName:
+          type: ["string", "null"]
+        senderAvatarUrl:
+          type: ["string", "null"]
+
+    ConversationMemberInfo:
+      type: object
+      required: [userId, username, joinedAt]
+      properties:
+        userId:
+          type: integer
+        username:
+          type: string
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        joinedAt:
+          type: string
+
+    CreateDmInput:
+      type: object
+      required: [targetUserId]
+      properties:
+        targetUserId:
+          type: integer
+
+    CreateGroupInput:
+      type: object
+      required: [name, memberIds]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        memberIds:
+          type: array
+          items:
+            type: integer
+
+    UpdateGroupInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    SendMessageInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    AddMemberInput:
+      type: object
+      required: [userId]
+      properties:
+        userId:
           type: integer

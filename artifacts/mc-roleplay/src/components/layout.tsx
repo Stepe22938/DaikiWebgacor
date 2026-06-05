@@ -31,6 +31,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link href="/friends" className="text-sm font-medium hover:text-primary transition-colors">
                 Guild
               </Link>
+              <Link href="/messages" className="text-sm font-medium hover:text-primary transition-colors">
+                Messages
+              </Link>
               <Button variant="ghost" onClick={() => signOut({ redirectUrl: basePath || "/" })}>
                 Disconnect
               </Button>

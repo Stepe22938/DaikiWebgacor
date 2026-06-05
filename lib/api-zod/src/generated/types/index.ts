@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './addMemberInput';
 export * from './adminBulkFollowInput';
 export * from './adminBulkFollowResult';
 export * from './adminFollowInput';
@@ -17,6 +18,11 @@ export * from './announcementInputType';
 export * from './announcementType';
 export * from './announcementUpdate';
 export * from './announcementUpdateType';
+export * from './conversationMemberInfo';
+export * from './conversationSummary';
+export * from './conversationSummaryType';
+export * from './createDmInput';
+export * from './createGroupInput';
 export * from './development';
 export * from './developmentInput';
 export * from './developmentInputStatus';
@@ -26,10 +32,17 @@ export * from './developmentUpdateStatus';
 export * from './followInput';
 export * from './followResult';
 export * from './healthStatus';
+export * from './message';
 export * from './publicUser';
+export * from './sendMessageInput';
 export * from './serverStats';
+export * from './updateGroupInput';
 export * from './user';
 export * from './userRole';
 export * from './userRoleUpdate';
 export * from './userRoleUpdateRole';
+export * from './userSettings';
+export * from './userSettingsMessagePrivacy';
+export * from './userSettingsUpdate';
+export * from './userSettingsUpdateMessagePrivacy';
 export * from './userUpdate';

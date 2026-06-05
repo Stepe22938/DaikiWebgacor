@@ -1,0 +1,1 @@
+- [Orval hook query options](orval-hook-options.md) — must spread `getXxxQueryOptions()` into `query:{}` to satisfy required `queryKey`; plain `{ enabled, refetchInterval }` causes TS2741.

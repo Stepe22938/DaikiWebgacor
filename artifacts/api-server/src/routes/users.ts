@@ -14,6 +14,9 @@ import {
   AdminUpdateUserParams,
   AdminUpdateUserBody,
   AdminUpdateUserResponse,
+  GetMySettingsResponse,
+  UpdateMySettingsBody,
+  UpdateMySettingsResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -161,6 +164,37 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
 
   if (!updated) { res.status(404).json({ error: "User not found" }); return; }
   res.json(AdminUpdateUserResponse.parse(serializeDates(updated)));
+});
+
+router.get("/me/settings", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  res.json(GetMySettingsResponse.parse({ messagePrivacy: user.messagePrivacy ?? "friends_only" }));
+});
+
+router.patch("/me/settings", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const parsed = UpdateMySettingsBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (parsed.data.messagePrivacy !== undefined) updateData.messagePrivacy = parsed.data.messagePrivacy;
+
+  const [updated] = await db.update(usersTable)
+    .set(updateData)
+    .where(eq(usersTable.clerkId, auth.userId))
+    .returning();
+
+  res.json(UpdateMySettingsResponse.parse({ messagePrivacy: updated.messagePrivacy ?? "friends_only" }));
 });
 
 export default router;

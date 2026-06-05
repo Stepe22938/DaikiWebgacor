@@ -11,6 +11,7 @@ import Home from "@/pages/home";
 import Member from "@/pages/member";
 import Admin from "@/pages/admin";
 import Friends from "@/pages/friends";
+import Messages from "@/pages/messages";
 import NotFound from "@/pages/not-found";
 
 const clerkPubKey = publishableKeyFromHost(
@@ -169,6 +170,19 @@ function FriendsProtected() {
   );
 }
 
+function MessagesProtected() {
+  return (
+    <>
+      <Show when="signed-in">
+        <Messages />
+      </Show>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+    </>
+  );
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -203,6 +217,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/member" component={MemberProtected} />
           <Route path="/admin" component={AdminProtected} />
           <Route path="/friends" component={FriendsProtected} />
+          <Route path="/messages" component={MessagesProtected} />
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />
           <Route component={NotFound} />

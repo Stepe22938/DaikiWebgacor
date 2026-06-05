@@ -242,3 +242,124 @@ export interface ServerStats {
   inProgressDevelopments: number;
 }
 
+export type UserSettingsMessagePrivacy = typeof UserSettingsMessagePrivacy[keyof typeof UserSettingsMessagePrivacy];
+
+
+export const UserSettingsMessagePrivacy = {
+  everyone: 'everyone',
+  friends_only: 'friends_only',
+  nobody: 'nobody',
+} as const;
+
+export interface UserSettings {
+  messagePrivacy: UserSettingsMessagePrivacy;
+}
+
+export type UserSettingsUpdateMessagePrivacy = typeof UserSettingsUpdateMessagePrivacy[keyof typeof UserSettingsUpdateMessagePrivacy];
+
+
+export const UserSettingsUpdateMessagePrivacy = {
+  everyone: 'everyone',
+  friends_only: 'friends_only',
+  nobody: 'nobody',
+} as const;
+
+export interface UserSettingsUpdate {
+  messagePrivacy?: UserSettingsUpdateMessagePrivacy;
+}
+
+export type ConversationSummaryType = typeof ConversationSummaryType[keyof typeof ConversationSummaryType];
+
+
+export const ConversationSummaryType = {
+  dm: 'dm',
+  group: 'group',
+} as const;
+
+export interface ConversationSummary {
+  id: number;
+  type: ConversationSummaryType;
+  /** @nullable */
+  name?: string | null;
+  /** @nullable */
+  iconUrl?: string | null;
+  /** @nullable */
+  ownerId?: number | null;
+  memberCount: number;
+  /** @nullable */
+  otherUserId?: number | null;
+  /** @nullable */
+  otherUsername?: string | null;
+  /** @nullable */
+  otherDisplayName?: string | null;
+  /** @nullable */
+  otherAvatarUrl?: string | null;
+  /** @nullable */
+  lastMessageContent?: string | null;
+  /** @nullable */
+  lastMessageAt?: string | null;
+  /** @nullable */
+  lastMessageSenderId?: number | null;
+  createdAt: string;
+}
+
+export interface Message {
+  id: number;
+  conversationId: number;
+  /** @nullable */
+  senderId?: number | null;
+  content: string;
+  createdAt: string;
+  /** @nullable */
+  updatedAt?: string | null;
+  /** @nullable */
+  senderUsername?: string | null;
+  /** @nullable */
+  senderDisplayName?: string | null;
+  /** @nullable */
+  senderAvatarUrl?: string | null;
+}
+
+export interface ConversationMemberInfo {
+  userId: number;
+  username: string;
+  /** @nullable */
+  displayName?: string | null;
+  /** @nullable */
+  avatarUrl?: string | null;
+  joinedAt: string;
+}
+
+export interface CreateDmInput {
+  targetUserId: number;
+}
+
+export interface CreateGroupInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name: string;
+  memberIds: number[];
+}
+
+export interface UpdateGroupInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name?: string;
+}
+
+export interface SendMessageInput {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  content: string;
+}
+
+export interface AddMemberInput {
+  userId: number;
+}
+

@@ -10,6 +10,7 @@ import {
   GetMyFollowersResponse,
   AdminCreateFollowBody,
   AdminBulkCreateFollowersBody,
+  GetMyFriendsResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -217,6 +218,31 @@ router.post("/admin/bulk-followers", async (req, res): Promise<void> => {
   }
 
   res.status(201).json({ botsCreated, followsCreated });
+});
+
+router.get("/me/friends", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!me) { res.status(404).json({ error: "User not found" }); return; }
+
+  const iFollow = await db.select({ id: followsTable.followingId }).from(followsTable).where(eq(followsTable.followerId, me.id));
+  const theyFollow = await db.select({ id: followsTable.followerId }).from(followsTable).where(eq(followsTable.followingId, me.id));
+
+  const iFollowSet = new Set(iFollow.map((r) => r.id));
+  const theyFollowSet = new Set(theyFollow.map((r) => r.id));
+  const friendIds = [...iFollowSet].filter((id) => theyFollowSet.has(id));
+
+  if (friendIds.length === 0) { res.json([]); return; }
+
+  const friends = await db.select().from(usersTable).where(
+    sql`${usersTable.id} = ANY(${sql.raw(`ARRAY[${friendIds.join(",")}]::int[]`)})`,
+  );
+
+  res.json(GetMyFriendsResponse.parse(
+    friends.map((u) => ({ ...serializeDates(u), isFollowing: true })),
+  ));
 });
 
 router.post("/admin/follows", async (req, res): Promise<void> => {

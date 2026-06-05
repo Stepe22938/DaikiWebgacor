@@ -10,6 +10,7 @@ export const usersTable = pgTable("users", {
   avatarUrl: text("avatar_url"),
   role: varchar("role", { length: 20 }).notNull().default("member"),
   bio: text("bio"),
+  messagePrivacy: varchar("message_privacy", { length: 20 }).notNull().default("friends_only"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -405,3 +405,250 @@ export const GetStatsResponse = zod.object({
 })
 
 
+/**
+ * @summary Get current user settings
+ */
+export const GetMySettingsResponse = zod.object({
+  "messagePrivacy": zod.enum(['everyone', 'friends_only', 'nobody'])
+})
+
+
+/**
+ * @summary Update current user settings
+ */
+export const UpdateMySettingsBody = zod.object({
+  "messagePrivacy": zod.enum(['everyone', 'friends_only', 'nobody']).optional()
+})
+
+export const UpdateMySettingsResponse = zod.object({
+  "messagePrivacy": zod.enum(['everyone', 'friends_only', 'nobody'])
+})
+
+
+/**
+ * @summary List my conversations
+ */
+export const ListConversationsResponseItem = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['dm', 'group']),
+  "name": zod.string().nullish(),
+  "iconUrl": zod.string().nullish(),
+  "ownerId": zod.number().nullish(),
+  "memberCount": zod.number(),
+  "otherUserId": zod.number().nullish(),
+  "otherUsername": zod.string().nullish(),
+  "otherDisplayName": zod.string().nullish(),
+  "otherAvatarUrl": zod.string().nullish(),
+  "lastMessageContent": zod.string().nullish(),
+  "lastMessageAt": zod.string().nullish(),
+  "lastMessageSenderId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListConversationsResponse = zod.array(ListConversationsResponseItem)
+
+
+/**
+ * @summary Create a group conversation
+ */
+export const createGroupBodyNameMax = 100;
+
+
+
+export const CreateGroupBody = zod.object({
+  "name": zod.string().min(1).max(createGroupBodyNameMax),
+  "memberIds": zod.array(zod.number())
+})
+
+
+/**
+ * @summary Start or get existing DM conversation
+ */
+export const CreateOrGetDmBody = zod.object({
+  "targetUserId": zod.number()
+})
+
+export const CreateOrGetDmResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['dm', 'group']),
+  "name": zod.string().nullish(),
+  "iconUrl": zod.string().nullish(),
+  "ownerId": zod.number().nullish(),
+  "memberCount": zod.number(),
+  "otherUserId": zod.number().nullish(),
+  "otherUsername": zod.string().nullish(),
+  "otherDisplayName": zod.string().nullish(),
+  "otherAvatarUrl": zod.string().nullish(),
+  "lastMessageContent": zod.string().nullish(),
+  "lastMessageAt": zod.string().nullish(),
+  "lastMessageSenderId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get conversation details
+ */
+export const GetConversationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetConversationResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['dm', 'group']),
+  "name": zod.string().nullish(),
+  "iconUrl": zod.string().nullish(),
+  "ownerId": zod.number().nullish(),
+  "memberCount": zod.number(),
+  "otherUserId": zod.number().nullish(),
+  "otherUsername": zod.string().nullish(),
+  "otherDisplayName": zod.string().nullish(),
+  "otherAvatarUrl": zod.string().nullish(),
+  "lastMessageContent": zod.string().nullish(),
+  "lastMessageAt": zod.string().nullish(),
+  "lastMessageSenderId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Update group name or icon
+ */
+export const UpdateGroupParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateGroupBodyNameMax = 100;
+
+
+
+export const UpdateGroupBody = zod.object({
+  "name": zod.string().min(1).max(updateGroupBodyNameMax).optional()
+})
+
+export const UpdateGroupResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['dm', 'group']),
+  "name": zod.string().nullish(),
+  "iconUrl": zod.string().nullish(),
+  "ownerId": zod.number().nullish(),
+  "memberCount": zod.number(),
+  "otherUserId": zod.number().nullish(),
+  "otherUsername": zod.string().nullish(),
+  "otherDisplayName": zod.string().nullish(),
+  "otherAvatarUrl": zod.string().nullish(),
+  "lastMessageContent": zod.string().nullish(),
+  "lastMessageAt": zod.string().nullish(),
+  "lastMessageSenderId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a conversation
+ */
+export const DeleteConversationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Get messages in a conversation (last 50)
+ */
+export const ListMessagesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "senderId": zod.number().nullish(),
+  "content": zod.string(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish(),
+  "senderUsername": zod.string().nullish(),
+  "senderDisplayName": zod.string().nullish(),
+  "senderAvatarUrl": zod.string().nullish()
+})
+export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
+
+
+/**
+ * @summary Send a message
+ */
+export const SendMessageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const sendMessageBodyContentMax = 4000;
+
+
+
+export const SendMessageBody = zod.object({
+  "content": zod.string().min(1).max(sendMessageBodyContentMax)
+})
+
+
+/**
+ * @summary Delete a message
+ */
+export const DeleteMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+
+/**
+ * @summary List members of a conversation
+ */
+export const ListConversationMembersParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListConversationMembersResponseItem = zod.object({
+  "userId": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "joinedAt": zod.string()
+})
+export const ListConversationMembersResponse = zod.array(ListConversationMembersResponseItem)
+
+
+/**
+ * @summary Add a member to a group
+ */
+export const AddConversationMemberParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AddConversationMemberBody = zod.object({
+  "userId": zod.number()
+})
+
+
+/**
+ * @summary Remove a member from a group
+ */
+export const RemoveConversationMemberParams = zod.object({
+  "id": zod.coerce.number(),
+  "userId": zod.coerce.number()
+})
+
+
+/**
+ * @summary Get mutual followers (friends)
+ */
+export const GetMyFriendsResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "isFollowing": zod.boolean(),
+  "followerCount": zod.number(),
+  "followingCount": zod.number()
+})
+export const GetMyFriendsResponse = zod.array(GetMyFriendsResponseItem)
+
+
