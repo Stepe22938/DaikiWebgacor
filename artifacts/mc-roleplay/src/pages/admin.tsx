@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -41,6 +42,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type DevStatus = "planned" | "in_progress" | "completed" | "paused";
 type AnnType = "update" | "event" | "maintenance" | "general";
@@ -102,6 +111,18 @@ export default function Admin() {
   const [bulkTargetId, setBulkTargetId] = useState("");
   const [bulkCount, setBulkCount] = useState("100");
   const [bulkLoading, setBulkLoading] = useState(false);
+
+  // Dropdown open state
+  const [showBulkTarget, setShowBulkTarget] = useState(false);
+  const [showSingleFollower, setShowSingleFollower] = useState(false);
+  const [showSingleTarget, setShowSingleTarget] = useState(false);
+
+  // Search state for dropdowns
+  const [bulkSearch, setBulkSearch] = useState("");
+  const [singleSearch, setSingleSearch] = useState("");
+
+  // User directory
+  const [userDirSearch, setUserDirSearch] = useState("");
 
   if (isLoading) return <Layout><div className="p-8 text-muted-foreground">Loading...</div></Layout>;
   if (user?.role !== "admin") return <Redirect to="/member" />;
@@ -279,38 +300,64 @@ export default function Admin() {
 
           {/* ── USERS ─────────────────────────────────────────────────────────── */}
           <TabsContent value="users" className="space-y-8">
+            {/* Members Table */}
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold text-foreground">Members</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-semibold text-foreground">Members</h2>
+                <div className="relative flex-1 max-w-xs">
+                  <Input value={userDirSearch} onChange={(e) => setUserDirSearch(e.target.value)} placeholder="Search by name, username, ID…" className="bg-input border-border h-8 text-sm" />
+                </div>
+              </div>
               {usersLoading ? <Skeleton className="h-32 w-full" /> : (
-                <div className="space-y-3">
-                  {users?.map((u) => (
-                    <Card key={u.id} className="bg-card border-border">
-                      <CardContent className="p-4 flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center font-bold text-primary shrink-0 overflow-hidden">
-                          {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="w-full h-full object-cover" /> : (u.displayName || u.username).charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-foreground truncate">{u.displayName || u.username}</div>
-                          <div className="text-xs text-muted-foreground">@{u.username} · ID: {u.id}</div>
-                          {u.bio && <div className="text-xs text-muted-foreground truncate mt-0.5">{u.bio}</div>}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`text-xs px-2 py-1 rounded-full ${u.role === "admin" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>{u.role}</span>
-                          <Button size="sm" variant="outline" className="border-border h-8" onClick={() => openEditUser(u)}>Edit</Button>
-                          <Select value={u.role} onValueChange={async (role) => {
-                            try { await updateRole.mutateAsync({ id: u.id, data: { role: role as "member" | "admin" } }); toast({ title: "Role updated" }); invalidate("/api/users"); }
-                            catch { toast({ title: "Error", description: "Failed to update role.", variant: "destructive" }); }
-                          }}>
-                            <SelectTrigger className="w-24 h-8 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="member">Member</SelectItem>
-                              <SelectItem value="admin">Admin</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-48">User</TableHead>
+                        <TableHead>Username</TableHead>
+                        <TableHead className="w-24">ID</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {users?.filter(u => {
+                        const q = userDirSearch.toLowerCase();
+                        return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q) || (u.bio && u.bio.toLowerCase().includes(q));
+                      }).map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-primary text-xs shrink-0 overflow-hidden">
+                                {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="w-full h-full object-cover" /> : (u.displayName || u.username).charAt(0).toUpperCase()}
+                              </div>
+                              <div className="truncate font-medium text-foreground">{u.displayName || u.username}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">@{u.username}</TableCell>
+                          <TableCell className="text-muted-foreground">{u.id}</TableCell>
+                          <TableCell>
+                            <span className={`text-xs px-2 py-1 rounded-full ${u.role === "admin" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>{u.role}</span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button size="sm" variant="outline" className="border-border h-7 text-xs" onClick={() => openEditUser(u)}>Edit</Button>
+                              <Select value={u.role} onValueChange={async (role) => {
+                                try { await updateRole.mutateAsync({ id: u.id, data: { role: role as "member" | "admin" } }); toast({ title: "Role updated" }); invalidate("/api/users"); }
+                                catch { toast({ title: "Error", description: "Failed to update role.", variant: "destructive" }); }
+                              }}>
+                                <SelectTrigger className="w-24 h-7 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="member">Member</SelectItem>
+                                  <SelectItem value="admin">Admin</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </div>
@@ -323,19 +370,67 @@ export default function Admin() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  {/* Follower search */}
+                  <div className="space-y-2 relative">
                     <Label>Follower</Label>
-                    <Select value={botFollowerId} onValueChange={setBotFollowerId}>
-                      <SelectTrigger className="bg-input border-border"><SelectValue placeholder="Select follower…" /></SelectTrigger>
-                      <SelectContent>{users?.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.displayName || u.username} (ID:{u.id})</SelectItem>)}</SelectContent>
-                    </Select>
+                    <div className="relative">
+                      <Input value={showSingleFollower ? singleSearch : (users?.find(u => String(u.id) === botFollowerId)?.displayName || users?.find(u => String(u.id) === botFollowerId)?.username || "")} onFocus={() => { setShowSingleFollower(true); setSingleSearch(""); }} readOnly={!showSingleFollower} onChange={(e) => { setSingleSearch(e.target.value); setShowSingleFollower(true); }} placeholder={botFollowerId ? "Click to change…" : "Type to search…"} className="bg-input border-border" />
+                      {showSingleFollower && (
+                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg overflow-hidden">
+                          <ScrollArea className="h-60">
+                            <div className="p-1">
+                              {(users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }) || []).length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-muted-foreground">No results</div>
+                              ) : (
+                                users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }).map(u => (
+                                  <button key={u.id} onClick={() => { setBotFollowerId(String(u.id)); setShowSingleFollower(false); setSingleSearch(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-md flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center font-bold text-primary text-xs shrink-0">{(u.displayName || u.username).charAt(0).toUpperCase()}</div>
+                                    <div className="truncate">{u.displayName || u.username} <span className="text-xs text-muted-foreground">(ID:{u.id})</span></div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      )}
+                    </div>
+                    {botFollowerId && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>Selected: {users?.find(u => String(u.id) === botFollowerId)?.displayName || users?.find(u => String(u.id) === botFollowerId)?.username}</span>
+                        <button onClick={() => setBotFollowerId("")} className="text-destructive hover:underline">Clear</button>
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-2">
+                  {/* Target search */}
+                  <div className="space-y-2 relative">
                     <Label>Target (gets followed)</Label>
-                    <Select value={botFollowingId} onValueChange={setBotFollowingId}>
-                      <SelectTrigger className="bg-input border-border"><SelectValue placeholder="Select target…" /></SelectTrigger>
-                      <SelectContent>{users?.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.displayName || u.username} (ID:{u.id})</SelectItem>)}</SelectContent>
-                    </Select>
+                    <div className="relative">
+                      <Input value={showSingleTarget ? (users?.find(u => String(u.id) === botFollowingId)?.displayName || users?.find(u => String(u.id) === botFollowingId)?.username || "") : singleSearch} onFocus={() => { setShowSingleTarget(true); setSingleSearch(""); }} readOnly={!showSingleTarget} onChange={(e) => { setSingleSearch(e.target.value); setShowSingleTarget(true); }} placeholder={botFollowingId ? "Click to change…" : "Type to search…"} className="bg-input border-border" />
+                      {showSingleTarget && (
+                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg overflow-hidden">
+                          <ScrollArea className="h-60">
+                            <div className="p-1">
+                              {(users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }) || []).length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-muted-foreground">No results</div>
+                              ) : (
+                                users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }).map(u => (
+                                  <button key={u.id} onClick={() => { setBotFollowingId(String(u.id)); setShowSingleTarget(false); setSingleSearch(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-md flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center font-bold text-primary text-xs shrink-0">{(u.displayName || u.username).charAt(0).toUpperCase()}</div>
+                                    <div className="truncate">{u.displayName || u.username} <span className="text-xs text-muted-foreground">(ID:{u.id})</span></div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      )}
+                    </div>
+                    {botFollowingId && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>Selected: {users?.find(u => String(u.id) === botFollowingId)?.displayName || users?.find(u => String(u.id) === botFollowingId)?.username}</span>
+                        <button onClick={() => setBotFollowingId("")} className="text-destructive hover:underline">Clear</button>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <Button onClick={handleSingleFollow} disabled={!botFollowerId || !botFollowingId} className="bg-primary text-primary-foreground hover:bg-primary/90">Create Follow</Button>
@@ -352,12 +447,35 @@ export default function Admin() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-2 relative">
                     <Label>Target User (receives followers)</Label>
-                    <Select value={bulkTargetId} onValueChange={setBulkTargetId}>
-                      <SelectTrigger className="bg-input border-border"><SelectValue placeholder="Select target user…" /></SelectTrigger>
-                      <SelectContent>{users?.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.displayName || u.username} (ID:{u.id})</SelectItem>)}</SelectContent>
-                    </Select>
+                    <div className="relative">
+                      <Input value={showBulkTarget ? bulkSearch : (users?.find(u => String(u.id) === bulkTargetId)?.displayName || users?.find(u => String(u.id) === bulkTargetId)?.username || "")} onFocus={() => { setShowBulkTarget(true); setBulkSearch(""); }} readOnly={!showBulkTarget} onChange={(e) => { setBulkSearch(e.target.value); setShowBulkTarget(true); }} placeholder={bulkTargetId ? "Click to change…" : "Type to search…"} className="bg-input border-border" />
+                      {showBulkTarget && (
+                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg overflow-hidden">
+                          <ScrollArea className="h-60">
+                            <div className="p-1">
+                              {(users?.filter(u => { const q = bulkSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }) || []).length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-muted-foreground">No results</div>
+                              ) : (
+                                users?.filter(u => { const q = bulkSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }).map(u => (
+                                  <button key={u.id} onClick={() => { setBulkTargetId(String(u.id)); setShowBulkTarget(false); setBulkSearch(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-md flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center font-bold text-primary text-xs shrink-0">{(u.displayName || u.username).charAt(0).toUpperCase()}</div>
+                                    <div className="truncate">{u.displayName || u.username} <span className="text-xs text-muted-foreground">(ID:{u.id})</span></div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      )}
+                    </div>
+                    {bulkTargetId && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>Selected: {users?.find(u => String(u.id) === bulkTargetId)?.displayName || users?.find(u => String(u.id) === bulkTargetId)?.username}</span>
+                        <button onClick={() => setBulkTargetId("")} className="text-destructive hover:underline">Clear</button>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Number of Followers to Generate</Label>

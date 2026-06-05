@@ -1,0 +1,6 @@
+proyek-ringan.z01 filter=lfs diff=lfs merge=lfs -text
+proyek-ringan.z02 filter=lfs diff=lfs merge=lfs -text
+proyek-ringan.z03 filter=lfs diff=lfs merge=lfs -text
+proyek-ringan.z04 filter=lfs diff=lfs merge=lfs -text
+proyek-ringan.z05 filter=lfs diff=lfs merge=lfs -text
+proyekku.zip filter=lfs diff=lfs merge=lfs -text
