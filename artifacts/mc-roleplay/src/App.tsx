@@ -14,10 +14,9 @@ import Friends from "@/pages/friends";
 import Messages from "@/pages/messages";
 import NotFound from "@/pages/not-found";
 
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
+const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+  ? publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY)
+  : undefined;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -27,8 +26,49 @@ function stripBase(path: string): string {
     : path;
 }
 
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
+function ClerkConfigWarning({ hasNoKey }: { hasNoKey: boolean }) {
+  return (
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: "100vh",
+      backgroundColor: "#16120e",
+      color: "#ecd79d",
+      fontFamily: "Inter, sans-serif",
+      padding: "20px",
+      textAlign: "center"
+    }}>
+      <div style={{
+        maxWidth: "500px",
+        padding: "30px",
+        borderRadius: "12px",
+        border: "1px solid #3b3223",
+        backgroundColor: "#1a1512"
+      }}>
+        <h2 style={{ color: "#d9a05b", marginBottom: "15px" }}>Konfigurasi Clerk Diperlukan</h2>
+        <p style={{ color: "#b3a486", lineHeight: "1.6", marginBottom: "20px" }}>
+          {hasNoKey ? (
+            <>Anda belum memasukkan API Key untuk Clerk Auth di file <code>.env</code> Anda.</>
+          ) : (
+            <>Anda sedang menjalankan website ini di lokal (localhost), tetapi masih menggunakan key Clerk bawaan Replit (<code>clerk.localhost</code>).</>
+          )}
+        </p>
+        <p style={{ color: "#b3a486", lineHeight: "1.6", marginBottom: "20px" }}>
+          Silakan buka file <code>.env</code> di root project Anda, isi <strong>CLERK_PUBLISHABLE_KEY</strong>, <strong>CLERK_SECRET_KEY</strong>, dan <strong>VITE_CLERK_PUBLISHABLE_KEY</strong> dengan key dari dashboard <a href="https://clerk.com" target="_blank" style={{ color: "#d9a05b", textDecoration: "underline" }}>clerk.com</a> milik Anda sendiri.
+        </p>
+        <div style={{
+          fontSize: "12px",
+          color: "#807055",
+          borderTop: "1px solid #3b3223",
+          paddingTop: "15px"
+        }}>
+          Setelah mengisi file <code>.env</code>, silakan restart server dev Anda (jalankan ulang <code>pnpm run dev</code>).
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const clerkAppearance = {
@@ -188,7 +228,7 @@ function ClerkProviderWithRoutes() {
 
   return (
     <ClerkProvider
-      publishableKey={clerkPubKey}
+      publishableKey={clerkPubKey || ""}
       proxyUrl={clerkProxyUrl}
       appearance={clerkAppearance}
       signInUrl={`${basePath}/sign-in`}
@@ -228,6 +268,14 @@ function ClerkProviderWithRoutes() {
 }
 
 function App() {
+  const hasNoKey = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  const isReplitClerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.includes("Y2xlcmsubG9jYWx0aG9zdCQ");
+  const isRunningLocally = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname.startsWith("192.168.");
+
+  if (hasNoKey || (isReplitClerkKey && isRunningLocally)) {
+    return <ClerkConfigWarning hasNoKey={hasNoKey} />;
+  }
+
   return (
     <WouterRouter base={basePath}>
       <ClerkProviderWithRoutes />
