@@ -89,6 +89,7 @@ export default function Friends() {
     queryClient.invalidateQueries({ queryKey: ["/api/members"] });
     queryClient.invalidateQueries({ queryKey: ["/api/me/following"] });
     queryClient.invalidateQueries({ queryKey: ["/api/me/followers"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/me/friends"] });
   };
 
   const handleFollowToggle = async (user: PublicUser) => {

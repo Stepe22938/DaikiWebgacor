@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { Phone, Video } from "lucide-react";
 
 const JITSI_BASE = "https://meet.jit.si/arcadia-studio-conv-";
 
@@ -142,6 +143,7 @@ export default function MessagesPage() {
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showCall, setShowCall] = useState(false);
+  const [callType, setCallType] = useState<"voice" | "video" | null>(null);
   const [groupName, setGroupName] = useState("");
   const [groupMemberIds, setGroupMemberIds] = useState<number[]>([]);
   const [dmSearch, setDmSearch] = useState("");
@@ -193,7 +195,7 @@ export default function MessagesPage() {
     try {
       await sendMessage.mutateAsync({ id: selectedId, data: { content: messageText.trim() } });
       setMessageText("");
-      await queryClient.invalidateQueries({ queryKey: ["listMessages", selectedId] });
+      await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
     } catch {
       toast({ title: "Failed to send message", variant: "destructive" });
     }
@@ -203,7 +205,7 @@ export default function MessagesPage() {
     if (!selectedId) return;
     try {
       await deleteMessage.mutateAsync({ id: selectedId, messageId });
-      await queryClient.invalidateQueries({ queryKey: ["listMessages", selectedId] });
+      await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
     } catch {
       toast({ title: "Failed to delete message", variant: "destructive" });
     }
@@ -215,7 +217,7 @@ export default function MessagesPage() {
       setSelectedId(conv.id);
       setShowNewDm(false);
       setDmSearch("");
-      await queryClient.invalidateQueries({ queryKey: ["listConversations"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Could not start DM";
       toast({ title: "Error", description: msg, variant: "destructive" });
@@ -232,7 +234,7 @@ export default function MessagesPage() {
       setShowNewGroup(false);
       setGroupName("");
       setGroupMemberIds([]);
-      await queryClient.invalidateQueries({ queryKey: ["listConversations"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     } catch {
       toast({ title: "Failed to create group", variant: "destructive" });
     }
@@ -243,7 +245,7 @@ export default function MessagesPage() {
     try {
       await deleteConv.mutateAsync({ id: selectedId });
       setSelectedId(null);
-      await queryClient.invalidateQueries({ queryKey: ["listConversations"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     } catch {
       toast({ title: "Failed to leave conversation", variant: "destructive" });
     }
@@ -568,7 +570,7 @@ export default function MessagesPage() {
                       if (!selectedId) return;
                       await removeMember.mutateAsync({ id: selectedId, userId: m.userId });
                       await queryClient.invalidateQueries({
-                        queryKey: ["listConversationMembers", selectedId],
+                        queryKey: [`/api/conversations/${selectedId}/members`],
                       });
                     }}
                   >
@@ -595,7 +597,7 @@ export default function MessagesPage() {
                       if (!selectedId) return;
                       await addMember.mutateAsync({ id: selectedId, data: { userId: f.id } });
                       await queryClient.invalidateQueries({
-                        queryKey: ["listConversationMembers", selectedId],
+                        queryKey: [`/api/conversations/${selectedId}/members`],
                       });
                     }}
                     className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-muted/40 text-left"
@@ -616,18 +618,73 @@ export default function MessagesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCall} onOpenChange={setShowCall}>
-        <DialogContent className="max-w-3xl h-[80vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="px-4 pt-4 pb-2 border-b border-border">
-            <DialogTitle className="text-sm">📞 Call — {selectedName}</DialogTitle>
+      <Dialog open={showCall} onOpenChange={(open) => {
+        setShowCall(open);
+        if (!open) {
+          setCallType(null);
+        }
+      }}>
+        <DialogContent className={`${callType ? "max-w-3xl h-[80vh]" : "max-w-md"} flex flex-col p-0 gap-0 overflow-hidden bg-card border-border transition-all duration-300`}>
+          <DialogHeader className="px-5 pt-5 pb-3 border-b border-border bg-card/85">
+            <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
+              {callType === "voice" ? "🎙️ Voice Call" : callType === "video" ? "📹 Video Call" : "📞 Establish Call Connection"}
+              <span className="text-xs text-muted-foreground font-normal">— {selectedName}</span>
+            </DialogTitle>
           </DialogHeader>
+
           {showCall && selectedId && (
-            <iframe
-              src={`${JITSI_BASE}${selectedId}`}
-              allow="camera; microphone; display-capture; fullscreen"
-              className="flex-1 w-full border-0"
-              title="Jitsi Call"
-            />
+            <>
+              {!callType ? (
+                <div className="p-6 space-y-6 text-center">
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Choose your call mode. You will connect securely via the Arcadia Studio communications network.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      onClick={() => setCallType("voice")}
+                      className="flex flex-col items-center justify-center p-5 rounded-xl border border-border bg-card/60 hover:bg-primary/10 hover:border-primary text-foreground transition-all duration-200 group cursor-pointer"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <Phone className="w-6 h-6" />
+                      </div>
+                      <span className="font-bold text-sm">Voice Call</span>
+                      <span className="text-[10px] text-muted-foreground mt-1">Audio only</span>
+                    </button>
+
+                    <button
+                      onClick={() => setCallType("video")}
+                      className="flex flex-col items-center justify-center p-5 rounded-xl border border-border bg-card/60 hover:bg-primary/10 hover:border-primary text-foreground transition-all duration-200 group cursor-pointer"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <Video className="w-6 h-6" />
+                      </div>
+                      <span className="font-bold text-sm">Video Call</span>
+                      <span className="text-[10px] text-muted-foreground mt-1">Camera & Audio</span>
+                    </button>
+                  </div>
+
+                  <div className="flex justify-center pt-2">
+                    <Button variant="ghost" size="sm" onClick={() => setShowCall(false)} className="text-xs text-muted-foreground hover:text-foreground">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <iframe
+                  src={`${JITSI_BASE}${selectedId}${
+                    callType === "voice"
+                      ? "#config.startAudioOnly=true&config.startWithVideoMuted=true&config.prejoinPageEnabled=false"
+                      : "#config.startAudioOnly=false&config.startWithVideoMuted=false&config.prejoinPageEnabled=false"
+                  }`}
+                  allow="camera; microphone; display-capture; fullscreen"
+                  className="flex-1 w-full border-0 min-h-[500px]"
+                  title="Jitsi Call"
+                />
+              )}
+            </>
           )}
         </DialogContent>
       </Dialog>

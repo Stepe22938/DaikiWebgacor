@@ -227,22 +227,26 @@ router.get("/me/friends", async (req, res): Promise<void> => {
   const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
   if (!me) { res.status(404).json({ error: "User not found" }); return; }
 
+  console.log("[DEBUG] /me/friends - current user:", me.id, me.username);
+
   const iFollow = await db.select({ id: followsTable.followingId }).from(followsTable).where(eq(followsTable.followerId, me.id));
   const theyFollow = await db.select({ id: followsTable.followerId }).from(followsTable).where(eq(followsTable.followingId, me.id));
+
+  console.log("[DEBUG] /me/friends - iFollow:", iFollow);
+  console.log("[DEBUG] /me/friends - theyFollow:", theyFollow);
 
   const iFollowSet = new Set(iFollow.map((r) => r.id));
   const theyFollowSet = new Set(theyFollow.map((r) => r.id));
   const friendIds = [...iFollowSet].filter((id) => theyFollowSet.has(id));
 
+  console.log("[DEBUG] /me/friends - friendIds:", friendIds);
+
   if (friendIds.length === 0) { res.json([]); return; }
 
-  const friends = await db.select().from(usersTable).where(
-    sql`${usersTable.id} = ANY(${sql.raw(`ARRAY[${friendIds.join(",")}]::int[]`)})`,
-  );
-
-  res.json(GetMyFriendsResponse.parse(
-    friends.map((u) => ({ ...serializeDates(u), isFollowing: true })),
-  ));
+  const result = await buildPublicUsers(me.id, friendIds);
+  console.log("[DEBUG] /me/friends - result:", result);
+  
+  res.json(GetMyFriendsResponse.parse(result));
 });
 
 router.post("/admin/follows", async (req, res): Promise<void> => {

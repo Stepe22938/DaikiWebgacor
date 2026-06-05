@@ -6,6 +6,7 @@ import announcementsRouter from "./announcements";
 import statsRouter from "./stats";
 import followsRouter from "./follows";
 import conversationsRouter from "./conversations";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(announcementsRouter);
 router.use(statsRouter);
 router.use(followsRouter);
 router.use(conversationsRouter);
+router.use(settingsRouter);
 
 export default router;

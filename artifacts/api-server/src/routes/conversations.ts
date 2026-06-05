@@ -141,18 +141,18 @@ router.post("/conversations/dm", async (req, res): Promise<void> => {
   if (target.messagePrivacy === "nobody") {
     res.status(403).json({ error: "This user does not accept messages" }); return;
   }
-  if (target.messagePrivacy === "friends_only") {
-    const [iFollow, theyFollow] = await Promise.all([
-      db.query.followsTable.findFirst({
-        where: and(eq(followsTable.followerId, user.id), eq(followsTable.followingId, target.id)),
-      }),
-      db.query.followsTable.findFirst({
-        where: and(eq(followsTable.followerId, target.id), eq(followsTable.followingId, user.id)),
-      }),
-    ]);
-    if (!iFollow || !theyFollow) {
-      res.status(403).json({ error: "You can only message mutual friends" }); return;
-    }
+
+  // Enforce mutual friendship (both users follow each other)
+  const [iFollow, theyFollow] = await Promise.all([
+    db.query.followsTable.findFirst({
+      where: and(eq(followsTable.followerId, user.id), eq(followsTable.followingId, target.id)),
+    }),
+    db.query.followsTable.findFirst({
+      where: and(eq(followsTable.followerId, target.id), eq(followsTable.followingId, user.id)),
+    }),
+  ]);
+  if (!iFollow || !theyFollow) {
+    res.status(403).json({ error: "You can only start a DM with mutual friends (users who follow each other)" }); return;
   }
 
   const myDmIds = await db
@@ -205,6 +205,22 @@ router.post("/conversations", async (req, res): Promise<void> => {
 
   const parsed = CreateGroupBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const memberIdsOnly = [...new Set(parsed.data.memberIds)].filter((id) => id !== user.id);
+  for (const memberId of memberIdsOnly) {
+    const [iFollow, theyFollow] = await Promise.all([
+      db.query.followsTable.findFirst({
+        where: and(eq(followsTable.followerId, user.id), eq(followsTable.followingId, memberId)),
+      }),
+      db.query.followsTable.findFirst({
+        where: and(eq(followsTable.followerId, memberId), eq(followsTable.followingId, user.id)),
+      }),
+    ]);
+    if (!iFollow || !theyFollow) {
+      res.status(403).json({ error: "You can only add mutual friends (users who follow each other) to groups" });
+      return;
+    }
+  }
 
   const [conv] = await db
     .insert(conversationsTable)
@@ -420,6 +436,19 @@ router.post("/conversations/:id/members", async (req, res): Promise<void> => {
     where: eq(usersTable.id, parsed.data.userId),
   });
   if (!newUser) { res.status(404).json({ error: "User not found" }); return; }
+
+  const [iFollow, theyFollow] = await Promise.all([
+    db.query.followsTable.findFirst({
+      where: and(eq(followsTable.followerId, user.id), eq(followsTable.followingId, newUser.id)),
+    }),
+    db.query.followsTable.findFirst({
+      where: and(eq(followsTable.followerId, newUser.id), eq(followsTable.followingId, user.id)),
+    }),
+  ]);
+  if (!iFollow || !theyFollow) {
+    res.status(403).json({ error: "You can only add mutual friends (users who follow each other) to groups" });
+    return;
+  }
 
   await db
     .insert(conversationMembersTable)

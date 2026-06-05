@@ -16,8 +16,9 @@ import {
   useAdminCreateFollow,
   useAdminBulkCreateFollowers,
   useAdminUpdateUser,
+  customFetch,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -124,6 +125,53 @@ export default function Admin() {
   // User directory
   const [userDirSearch, setUserDirSearch] = useState("");
 
+  // System Settings State & Query
+  const { data: currentSettings, isLoading: settingsLoading } = useQuery({
+    queryKey: ["/api/settings"],
+    queryFn: () => customFetch<any>("/api/settings"),
+  });
+
+  const saveSettings = useMutation({
+    mutationFn: (data: any) =>
+      customFetch<any>("/api/settings", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      toast({ title: "Settings saved", description: "Homepage configurations updated." });
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+    },
+  });
+
+  const [settingsForm, setSettingsForm] = useState({
+    heroTitle: "",
+    heroSubtitle: "",
+    serverIP: "",
+    mcVersion: "",
+    specsCpu: "",
+    specsMemory: "",
+    specsStorage: "",
+    specsLocation: "",
+  });
+
+  const [hasInitializedForm, setHasInitializedForm] = useState(false);
+  if (currentSettings && !hasInitializedForm) {
+    setSettingsForm({
+      heroTitle: currentSettings.heroTitle || "",
+      heroSubtitle: currentSettings.heroSubtitle || "",
+      serverIP: currentSettings.serverIP || "",
+      mcVersion: currentSettings.mcVersion || "",
+      specsCpu: currentSettings.specsCpu || "",
+      specsMemory: currentSettings.specsMemory || "",
+      specsStorage: currentSettings.specsStorage || "",
+      specsLocation: currentSettings.specsLocation || "",
+    });
+    setHasInitializedForm(true);
+  }
+
   if (isLoading) return <Layout><div className="p-8 text-muted-foreground">Loading...</div></Layout>;
   if (user?.role !== "admin") return <Redirect to="/member" />;
 
@@ -226,6 +274,7 @@ export default function Admin() {
             <TabsTrigger value="developments">⚒ The Forge</TabsTrigger>
             <TabsTrigger value="announcements">📣 Town Crier</TabsTrigger>
             <TabsTrigger value="users">👥 Scribes</TabsTrigger>
+            <TabsTrigger value="settings">⚙️ Realm Settings</TabsTrigger>
           </TabsList>
 
           {/* ── DEVELOPMENTS ──────────────────────────────────────────────────── */}
@@ -486,6 +535,125 @@ export default function Admin() {
                   {bulkLoading ? `Generating... (this may take a moment)` : `Generate ${bulkCount || "N"} Bot Followers`}
                 </Button>
                 <p className="text-xs text-muted-foreground">Each bot is a separate account stored in the database. Followers will appear on the user's profile.</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── SETTINGS ──────────────────────────────────────────────────────── */}
+          <TabsContent value="settings" className="space-y-6 max-w-2xl">
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-primary text-xl font-bold flex items-center gap-2">
+                  ⚙️ Realm Settings
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Edit the header text, server IP, and system specifications shown on the homepage.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {settingsLoading ? (
+                  <Skeleton className="h-48 w-full" />
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="heroTitle">Hero Title</Label>
+                      <Input
+                        id="heroTitle"
+                        value={settingsForm.heroTitle}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, heroTitle: e.target.value })}
+                        placeholder="Forge Your Legend in Arcadia"
+                        className="bg-input border-border"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="heroSubtitle">Hero Subtitle</Label>
+                      <Textarea
+                        id="heroSubtitle"
+                        value={settingsForm.heroSubtitle}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, heroSubtitle: e.target.value })}
+                        placeholder="Immersive RPG description..."
+                        className="bg-input border-border resize-none"
+                        rows={3}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="serverIP">Server IP Address</Label>
+                        <Input
+                          id="serverIP"
+                          value={settingsForm.serverIP}
+                          onChange={(e) => setSettingsForm({ ...settingsForm, serverIP: e.target.value })}
+                          placeholder="play.arcadiamc.net"
+                          className="bg-input border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="mcVersion">Minecraft Version Range</Label>
+                        <Input
+                          id="mcVersion"
+                          value={settingsForm.mcVersion}
+                          onChange={(e) => setSettingsForm({ ...settingsForm, mcVersion: e.target.value })}
+                          placeholder="1.20.x - 1.21.x"
+                          className="bg-input border-border"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border/60 pt-4 mt-6">
+                      <h3 className="font-semibold text-sm text-foreground mb-4">Server Architecture Specs</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="specsCpu">CPU Specification</Label>
+                          <Input
+                            id="specsCpu"
+                            value={settingsForm.specsCpu}
+                            onChange={(e) => setSettingsForm({ ...settingsForm, specsCpu: e.target.value })}
+                            placeholder="Intel Xeon E-2388G"
+                            className="bg-input border-border"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="specsMemory">Memory (RAM)</Label>
+                          <Input
+                            id="specsMemory"
+                            value={settingsForm.specsMemory}
+                            onChange={(e) => setSettingsForm({ ...settingsForm, specsMemory: e.target.value })}
+                            placeholder="32 GB DDR4 ECC"
+                            className="bg-input border-border"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="specsStorage">Storage</Label>
+                          <Input
+                            id="specsStorage"
+                            value={settingsForm.specsStorage}
+                            onChange={(e) => setSettingsForm({ ...settingsForm, specsStorage: e.target.value })}
+                            placeholder="NVMe PCIe Gen 4 SSD"
+                            className="bg-input border-border"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="specsLocation">Location / Host</Label>
+                          <Input
+                            id="specsLocation"
+                            value={settingsForm.specsLocation}
+                            onChange={(e) => setSettingsForm({ ...settingsForm, specsLocation: e.target.value })}
+                            placeholder="Debian VPS Port 5433"
+                            className="bg-input border-border"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={() => saveSettings.mutate(settingsForm)}
+                      disabled={saveSettings.isPending}
+                      className="bg-primary text-primary-foreground hover:bg-primary/95 font-bold mt-4"
+                    >
+                      {saveSettings.isPending ? "Saving..." : "Save Settings"}
+                    </Button>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
