@@ -10,6 +10,7 @@ const basePath = process.env.BASE_PATH || "/";
 
 export default defineConfig({
   base: basePath,
+  envDir: path.resolve(import.meta.dirname, "../.."),
   plugins: [
     mockupPreviewPlugin(),
     react(),

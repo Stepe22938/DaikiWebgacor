@@ -1,8 +1,17 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
+import path from "node:path";
+import fs from "node:fs";
 
 const { Pool } = pg;
+
+if (!process.env.DATABASE_URL) {
+  const rootEnvPath = path.resolve(import.meta.dirname, "../../../.env");
+  if (fs.existsSync(rootEnvPath)) {
+    process.loadEnvFile(rootEnvPath);
+  }
+}
 
 if (!process.env.DATABASE_URL) {
   throw new Error(

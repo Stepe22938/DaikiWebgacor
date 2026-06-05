@@ -1,5 +1,15 @@
-import app from "./app";
-import { logger } from "./lib/logger";
+import path from "node:path";
+import fs from "node:fs";
+
+// Load .env from workspace root before any other module loads
+const rootEnvPath = path.resolve(import.meta.dirname, "../../../.env");
+if (fs.existsSync(rootEnvPath)) {
+  process.loadEnvFile(rootEnvPath);
+}
+
+// Dynamically import modules so environment variables are available during module loading
+const app = (await import("./app")).default;
+const { logger } = await import("./lib/logger");
 
 const rawPort = process.env["PORT"] || "5000";
 const port = Number(rawPort);
