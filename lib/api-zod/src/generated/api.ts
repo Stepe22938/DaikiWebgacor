@@ -89,6 +89,28 @@ export const ListUsersResponse = zod.array(ListUsersResponseItem)
 
 
 /**
+ * @summary List all switchable users
+ */
+export const listSwitchableUsersResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
+export const ListSwitchableUsersResponseItem = zod.object({
+  "id": zod.number(),
+  "clerkId": zod.string(),
+  "username": zod.string(),
+  "userTag": zod.string().regex(listSwitchableUsersResponseUserTagRegExp),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
+  "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
+  "mcUsername": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListSwitchableUsersResponse = zod.array(ListSwitchableUsersResponseItem)
+
+
+/**
  * @summary Update user role (admin only)
  */
 export const UpdateUserRoleParams = zod.object({

@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { Layout } from "@/components/layout";
-import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers } from "@workspace/api-client-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useUser } from "@clerk/react";
+import { useUser, useClerk } from "@clerk/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
@@ -357,6 +357,7 @@ export default function Member() {
           </TabsContent>
 
           <TabsContent value="profile" className="space-y-6 max-w-xl">
+            <DevSwitchAccountCard />
             <Card className="bg-card border-border">
               <CardHeader>
                 <CardTitle className="text-primary">Edit Profile</CardTitle>
@@ -599,6 +600,240 @@ export default function Member() {
         </DialogContent>
       </Dialog>
     </Layout>
+  );
+}
+
+function DevSwitchAccountCard() {
+  const clerk = useClerk();
+  const { data: users = [], isLoading: isUsersLoading } = useListSwitchableUsers();
+  const { data: currentUser } = useGetMe();
+  const [selectedClerkId, setSelectedClerkId] = useState("");
+  const { toast } = useToast();
+
+  const activeSwitchClerkId = typeof window !== "undefined" ? localStorage.getItem("switch_clerk_id") : null;
+  const sessions = clerk.client?.sessions || [];
+  const activeSessionId = clerk.session?.id;
+
+  const handleSwitchClerkSession = async (sessionId: string) => {
+    try {
+      toast({ title: "Switching account...", description: "Mohon tunggu sebentar." });
+      await clerk.setActive({ session: sessionId });
+      // Clear mock bypass when switching to a real session to avoid confusion
+      localStorage.removeItem("switch_clerk_id");
+      window.location.reload();
+    } catch (err: any) {
+      toast({ title: "Failed to switch", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleSignOutSession = async (sessionId: string) => {
+    try {
+      const sessionToRevoke = sessions.find((s) => s.id === sessionId);
+      if (sessionToRevoke) {
+        await clerk.signOut({ sessionId });
+        toast({ title: "Logged out", description: "Akun berhasil dihapus dari daftar." });
+        if (activeSessionId === sessionId) {
+          localStorage.removeItem("switch_clerk_id");
+        }
+        window.location.reload();
+      }
+    } catch (err: any) {
+      toast({ title: "Failed to sign out", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleAddAccount = () => {
+    // Redirect to sign in page using Clerk SDK to ensure correct multi-session login flow
+    clerk.redirectToSignIn({
+      signInForceRedirectUrl: window.location.origin + "/member",
+    });
+  };
+
+  const handleSwitchMock = (clerkId: string) => {
+    if (!clerkId) return;
+    localStorage.setItem("switch_clerk_id", clerkId);
+    toast({ title: "Account Switched (Mock)", description: "Reloading database session..." });
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
+
+  const handleRevertMock = () => {
+    localStorage.removeItem("switch_clerk_id");
+    toast({ title: "Session Reverted", description: "Reloading original Clerk account..." });
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
+
+  const isLoading = isUsersLoading;
+
+  if (isLoading) return <Skeleton className="h-48 w-full" />;
+
+  return (
+    <Card className="bg-card border-border border-2 border-amber-500/30 shadow-md">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-amber-500 font-bold flex items-center gap-2">
+            <span className="text-lg">🛠️ Switch Account (Roblox Style)</span>
+          </CardTitle>
+          {activeSwitchClerkId && (
+            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider">
+              Mock Bypassed
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Simpan banyak akun login dan berpindah secara instan, atau gunakan mode bypass developer.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Tabs defaultValue="sessions" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 bg-background/60 border border-border/60 mb-4 h-9">
+            <TabsTrigger value="sessions" className="text-xs py-1.5">Saved Accounts ({sessions.length})</TabsTrigger>
+            <TabsTrigger value="bypass" className="text-xs py-1.5">Dev Quick Switch</TabsTrigger>
+          </TabsList>
+
+          {/* Clerk Native Sessions Switcher (Roblox-style) */}
+          <TabsContent value="sessions" className="space-y-3">
+            <div className="divide-y divide-border/40 rounded-lg border border-border/60 bg-background/25 max-h-[220px] overflow-y-auto">
+              {sessions.map((sess) => {
+                const u = sess.user;
+                if (!u) return null;
+                const isActive = sess.id === activeSessionId && !activeSwitchClerkId;
+                return (
+                  <div key={sess.id} className={`flex items-center justify-between p-3 transition-colors ${isActive ? "bg-amber-500/5" : "hover:bg-muted/10"}`}>
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-9 w-9 border border-border/80">
+                        <AvatarImage src={u.imageUrl} />
+                        <AvatarFallback className="text-xs font-bold">
+                          {getInitials(u.fullName || u.username || u.primaryEmailAddress?.emailAddress)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                          {u.fullName || u.username || "Player"}
+                          {isActive && (
+                            <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-semibold uppercase">
+                              Active
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {u.primaryEmailAddress?.emailAddress || `@${u.username}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {!isActive && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleSwitchClerkSession(sess.id)}
+                          className="h-7 px-2.5 text-[11px] bg-amber-600 hover:bg-amber-500 text-white font-bold"
+                        >
+                          Switch
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleSignOutSession(sess.id)}
+                        className="h-7 px-2 text-[11px] text-destructive hover:bg-destructive/10 font-bold"
+                      >
+                        Log Out
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+              {sessions.length === 0 && (
+                <div className="text-center py-6 text-xs text-muted-foreground">
+                  Belum ada sesi akun tersimpan.
+                </div>
+              )}
+            </div>
+
+            <Button
+              onClick={handleAddAccount}
+              className="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold"
+            >
+              ➕ Add Account (Sign In ke Akun Lain)
+            </Button>
+            <p className="text-[10px] text-muted-foreground/70 text-center leading-relaxed">
+              *Pastikan Multi-session diaktifkan di dashboard Clerk Anda agar bisa menyimpan banyak akun sekaligus.
+            </p>
+          </TabsContent>
+
+          {/* Dev Mock Bypass Switcher */}
+          <TabsContent value="bypass" className="space-y-4">
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+              <div className="flex-1">
+                <Select
+                  value={selectedClerkId || (currentUser?.clerkId ?? "")}
+                  onValueChange={setSelectedClerkId}
+                >
+                  <SelectTrigger className="bg-input border-border w-full">
+                    <SelectValue placeholder="Pilih akun database..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border border-border">
+                    {users.map((u) => (
+                      <SelectItem key={u.id} value={u.clerkId}>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="w-5 h-5">
+                            <AvatarImage src={u.avatarUrl ?? undefined} />
+                            <AvatarFallback className="text-[9px] font-bold bg-muted-foreground/30">
+                              {getInitials(u.displayName || u.username)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="font-semibold text-xs text-foreground">
+                            {u.displayName || u.username}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            @{u.username}
+                          </span>
+                          <span className="text-[9px] bg-primary/20 text-primary border border-primary/20 px-1.5 py-0.2 rounded font-bold uppercase">
+                            {u.role}
+                          </span>
+                          {u.mcUsername && (
+                            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded font-mono">
+                              🎮 {u.mcUsername}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleSwitchMock(selectedClerkId)}
+                  disabled={!selectedClerkId || selectedClerkId === currentUser?.clerkId}
+                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs"
+                >
+                  Bypass Switch
+                </Button>
+                {activeSwitchClerkId && (
+                  <Button
+                    variant="outline"
+                    onClick={handleRevertMock}
+                    className="border-destructive/30 hover:bg-destructive/10 text-destructive text-xs font-bold"
+                  >
+                    Revert Original
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {activeSwitchClerkId && (
+              <p className="text-[10px] text-amber-500/90 bg-amber-500/5 border border-amber-500/20 rounded p-2 leading-relaxed">
+                <strong>Catatan:</strong> Anda sedang berselancar menggunakan akun tiruan <strong>{currentUser?.displayName || currentUser?.username}</strong>. Seluruh sistem API server Arcadia akan membaca Anda sebagai user terpilih di atas.
+              </p>
+            )}
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -386,6 +386,83 @@ export function useListUsers<TData = Awaited<ReturnType<typeof listUsers>>, TErr
 
 
 
+export const getListSwitchableUsersUrl = () => {
+
+
+
+
+  return `/api/users/switchable`
+}
+
+/**
+ * @summary List all switchable users
+ */
+export const listSwitchableUsers = async ( options?: RequestInit): Promise<User[]> => {
+
+  return customFetch<User[]>(getListSwitchableUsersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSwitchableUsersQueryKey = () => {
+    return [
+    `/api/users/switchable`
+    ] as const;
+    }
+
+
+export const getListSwitchableUsersQueryOptions = <TData = Awaited<ReturnType<typeof listSwitchableUsers>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSwitchableUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSwitchableUsersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSwitchableUsers>>> = ({ signal }) => listSwitchableUsers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSwitchableUsers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSwitchableUsersQueryResult = NonNullable<Awaited<ReturnType<typeof listSwitchableUsers>>>
+export type ListSwitchableUsersQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all switchable users
+ */
+
+export function useListSwitchableUsers<TData = Awaited<ReturnType<typeof listSwitchableUsers>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSwitchableUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSwitchableUsersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getUpdateUserRoleUrl = (id: number,) => {
 
 

@@ -234,6 +234,17 @@ router.patch("/me", async (req, res): Promise<void> => {
   res.json(UpdateMeResponse.parse(serializeDates(updated)));
 });
 
+router.get("/users/switchable", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const users = await db.select().from(usersTable).orderBy(usersTable.createdAt);
+  res.json(ListUsersResponse.parse(serializeDates(users)));
+});
+
 router.get("/users", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) {

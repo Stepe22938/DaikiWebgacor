@@ -48,6 +48,26 @@ app.use(
   })),
 );
 
+// Intercept x-switch-clerk-id for instant local account switching
+app.use((req, res, next) => {
+  const switchClerkId = req.headers["x-switch-clerk-id"];
+  if (switchClerkId && typeof switchClerkId === "string") {
+    (req as any).auth = {
+      userId: switchClerkId,
+      sessionId: "mock-session-id",
+      orgId: null,
+      actor: null,
+      sessionClaims: {
+        sub: switchClerkId,
+      },
+      claims: {
+        sub: switchClerkId,
+      },
+    };
+  }
+  next();
+});
+
 app.use("/api", router);
 
 export default app;

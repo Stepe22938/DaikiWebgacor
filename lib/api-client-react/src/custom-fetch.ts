@@ -337,6 +337,13 @@ export async function customFetch<T = unknown>(
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
 
+  if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+    const switchClerkId = localStorage.getItem("switch_clerk_id");
+    if (switchClerkId) {
+      headers.set("x-switch-clerk-id", switchClerkId);
+    }
+  }
+
   if (
     typeof init.body === "string" &&
     !headers.has("content-type") &&
