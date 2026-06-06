@@ -9,12 +9,16 @@
 export interface PublicUser {
   id: number;
   username: string;
+  /** @pattern ^#[0-9]{3,}$ */
+  userTag: string;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
   avatarUrl?: string | null;
   /** @nullable */
   bio?: string | null;
+  /** @nullable */
+  youtubeLiveUrl?: string | null;
   createdAt: string;
   isFollowing: boolean;
   followerCount: number;

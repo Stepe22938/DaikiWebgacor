@@ -6,6 +6,12 @@ import { z } from "zod";
 
 const router: IRouter = Router();
 
+const GalleryItemSchema = z.object({
+  src: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().min(1),
+});
+
 const HomepageSettingsSchema = z.object({
   heroTitle: z.string().min(1),
   heroSubtitle: z.string().min(1),
@@ -15,6 +21,9 @@ const HomepageSettingsSchema = z.object({
   specsMemory: z.string().min(1),
   specsStorage: z.string().min(1),
   specsLocation: z.string().min(1),
+  gallery: z.array(GalleryItemSchema).optional(),
+  galleryTitle: z.string().min(1).optional(),
+  gallerySubtitle: z.string().min(1).optional(),
 });
 
 const DEFAULT_SETTINGS = {
@@ -26,6 +35,25 @@ const DEFAULT_SETTINGS = {
   specsMemory: "32 GB DDR4 ECC",
   specsStorage: "NVMe PCIe Gen 4 SSD",
   specsLocation: "Debian VPS Port 5433",
+  galleryTitle: "Explore the Realm of Arcadia",
+  gallerySubtitle: "Take a visual tour through our hand-crafted server landscapes, customized cities, and deadly adventure zones.",
+  gallery: [
+    {
+      src: "/lobby.png",
+      title: "The Arcadia Spawn",
+      description: "A monumental medieval hub where all journeys begin, featuring majestic towers and direct portals."
+    },
+    {
+      src: "/village.png",
+      title: "Whispering Woods Town",
+      description: "A cozy, player-built trading center where guilds gather, establish shops, and share active roleplay."
+    },
+    {
+      src: "/dungeon.png",
+      title: "Underworld Crypts",
+      description: "A dangerous, high-reward dungeon loaded with custom boss mechanics, puzzles, and mythic tier loot."
+    }
+  ]
 };
 
 async function getDbUser(clerkId: string) {

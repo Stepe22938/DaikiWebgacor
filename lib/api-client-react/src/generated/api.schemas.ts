@@ -15,12 +15,16 @@ export type UserRole = typeof UserRole[keyof typeof UserRole];
 export const UserRole = {
   member: 'member',
   admin: 'admin',
+  staff: 'staff',
+  dev: 'dev',
 } as const;
 
 export interface User {
   id: number;
   clerkId: string;
   username: string;
+  /** @pattern ^#[0-9]{3,}$ */
+  userTag: string;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
@@ -28,13 +32,19 @@ export interface User {
   role: UserRole;
   /** @nullable */
   bio?: string | null;
+  /** @nullable */
+  youtubeLiveUrl?: string | null;
+  /** @nullable */
+  mcUsername?: string | null;
   createdAt: string;
 }
 
 export interface UserUpdate {
   displayName?: string;
   bio?: string;
+  youtubeLiveUrl?: string;
   username?: string;
+  mcUsername?: string;
 }
 
 export type UserRoleUpdateRole = typeof UserRoleUpdateRole[keyof typeof UserRoleUpdateRole];
@@ -43,6 +53,8 @@ export type UserRoleUpdateRole = typeof UserRoleUpdateRole[keyof typeof UserRole
 export const UserRoleUpdateRole = {
   member: 'member',
   admin: 'admin',
+  staff: 'staff',
+  dev: 'dev',
 } as const;
 
 export interface UserRoleUpdate {
@@ -52,12 +64,16 @@ export interface UserRoleUpdate {
 export interface PublicUser {
   id: number;
   username: string;
+  /** @pattern ^#[0-9]{3,}$ */
+  userTag: string;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
   avatarUrl?: string | null;
   /** @nullable */
   bio?: string | null;
+  /** @nullable */
+  youtubeLiveUrl?: string | null;
   createdAt: string;
   isFollowing: boolean;
   followerCount: number;
@@ -88,13 +104,17 @@ export type AdminUserUpdateRole = typeof AdminUserUpdateRole[keyof typeof AdminU
 export const AdminUserUpdateRole = {
   member: 'member',
   admin: 'admin',
+  staff: 'staff',
+  dev: 'dev',
 } as const;
 
 export interface AdminUserUpdate {
   username?: string;
   displayName?: string;
   bio?: string;
+  youtubeLiveUrl?: string;
   role?: AdminUserUpdateRole;
+  mcUsername?: string;
 }
 
 export interface AdminFollowInput {
@@ -248,6 +268,7 @@ export type UserSettingsMessagePrivacy = typeof UserSettingsMessagePrivacy[keyof
 export const UserSettingsMessagePrivacy = {
   everyone: 'everyone',
   friends_only: 'friends_only',
+  following_only: 'following_only',
   nobody: 'nobody',
 } as const;
 
@@ -261,6 +282,7 @@ export type UserSettingsUpdateMessagePrivacy = typeof UserSettingsUpdateMessageP
 export const UserSettingsUpdateMessagePrivacy = {
   everyone: 'everyone',
   friends_only: 'friends_only',
+  following_only: 'following_only',
   nobody: 'nobody',
 } as const;
 
@@ -309,6 +331,8 @@ export interface Message {
   /** @nullable */
   senderId?: number | null;
   content: string;
+  /** @nullable */
+  imageUrl?: string | null;
   createdAt: string;
   /** @nullable */
   updatedAt?: string | null;
@@ -356,10 +380,421 @@ export interface SendMessageInput {
      * @minLength 1
      * @maxLength 4000
      */
-  content: string;
+  content?: string;
+  imageUrl?: string;
 }
 
 export interface AddMemberInput {
   userId: number;
+}
+
+export type TicketStatus = typeof TicketStatus[keyof typeof TicketStatus];
+
+
+export const TicketStatus = {
+  open: 'open',
+  in_progress: 'in_progress',
+  resolved: 'resolved',
+  closed: 'closed',
+} as const;
+
+export interface Ticket {
+  id: number;
+  creatorId: number;
+  reason: string;
+  description: string;
+  status: TicketStatus;
+  /** @nullable */
+  adminId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  creatorUsername?: string | null;
+  /** @nullable */
+  creatorDisplayName?: string | null;
+  /** @nullable */
+  adminUsername?: string | null;
+  /** @nullable */
+  adminDisplayName?: string | null;
+}
+
+export interface CreateTicketInput {
+  reason: string;
+  /**
+     * @minLength 5
+     * @maxLength 2000
+     */
+  description: string;
+}
+
+export interface TicketReason {
+  id: number;
+  label: string;
+  /** @nullable */
+  description?: string | null;
+  isActive: boolean;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketReasonInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  label: string;
+  /** @maxLength 500 */
+  description?: string;
+  isActive?: boolean;
+  order?: number;
+}
+
+export interface TicketReasonUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  label?: string;
+  /** @maxLength 500 */
+  description?: string;
+  isActive?: boolean;
+  order?: number;
+}
+
+export type UpdateTicketInputStatus = typeof UpdateTicketInputStatus[keyof typeof UpdateTicketInputStatus];
+
+
+export const UpdateTicketInputStatus = {
+  open: 'open',
+  in_progress: 'in_progress',
+  resolved: 'resolved',
+  closed: 'closed',
+} as const;
+
+export interface UpdateTicketInput {
+  status?: UpdateTicketInputStatus;
+  /** @nullable */
+  adminId?: number | null;
+}
+
+export interface TicketMessage {
+  id: number;
+  ticketId: number;
+  senderId: number;
+  content: string;
+  createdAt: string;
+  senderUsername: string;
+  /** @nullable */
+  senderDisplayName?: string | null;
+  /** @nullable */
+  senderAvatarUrl?: string | null;
+}
+
+export interface SendTicketMessageInput {
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  content: string;
+}
+
+export type FormFieldFieldType = typeof FormFieldFieldType[keyof typeof FormFieldFieldType];
+
+
+export const FormFieldFieldType = {
+  text: 'text',
+  textarea: 'textarea',
+  radio: 'radio',
+  checkbox: 'checkbox',
+  select: 'select',
+} as const;
+
+export interface FormField {
+  id: number;
+  formId: number;
+  label: string;
+  fieldType: FormFieldFieldType;
+  /** @nullable */
+  options?: string | null;
+  required: boolean;
+  order: number;
+}
+
+export interface PollOption {
+  id: number;
+  formId: number;
+  label: string;
+  order: number;
+  voteCount?: number;
+}
+
+export type FormSummaryType = typeof FormSummaryType[keyof typeof FormSummaryType];
+
+
+export const FormSummaryType = {
+  form: 'form',
+  poll: 'poll',
+} as const;
+
+export type FormSummaryStatus = typeof FormSummaryStatus[keyof typeof FormSummaryStatus];
+
+
+export const FormSummaryStatus = {
+  open: 'open',
+  closed: 'closed',
+} as const;
+
+export interface FormSummary {
+  id: number;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  type: FormSummaryType;
+  status: FormSummaryStatus;
+  createdBy?: number;
+  /** @nullable */
+  createdByUsername?: string | null;
+  /** @nullable */
+  deadline?: string | null;
+  responseCount?: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type FormDetailType = typeof FormDetailType[keyof typeof FormDetailType];
+
+
+export const FormDetailType = {
+  form: 'form',
+  poll: 'poll',
+} as const;
+
+export type FormDetailStatus = typeof FormDetailStatus[keyof typeof FormDetailStatus];
+
+
+export const FormDetailStatus = {
+  open: 'open',
+  closed: 'closed',
+} as const;
+
+export interface FormDetail {
+  id: number;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  type: FormDetailType;
+  status: FormDetailStatus;
+  createdBy?: number;
+  /** @nullable */
+  createdByUsername?: string | null;
+  /** @nullable */
+  deadline?: string | null;
+  responseCount?: number;
+  createdAt: string;
+  updatedAt?: string;
+  fields?: FormField[];
+  options?: PollOption[];
+}
+
+export type CreateFormInputType = typeof CreateFormInputType[keyof typeof CreateFormInputType];
+
+
+export const CreateFormInputType = {
+  form: 'form',
+  poll: 'poll',
+} as const;
+
+export type CreateFormInputFieldsItemFieldType = typeof CreateFormInputFieldsItemFieldType[keyof typeof CreateFormInputFieldsItemFieldType];
+
+
+export const CreateFormInputFieldsItemFieldType = {
+  text: 'text',
+  textarea: 'textarea',
+  radio: 'radio',
+  checkbox: 'checkbox',
+  select: 'select',
+} as const;
+
+export type CreateFormInputFieldsItem = {
+  label: string;
+  fieldType: CreateFormInputFieldsItemFieldType;
+  options?: string;
+  required?: boolean;
+  order?: number;
+};
+
+export type CreateFormInputOptionsItem = {
+  label: string;
+  order?: number;
+};
+
+export interface CreateFormInput {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  title: string;
+  description?: string;
+  type: CreateFormInputType;
+  deadline?: string;
+  fields?: CreateFormInputFieldsItem[];
+  options?: CreateFormInputOptionsItem[];
+}
+
+export type UpdateFormInputStatus = typeof UpdateFormInputStatus[keyof typeof UpdateFormInputStatus];
+
+
+export const UpdateFormInputStatus = {
+  open: 'open',
+  closed: 'closed',
+} as const;
+
+export interface UpdateFormInput {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  title?: string;
+  description?: string;
+  status?: UpdateFormInputStatus;
+  deadline?: string;
+}
+
+export interface SubmitVoteInput {
+  optionId: number;
+}
+
+export type SubmitFormInputAnswersItem = {
+  fieldId: number;
+  value: string;
+};
+
+export interface SubmitFormInput {
+  answers: SubmitFormInputAnswersItem[];
+}
+
+export interface FormResponse {
+  id: number;
+  formId: number;
+  userId: number;
+  /** @nullable */
+  selectedOptionId?: number | null;
+  createdAt: string;
+}
+
+export type FormResponseDetailAnswersItem = {
+  fieldId: number;
+  fieldLabel: string;
+  value: string;
+};
+
+export interface FormResponseDetail {
+  id: number;
+  userId: number;
+  username: string;
+  /** @nullable */
+  displayName?: string | null;
+  /** @nullable */
+  mcUsername?: string | null;
+  /** @nullable */
+  selectedOptionId?: number | null;
+  /** @nullable */
+  selectedOptionLabel?: string | null;
+  createdAt: string;
+  answers?: FormResponseDetailAnswersItem[];
+}
+
+export type FormResponsesResultType = typeof FormResponsesResultType[keyof typeof FormResponsesResultType];
+
+
+export const FormResponsesResultType = {
+  form: 'form',
+  poll: 'poll',
+} as const;
+
+export type FormResponsesResultPollResultsItem = {
+  optionId: number;
+  label: string;
+  count: number;
+};
+
+export interface FormResponsesResult {
+  formId: number;
+  type: FormResponsesResultType;
+  responses: FormResponseDetail[];
+  pollResults?: FormResponsesResultPollResultsItem[];
+}
+
+export interface MyFormResponse {
+  hasResponded?: boolean;
+  response?: FormResponseDetail;
+}
+
+export interface Credit {
+  id: number;
+  name: string;
+  /** @nullable */
+  avatarUrl?: string | null;
+  /** @nullable */
+  backgroundUrl?: string | null;
+  role: string;
+  /** @nullable */
+  description?: string | null;
+  borderType: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Badge {
+  id: number;
+  key: string;
+  label: string;
+  color: string;
+  /** @nullable */
+  description?: string | null;
+  order: number;
+  createdAt: string;
+}
+
+export interface AssignBadgeInput {
+  badgeId: number;
+}
+
+export interface CreateCreditInput {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+  avatarUrl?: string;
+  backgroundUrl?: string;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  role: string;
+  description?: string;
+  borderType?: string;
+  order?: number;
+}
+
+export interface UpdateCreditInput {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name?: string;
+  avatarUrl?: string;
+  backgroundUrl?: string;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  role?: string;
+  description?: string;
+  borderType?: string;
+  order?: number;
 }
 

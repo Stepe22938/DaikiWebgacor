@@ -87,7 +87,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     otherUsername,
     otherDisplayName,
     otherAvatarUrl,
-    lastMessageContent: lastMsg?.content ?? null,
+    lastMessageContent: lastMsg ? (lastMsg.content || (lastMsg.imageUrl ? "📷 Image" : "")) : null,
     lastMessageAt: lastMsg ? serializeDates(lastMsg).createdAt : null,
     lastMessageSenderId: lastMsg?.senderId ?? null,
     createdAt: serializeDates(conv).createdAt,
@@ -142,17 +142,25 @@ router.post("/conversations/dm", async (req, res): Promise<void> => {
     res.status(403).json({ error: "This user does not accept messages" }); return;
   }
 
-  // Enforce mutual friendship (both users follow each other)
-  const [iFollow, theyFollow] = await Promise.all([
-    db.query.followsTable.findFirst({
-      where: and(eq(followsTable.followerId, user.id), eq(followsTable.followingId, target.id)),
-    }),
-    db.query.followsTable.findFirst({
+  if (target.messagePrivacy === "following_only") {
+    const theyFollow = await db.query.followsTable.findFirst({
       where: and(eq(followsTable.followerId, target.id), eq(followsTable.followingId, user.id)),
-    }),
-  ]);
-  if (!iFollow || !theyFollow) {
-    res.status(403).json({ error: "You can only start a DM with mutual friends (users who follow each other)" }); return;
+    });
+    if (!theyFollow) {
+      res.status(403).json({ error: "This user only accepts messages from people they follow" }); return;
+    }
+  } else if (target.messagePrivacy === "friends_only") {
+    const [iFollow, theyFollow] = await Promise.all([
+      db.query.followsTable.findFirst({
+        where: and(eq(followsTable.followerId, user.id), eq(followsTable.followingId, target.id)),
+      }),
+      db.query.followsTable.findFirst({
+        where: and(eq(followsTable.followerId, target.id), eq(followsTable.followingId, user.id)),
+      }),
+    ]);
+    if (!iFollow || !theyFollow) {
+      res.status(403).json({ error: "You can only start a DM with mutual friends (users who follow each other)" }); return;
+    }
   }
 
   const myDmIds = await db
@@ -326,6 +334,7 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       conversationId: messagesTable.conversationId,
       senderId: messagesTable.senderId,
       content: messagesTable.content,
+      imageUrl: messagesTable.imageUrl,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
       senderUsername: usersTable.username,
@@ -356,7 +365,12 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
 
   const [msg] = await db
     .insert(messagesTable)
-    .values({ conversationId: id, senderId: user.id, content: parsed.data.content })
+    .values({
+      conversationId: id,
+      senderId: user.id,
+      content: parsed.data.content ?? "",
+      imageUrl: parsed.data.imageUrl ?? null,
+    })
     .returning();
 
   await db

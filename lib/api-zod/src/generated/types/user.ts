@@ -11,6 +11,8 @@ export interface User {
   id: number;
   clerkId: string;
   username: string;
+  /** @pattern ^#[0-9]{3,}$ */
+  userTag: string;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
@@ -18,5 +20,9 @@ export interface User {
   role: UserRole;
   /** @nullable */
   bio?: string | null;
+  /** @nullable */
+  youtubeLiveUrl?: string | null;
+  /** @nullable */
+  mcUsername?: string | null;
   createdAt: string;
 }

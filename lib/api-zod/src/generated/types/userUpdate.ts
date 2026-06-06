@@ -9,5 +9,7 @@
 export interface UserUpdate {
   displayName?: string;
   bio?: string;
+  youtubeLiveUrl?: string;
   username?: string;
+  mcUsername?: string;
 }

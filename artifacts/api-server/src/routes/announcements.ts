@@ -16,11 +16,11 @@ import {
 
 const router: IRouter = Router();
 
-async function requireAdmin(req: any): Promise<{ isAdmin: boolean; userId?: number; username?: string }> {
+async function getActor(req: any): Promise<{ role?: string; userId?: number; username?: string }> {
   const auth = getAuth(req);
-  if (!auth.userId) return { isAdmin: false };
+  if (!auth.userId) return {};
   const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  return { isAdmin: user?.role === "admin", userId: user?.id, username: user?.username };
+  return { role: user?.role, userId: user?.id, username: user?.username };
 }
 
 router.get("/announcements", async (req, res): Promise<void> => {
@@ -29,8 +29,8 @@ router.get("/announcements", async (req, res): Promise<void> => {
 });
 
 router.post("/announcements", async (req, res): Promise<void> => {
-  const { isAdmin, userId, username } = await requireAdmin(req);
-  if (!isAdmin) {
+  const { role, userId, username } = await getActor(req);
+  if (role !== "admin" && role !== "staff") {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -68,8 +68,8 @@ router.get("/announcements/:id", async (req, res): Promise<void> => {
 });
 
 router.patch("/announcements/:id", async (req, res): Promise<void> => {
-  const { isAdmin } = await requireAdmin(req);
-  if (!isAdmin) {
+  const { role } = await getActor(req);
+  if (role !== "admin") {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -101,8 +101,8 @@ router.patch("/announcements/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/announcements/:id", async (req, res): Promise<void> => {
-  const { isAdmin } = await requireAdmin(req);
-  if (!isAdmin) {
+  const { role } = await getActor(req);
+  if (role !== "admin") {
     res.status(403).json({ error: "Forbidden" });
     return;
   }

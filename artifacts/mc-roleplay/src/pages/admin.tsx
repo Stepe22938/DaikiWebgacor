@@ -17,7 +17,13 @@ import {
   useAdminBulkCreateFollowers,
   useAdminUpdateUser,
   customFetch,
+  useListCredits,
+  useCreateCredit,
+  useUpdateCredit,
+  useDeleteCredit,
 } from "@workspace/api-client-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useRef } from "react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,9 +64,35 @@ type AnnType = "update" | "event" | "maintenance" | "general";
 interface DevForm { title: string; description: string; category: string; status: DevStatus; progress: string; order: string; }
 interface AnnForm { title: string; content: string; type: AnnType; pinned: boolean; }
 interface UserEditForm { username: string; displayName: string; bio: string; role: "member" | "admin"; }
+interface CreditForm {
+  name: string;
+  avatarUrl: string;
+  backgroundUrl: string;
+  role: string;
+  description: string;
+  borderType: string;
+  order: string;
+}
 
 const emptyDev: DevForm = { title: "", description: "", category: "", status: "planned", progress: "", order: "" };
 const emptyAnn: AnnForm = { title: "", content: "", type: "general", pinned: false };
+const emptyCredit: CreditForm = {
+  name: "",
+  avatarUrl: "",
+  backgroundUrl: "",
+  role: "",
+  description: "",
+  borderType: "frame1",
+  order: "0",
+};
+
+function getInitials(name: string | null | undefined): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  return parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : name.slice(0, 2).toUpperCase();
+}
 
 const STATUS_COLORS: Record<DevStatus, string> = {
   planned: "bg-blue-900/40 text-blue-300",
@@ -104,6 +136,20 @@ export default function Admin() {
   const [userEditForm, setUserEditForm] = useState<UserEditForm>({ username: "", displayName: "", bio: "", role: "member" });
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [userEditDialogOpen, setUserEditDialogOpen] = useState(false);
+  
+  // Credits state
+  const { data: credits, isLoading: creditsLoading } = useListCredits();
+  const createCredit = useCreateCredit();
+  const updateCredit = useUpdateCredit();
+  const deleteCredit = useDeleteCredit();
+  const [creditForm, setCreditForm] = useState<CreditForm>(emptyCredit);
+  const [editingCreditId, setEditingCreditId] = useState<number | null>(null);
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false);
+  const [deletingCreditId, setDeletingCreditId] = useState<number | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingBackground, setUploadingBackground] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const backgroundInputRef = useRef<HTMLInputElement>(null);
   const [savingUser, setSavingUser] = useState(false);
 
   // Bot follow state
@@ -261,11 +307,115 @@ export default function Admin() {
     finally { setBulkLoading(false); }
   };
 
+  // ── Credits ───────────────────────────────────────────────────────────────────
+  const openNewCredit = () => {
+    setCreditForm(emptyCredit);
+    setEditingCreditId(null);
+    setCreditDialogOpen(true);
+  };
+  const openEditCredit = (c: any) => {
+    setCreditForm({
+      name: c.name,
+      avatarUrl: c.avatarUrl ?? "",
+      backgroundUrl: c.backgroundUrl ?? "",
+      role: c.role,
+      description: c.description ?? "",
+      borderType: c.borderType,
+      order: String(c.order),
+    });
+    setEditingCreditId(c.id);
+    setCreditDialogOpen(true);
+  };
+  const handleSaveCredit = async () => {
+    if (!creditForm.name.trim()) { toast({ title: "Error", description: "Name is required.", variant: "destructive" }); return; }
+    if (!creditForm.role.trim()) { toast({ title: "Error", description: "Role is required.", variant: "destructive" }); return; }
+    try {
+      const payload = {
+        name: creditForm.name.trim(),
+        avatarUrl: creditForm.avatarUrl.trim() || undefined,
+        backgroundUrl: creditForm.backgroundUrl.trim() || undefined,
+        role: creditForm.role.trim(),
+        description: creditForm.description.trim() || undefined,
+        borderType: creditForm.borderType,
+        order: creditForm.order ? parseInt(creditForm.order, 10) : 0,
+      };
+      if (editingCreditId !== null) {
+        await updateCredit.mutateAsync({ id: editingCreditId, data: payload });
+        toast({ title: "Updated", description: "Credit updated." });
+      } else {
+        await createCredit.mutateAsync({ data: payload });
+        toast({ title: "Created", description: "Credit created." });
+      }
+      setCreditDialogOpen(false);
+      invalidate("/api/credits");
+    } catch {
+      toast({ title: "Error", description: "Failed to save credit.", variant: "destructive" });
+    }
+  };
+  const handleDeleteCredit = async (id: number) => {
+    try {
+      await deleteCredit.mutateAsync({ id });
+      toast({ title: "Deleted", description: "Credit deleted." });
+      invalidate("/api/credits");
+      setDeletingCreditId(null);
+    } catch {
+      toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
+    }
+  };
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Error", description: "Only image files are allowed.", variant: "destructive" });
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": file.type, "x-file-name": file.name },
+        body: file,
+      });
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setCreditForm((prev) => ({ ...prev, avatarUrl: data.url }));
+      toast({ title: "Success", description: "Avatar uploaded." });
+    } catch {
+      toast({ title: "Error", description: "Failed to upload avatar.", variant: "destructive" });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+  const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Error", description: "Only image files are allowed.", variant: "destructive" });
+      return;
+    }
+    setUploadingBackground(true);
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": file.type, "x-file-name": file.name },
+        body: file,
+      });
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setCreditForm((prev) => ({ ...prev, backgroundUrl: data.url }));
+      toast({ title: "Success", description: "Background uploaded." });
+    } catch {
+      toast({ title: "Error", description: "Failed to upload background.", variant: "destructive" });
+    } finally {
+      setUploadingBackground(false);
+    }
+  };
+
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="mb-8 pb-4 border-b border-border">
-          <h1 className="text-3xl font-bold text-primary">Admin Citadel</h1>
+          <h1 className="text-3xl font-bold text-primary">Admin Arcadia</h1>
           <p className="text-muted-foreground mt-1">Manage the realm from here.</p>
         </div>
 
@@ -274,6 +424,7 @@ export default function Admin() {
             <TabsTrigger value="developments">⚒ The Forge</TabsTrigger>
             <TabsTrigger value="announcements">📣 Town Crier</TabsTrigger>
             <TabsTrigger value="users">👥 Scribes</TabsTrigger>
+            <TabsTrigger value="credits">🛡️ Arcadia Credits</TabsTrigger>
             <TabsTrigger value="settings">⚙️ Realm Settings</TabsTrigger>
           </TabsList>
 
@@ -539,6 +690,66 @@ export default function Admin() {
             </Card>
           </TabsContent>
 
+          {/* ── ARCADIA CREDITS ─────────────────────────────────────────────────── */}
+          <TabsContent value="credits" className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-foreground">Arcadia Credits</h2>
+              <Button onClick={openNewCredit} className="bg-primary text-primary-foreground hover:bg-primary/90">+ New Credit</Button>
+            </div>
+            {creditsLoading ? <Skeleton className="h-48 w-full" /> : credits?.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground border border-border rounded-xl">No credits yet.</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-10 pt-6">
+                {credits?.map((credit: any) => (
+                  <div key={credit.id} className="relative group overflow-visible aspect-[4/5] w-full transition-all duration-300 hover:scale-[1.03]">
+                    {/* Card Background */}
+                    <div className="absolute inset-[18px] rounded-xl bg-[#0c0a09] bg-[radial-gradient(circle_at_50%_30%,_rgba(61,48,37,0.55)_0%,_rgba(12,10,9,0.95)_100%)] border border-[#3e3024]/80 shadow-[inset_0_4px_20px_rgba(0,0,0,0.9),_0_12px_24px_-8px_rgba(0,0,0,0.8)] z-0 overflow-hidden">
+                      {credit.backgroundUrl && (
+                        <img 
+                          src={credit.backgroundUrl} 
+                          alt="" 
+                          className="absolute inset-0 w-full h-full object-cover opacity-45 group-hover:opacity-65 transition-opacity duration-300"
+                        />
+                      )}
+                    </div>
+                    
+                    {/* Subtle cross-hatch texture pattern */}
+                    <div className="absolute inset-[19px] rounded-xl pointer-events-none opacity-[0.035] bg-[repeating-linear-gradient(45deg,_#d97706_0px,_#d97706_1px,_transparent_1px,_transparent_8px),_repeating-linear-gradient(-45deg,_#d97706_0px,_#d97706_1px,_transparent_1px,_transparent_8px)] z-0" />
+
+                    {/* Border Frame */}
+                    <img src={`/frames/${credit.borderType}.png`} alt="" className="absolute inset-0 w-full h-full object-fill pointer-events-none z-10 filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)]" />
+                    
+                    {/* Content */}
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-between py-8 px-8 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <Avatar className="w-20 h-20 border-2 border-primary/25 shadow-md mt-2">
+                          <AvatarImage src={credit.avatarUrl || undefined} className="object-cover" />
+                          <AvatarFallback className="text-2xl bg-muted font-bold">{getInitials(credit.name)}</AvatarFallback>
+                        </Avatar>
+                        
+                        <div className="space-y-1">
+                          <h3 className="font-bold text-lg text-foreground leading-snug tracking-tight line-clamp-1">{credit.name}</h3>
+                          <span className="text-xs bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full font-bold tracking-wider uppercase">
+                            {credit.role}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground/90 line-clamp-3 leading-relaxed px-4 mb-2">
+                        {credit.description || "Tidak ada deskripsi."}
+                      </p>
+
+                      <div className="flex gap-2 w-full px-2 z-30">
+                        <Button size="sm" variant="outline" className="flex-1 bg-background/80 hover:bg-background border-border text-xs h-8" onClick={() => openEditCredit(credit)}>Edit</Button>
+                        <Button size="sm" variant="outline" className="flex-1 bg-destructive/85 hover:bg-destructive hover:text-white border-none text-xs h-8 text-white" onClick={() => setDeletingCreditId(credit.id)}>Delete</Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
           {/* ── SETTINGS ──────────────────────────────────────────────────────── */}
           <TabsContent value="settings" className="space-y-6 max-w-2xl">
             <Card className="bg-card border-border">
@@ -760,6 +971,109 @@ export default function Admin() {
           <DialogFooter className="gap-2">
             <Button variant="outline" className="border-border" onClick={() => setDeletingAnnId(null)}>Cancel</Button>
             <Button className="bg-destructive hover:bg-destructive/90 text-white" onClick={() => deletingAnnId && handleDeleteAnn(deletingAnnId)}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Credit Edit Dialog ───────────────────────────────────────────────────── */}
+      <Dialog open={creditDialogOpen} onOpenChange={setCreditDialogOpen}>
+        <DialogContent className="bg-card border-border max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-primary">{editingCreditId ? "Edit Credit" : "New Credit"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Name *</Label>
+              <Input value={creditForm.name} onChange={(e) => setCreditForm({ ...creditForm, name: e.target.value })} placeholder="Person/Team name" className="bg-input border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Role *</Label>
+              <Input value={creditForm.role} onChange={(e) => setCreditForm({ ...creditForm, role: e.target.value })} placeholder="e.g. Founder, Developer" className="bg-input border-border" />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Avatar Photo</Label>
+              <div className="flex gap-2 items-center">
+                <Input value={creditForm.avatarUrl} onChange={(e) => setCreditForm({ ...creditForm, avatarUrl: e.target.value })} placeholder="Image URL or upload file..." className="bg-input border-border flex-1" />
+                <input type="file" ref={avatarInputRef} onChange={handleAvatarUpload} className="hidden" accept="image/*" />
+                <Button variant="outline" className="border-border text-xs shrink-0" onClick={() => avatarInputRef.current?.click()} disabled={uploadingAvatar}>
+                  {uploadingAvatar ? "..." : "Upload"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Card Background Image (Opsional)</Label>
+              <div className="flex gap-2 items-center">
+                <Input value={creditForm.backgroundUrl} onChange={(e) => setCreditForm({ ...creditForm, backgroundUrl: e.target.value })} placeholder="Background URL or upload file..." className="bg-input border-border flex-1" />
+                <input type="file" ref={backgroundInputRef} onChange={handleBackgroundUpload} className="hidden" accept="image/*" />
+                <Button variant="outline" className="border-border text-xs shrink-0" onClick={() => backgroundInputRef.current?.click()} disabled={uploadingBackground}>
+                  {uploadingBackground ? "..." : "Upload"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea value={creditForm.description} onChange={(e) => setCreditForm({ ...creditForm, description: e.target.value })} placeholder="Short biography/description..." className="bg-input border-border resize-none" rows={3} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Border Style *</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {[...Array(8)].map((_, i) => {
+                  const frameNum = i + 1;
+                  const frameName = `frame${frameNum}`;
+                  const labels = ["Copper", "Silver", "Gold", "Azure", "Emerald", "Sun Glow", "Amethyst", "Royal"];
+                  const isSelected = creditForm.borderType === frameName;
+                  return (
+                    <button
+                      key={frameName}
+                      type="button"
+                      onClick={() => setCreditForm({ ...creditForm, borderType: frameName })}
+                      className={`relative flex flex-col items-center justify-between p-2 rounded-lg border transition-all aspect-[3/4] overflow-hidden ${
+                        isSelected 
+                          ? "border-primary bg-primary/15 shadow-[0_0_8px_rgba(217,119,6,0.4)]" 
+                          : "border-border bg-card/40 hover:border-primary/50"
+                      }`}
+                    >
+                      <div className="relative w-full flex-1 flex items-center justify-center min-h-[50px]">
+                        <img 
+                          src={`/frames/${frameName}.png`} 
+                          alt="" 
+                          className="absolute inset-0 w-full h-full object-contain pointer-events-none" 
+                        />
+                        <div className="text-[10px] font-bold text-muted-foreground z-10 bg-black/40 px-1 rounded">
+                          {frameNum}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold mt-1 text-foreground/85 truncate w-full text-center">
+                        {labels[i]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Sort Order</Label>
+              <Input type="number" value={creditForm.order} onChange={(e) => setCreditForm({ ...creditForm, order: e.target.value })} placeholder="e.g. 1" className="bg-input border-border" />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="border-border" onClick={() => setCreditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveCredit} className="bg-primary text-primary-foreground hover:bg-primary/90">{editingCreditId ? "Save Changes" : "Create Credit"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Credit Delete Confirm Dialog ─────────────────────────────────────────── */}
+      <Dialog open={deletingCreditId !== null} onOpenChange={() => setDeletingCreditId(null)}>
+        <DialogContent className="bg-card border-border max-w-sm">
+          <DialogHeader><DialogTitle>Delete credit?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">This cannot be undone.</p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="border-border" onClick={() => setDeletingCreditId(null)}>Cancel</Button>
+            <Button className="bg-destructive hover:bg-destructive/90 text-white" onClick={() => deletingCreditId && handleDeleteCredit(deletingCreditId)}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

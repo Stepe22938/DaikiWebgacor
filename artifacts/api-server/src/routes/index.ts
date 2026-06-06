@@ -7,6 +7,11 @@ import statsRouter from "./stats";
 import followsRouter from "./follows";
 import conversationsRouter from "./conversations";
 import settingsRouter from "./settings";
+import uploadRouter from "./upload";
+import ticketsRouter from "./tickets";
+import formsRouter from "./forms";
+import creditsRouter from "./credits";
+import badgesRouter from "./badges";
 
 const router: IRouter = Router();
 
@@ -18,5 +23,10 @@ router.use(statsRouter);
 router.use(followsRouter);
 router.use(conversationsRouter);
 router.use(settingsRouter);
+router.use(uploadRouter);
+router.use(ticketsRouter);
+router.use(formsRouter);
+router.use(creditsRouter);
+router.use(badgesRouter);
 
 export default router;

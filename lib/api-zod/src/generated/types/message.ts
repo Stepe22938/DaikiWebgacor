@@ -12,9 +12,11 @@ export interface Message {
   /** @nullable */
   senderId?: number | null;
   content: string;
+  /** @nullable */
+  imageUrl?: string | null;
   createdAt: string;
   /** @nullable */
-  updatedAt?: string | null;
+  updatedAt?: Date | null;
   /** @nullable */
   senderUsername?: string | null;
   /** @nullable */

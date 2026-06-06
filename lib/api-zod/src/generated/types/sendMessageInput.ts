@@ -11,5 +11,6 @@ export interface SendMessageInput {
      * @minLength 1
      * @maxLength 4000
      */
-  content: string;
+  content?: string;
+  imageUrl?: string;
 }

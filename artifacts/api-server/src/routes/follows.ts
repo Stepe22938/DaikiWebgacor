@@ -5,6 +5,12 @@ import { db, usersTable, followsTable } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 import {
   ListMembersResponse,
+  GetPublicProfileParams,
+  GetPublicProfileResponse,
+  GetPublicProfileFollowersParams,
+  GetPublicProfileFollowersResponse,
+  GetPublicProfileFollowingParams,
+  GetPublicProfileFollowingResponse,
   FollowUserBody,
   GetMyFollowingResponse,
   GetMyFollowersResponse,
@@ -15,7 +21,7 @@ import {
 
 const router: IRouter = Router();
 
-async function buildPublicUsers(currentUserId: number, targetUserIds?: number[]) {
+async function buildPublicUsers(currentUserId: number, targetUserIds?: number[], includeCurrentUser = false) {
   const allUsers = targetUserIds
     ? await db.select().from(usersTable).where(
         sql`${usersTable.id} = ANY(${sql.raw(`ARRAY[${targetUserIds.join(",")}]::int[]`)})`,
@@ -42,13 +48,18 @@ async function buildPublicUsers(currentUserId: number, targetUserIds?: number[])
   const followingMap = new Map(followingCounts.map((r) => [r.followerId, r.count]));
 
   return allUsers
-    .filter((u) => u.id !== currentUserId)
+    .filter((u) => includeCurrentUser || u.id !== currentUserId)
     .map((u) => ({
       ...serializeDates(u),
       isFollowing: followingSet.has(u.id),
       followerCount: followerMap.get(u.id) ?? 0,
       followingCount: followingMap.get(u.id) ?? 0,
     }));
+}
+
+async function buildPublicUser(currentUserId: number, targetUserId: number) {
+  const [profile] = await buildPublicUsers(currentUserId, [targetUserId]);
+  return profile;
 }
 
 router.get("/members", async (req, res): Promise<void> => {
@@ -66,6 +77,123 @@ router.get("/members", async (req, res): Promise<void> => {
 
   const result = await buildPublicUsers(me.id);
   res.json(ListMembersResponse.parse(result));
+});
+
+router.get("/members/:id", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!me) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const params = GetPublicProfileParams.safeParse({ id: parseInt(req.params.id as string, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  if (params.data.id === me.id) {
+    const followerCount = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(followsTable)
+      .where(eq(followsTable.followingId, me.id));
+    const followingCount = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(followsTable)
+      .where(eq(followsTable.followerId, me.id));
+
+    res.json(GetPublicProfileResponse.parse({
+      ...serializeDates(me),
+      isFollowing: false,
+      followerCount: followerCount[0]?.count ?? 0,
+      followingCount: followingCount[0]?.count ?? 0,
+    }));
+    return;
+  }
+
+  const profile = await buildPublicUser(me.id, params.data.id);
+  if (!profile) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  res.json(GetPublicProfileResponse.parse(profile));
+});
+
+router.get("/members/:id/followers", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!me) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const params = GetPublicProfileFollowersParams.safeParse({ id: parseInt(req.params.id as string, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const target = await db.query.usersTable.findFirst({ where: eq(usersTable.id, params.data.id) });
+  if (!target) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const rows = await db
+    .select({ followerId: followsTable.followerId })
+    .from(followsTable)
+    .where(eq(followsTable.followingId, params.data.id));
+
+  const ids = rows.map((row) => row.followerId);
+  const result = ids.length > 0 ? await buildPublicUsers(me.id, ids, true) : [];
+  res.json(GetPublicProfileFollowersResponse.parse(result));
+});
+
+router.get("/members/:id/following", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!me) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const params = GetPublicProfileFollowingParams.safeParse({ id: parseInt(req.params.id as string, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const target = await db.query.usersTable.findFirst({ where: eq(usersTable.id, params.data.id) });
+  if (!target) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const rows = await db
+    .select({ followingId: followsTable.followingId })
+    .from(followsTable)
+    .where(eq(followsTable.followerId, params.data.id));
+
+  const ids = rows.map((row) => row.followingId);
+  const result = ids.length > 0 ? await buildPublicUsers(me.id, ids, true) : [];
+  res.json(GetPublicProfileFollowingResponse.parse(result));
 });
 
 router.post("/follows", async (req, res): Promise<void> => {

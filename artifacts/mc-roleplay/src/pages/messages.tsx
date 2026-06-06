@@ -29,8 +29,31 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Phone, Video } from "lucide-react";
+import { Link } from "wouter";
 
 const JITSI_BASE = "https://meet.jit.si/arcadia-studio-conv-";
+
+function formatMessageDateSeparator(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const isToday = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth() && d.getFullYear() === yesterday.getFullYear();
+
+  if (isToday) {
+    return "Hari Ini";
+  } else if (isYesterday) {
+    return "Kemarin";
+  } else {
+    try {
+      return format(d, "dd MMMM yyyy");
+    } catch {
+      return d.toLocaleDateString();
+    }
+  }
+}
 
 function getInitials(name: string | null | undefined): string {
   if (!name) return "?";
@@ -95,40 +118,68 @@ function MessageBubble({
   onDelete?: () => void;
 }) {
   const name = msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
+  const [isZoomed, setIsZoomed] = useState(false);
+
   return (
-    <div className={`flex gap-2 group ${isOwn ? "flex-row-reverse" : ""}`}>
-      <Avatar className="w-7 h-7 shrink-0 mt-1">
-        <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
-        <AvatarFallback className="text-[10px]">{getInitials(name)}</AvatarFallback>
-      </Avatar>
-      <div
-        className={`max-w-[70%] flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}
-      >
-        <div className="flex items-center gap-2">
-          {!isOwn && <span className="text-xs text-muted-foreground">{name}</span>}
-          <span className="text-[10px] text-muted-foreground">
-            {format(new Date(msg.createdAt), "HH:mm")}
-          </span>
-          {isOwn && onDelete && (
-            <button
-              onClick={onDelete}
-              className="text-[10px] text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              delete
-            </button>
-          )}
-        </div>
+    <>
+      <div className={`flex gap-2 group ${isOwn ? "flex-row-reverse" : ""}`}>
+        <Avatar className="w-7 h-7 shrink-0 mt-1">
+          <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
+          <AvatarFallback className="text-[10px]">{getInitials(name)}</AvatarFallback>
+        </Avatar>
         <div
-          className={`rounded-2xl px-3 py-1.5 text-sm leading-relaxed ${
-            isOwn
-              ? "bg-primary text-primary-foreground rounded-tr-sm"
-              : "bg-card border border-border rounded-tl-sm"
-          }`}
+          className={`max-w-[70%] flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}
         >
-          {msg.content}
+          <div className="flex items-center gap-2">
+            {!isOwn && <span className="text-xs text-muted-foreground">{name}</span>}
+            <span className="text-[10px] text-muted-foreground">
+              {format(new Date(msg.createdAt), "HH:mm")}
+            </span>
+            {isOwn && onDelete && (
+              <button
+                onClick={onDelete}
+                className="text-[10px] text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                delete
+              </button>
+            )}
+          </div>
+          <div
+            className={`rounded-2xl px-3 py-1.5 text-sm leading-relaxed ${
+              isOwn
+                ? "bg-primary text-primary-foreground rounded-tr-sm"
+                : "bg-card border border-border rounded-tl-sm"
+            }`}
+          >
+            {msg.imageUrl && (
+              <div 
+                className="mb-2 max-w-sm rounded overflow-hidden cursor-zoom-in hover:brightness-90 transition-all duration-200"
+                onClick={() => setIsZoomed(true)}
+              >
+                <img
+                  src={msg.imageUrl}
+                  alt="Chat attachment"
+                  className="w-full h-auto object-cover max-h-60 rounded-lg border border-border/40"
+                />
+              </div>
+            )}
+            {msg.content}
+          </div>
         </div>
       </div>
-    </div>
+
+      <Dialog open={isZoomed} onOpenChange={setIsZoomed}>
+        <DialogContent className="max-w-4xl p-1 bg-transparent border-0 shadow-none flex items-center justify-center">
+          <div className="relative max-h-[90vh] max-w-full overflow-hidden rounded-lg">
+            <img
+              src={msg.imageUrl ?? undefined}
+              alt="Zoomed attachment"
+              className="max-h-[85vh] max-w-full object-contain rounded-lg shadow-2xl border border-border/20"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -148,6 +199,10 @@ export default function MessagesPage() {
   const [groupMemberIds, setGroupMemberIds] = useState<number[]>([]);
   const [dmSearch, setDmSearch] = useState("");
   const [memberSearch, setMemberSearch] = useState("");
+
+  const [uploading, setUploading] = useState(false);
+  const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -190,11 +245,57 @@ export default function MessagesPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  async function handleSend() {
-    if (!messageText.trim() || selectedId === null) return;
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Error", description: "Only image files are allowed.", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
     try {
-      await sendMessage.mutateAsync({ id: selectedId, data: { content: messageText.trim() } });
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type,
+          "x-file-name": file.name,
+        },
+        body: file,
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "Upload failed");
+        let errMsg = "Upload failed";
+        try {
+          errMsg = JSON.parse(text).error || errMsg;
+        } catch {}
+        throw new Error(errMsg);
+      }
+      const data = await response.json();
+      setAttachedImageUrl(data.url);
+      toast({ title: "Success", description: "Image uploaded successfully." });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Failed to upload image. Please try again.";
+      toast({ title: "Error", description: errMsg, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleSend() {
+    const text = messageText.trim();
+    if (!text && !attachedImageUrl) return;
+    if (selectedId === null) return;
+    try {
+      const payload: { content?: string; imageUrl?: string } = {};
+      if (text) payload.content = text;
+      if (attachedImageUrl) payload.imageUrl = attachedImageUrl;
+
+      await sendMessage.mutateAsync({
+        id: selectedId,
+        data: payload,
+      });
       setMessageText("");
+      setAttachedImageUrl(null);
       await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
     } catch {
       toast({ title: "Failed to send message", variant: "destructive" });
@@ -255,6 +356,7 @@ export default function MessagesPage() {
     const q = dmSearch.toLowerCase();
     return (
       f.username.toLowerCase().includes(q) ||
+      f.userTag.toLowerCase().includes(q) ||
       (f.displayName ?? "").toLowerCase().includes(q)
     );
   });
@@ -264,6 +366,7 @@ export default function MessagesPage() {
     const q = memberSearch.toLowerCase();
     return (
       f.username.toLowerCase().includes(q) ||
+      f.userTag.toLowerCase().includes(q) ||
       (f.displayName ?? "").toLowerCase().includes(q)
     );
   });
@@ -354,6 +457,11 @@ export default function MessagesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {selectedConv.type === "dm" && selectedConv.otherUserId && (
+                      <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs">
+                        <Link href={`/profile/${selectedConv.otherUserId}`}>Profile</Link>
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
@@ -404,25 +512,74 @@ export default function MessagesPage() {
                       No messages yet. Say hello!
                     </div>
                   ) : (
-                    messages.map((msg) => (
-                      <div key={msg.id} className="mb-3">
-                        <MessageBubble
-                          msg={msg}
-                          isOwn={msg.senderId === me?.id}
-                          onDelete={
-                            msg.senderId === me?.id
-                              ? () => handleDeleteMessage(msg.id)
-                              : undefined
-                          }
-                        />
-                      </div>
-                    ))
+                    (() => {
+                      let lastDateStr = "";
+                      return messages.map((msg) => {
+                        const msgDate = new Date(msg.createdAt);
+                        const dateKey = `${msgDate.getFullYear()}-${msgDate.getMonth()}-${msgDate.getDate()}`;
+                        const showDivider = dateKey !== lastDateStr;
+                        lastDateStr = dateKey;
+
+                        return (
+                          <div key={msg.id} className="flex flex-col gap-3 mb-3">
+                            {showDivider && (
+                              <div className="flex items-center justify-center my-4">
+                                <div className="bg-muted text-muted-foreground text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider border border-border/40">
+                                  {formatMessageDateSeparator(msg.createdAt)}
+                                </div>
+                              </div>
+                            )}
+                            <MessageBubble
+                              msg={msg}
+                              isOwn={msg.senderId === me?.id}
+                              onDelete={
+                                msg.senderId === me?.id
+                                  ? () => handleDeleteMessage(msg.id)
+                                  : undefined
+                              }
+                            />
+                          </div>
+                        );
+                      });
+                    })()
                   )}
                   <div ref={messagesEndRef} />
                 </ScrollArea>
 
                 <div className="px-4 py-3 border-t border-border bg-card/60">
+                  {attachedImageUrl && (
+                    <div className="relative mb-2 inline-block rounded-lg overflow-hidden border border-border bg-muted max-w-[120px] aspect-video">
+                      <img src={attachedImageUrl} alt="Attachment preview" className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => setAttachedImageUrl(null)}
+                        className="absolute top-1 right-1 bg-background/80 hover:bg-background text-foreground hover:text-destructive rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
                   <div className="flex gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      ref={fileInputRef}
+                      onChange={handleImageUpload}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="hover:scale-105 transition-transform shrink-0"
+                    >
+                      {uploading ? (
+                        <span className="animate-spin text-xs">⏳</span>
+                      ) : (
+                        <span className="text-lg">📷</span>
+                      )}
+                    </Button>
                     <Input
                       placeholder="Type a message…"
                       value={messageText}
@@ -437,7 +594,7 @@ export default function MessagesPage() {
                     />
                     <Button
                       onClick={handleSend}
-                      disabled={!messageText.trim() || sendMessage.isPending}
+                      disabled={(!messageText.trim() && !attachedImageUrl) || sendMessage.isPending || uploading}
                       className="bg-primary text-primary-foreground"
                     >
                       Send
@@ -483,7 +640,7 @@ export default function MessagesPage() {
                   </Avatar>
                   <div>
                     <p className="text-sm font-medium">{f.displayName ?? f.username}</p>
-                    <p className="text-xs text-muted-foreground">@{f.username}</p>
+                    <p className="text-xs text-muted-foreground">@{f.username} <span className="text-primary font-medium">{f.userTag}</span></p>
                   </div>
                 </button>
               ))
@@ -525,7 +682,7 @@ export default function MessagesPage() {
                       {getInitials(f.displayName ?? f.username)}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="text-sm">{f.displayName ?? f.username}</span>
+                  <span className="text-sm">{f.displayName ?? f.username} <span className="text-xs text-primary">{f.userTag}</span></span>
                   {checked && <span className="ml-auto text-primary text-xs">✓</span>}
                 </button>
               );
@@ -608,7 +765,7 @@ export default function MessagesPage() {
                         {getInitials(f.displayName ?? f.username)}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="text-sm">{f.displayName ?? f.username}</span>
+                    <span className="text-sm">{f.displayName ?? f.username} <span className="text-xs text-primary">{f.userTag}</span></span>
                     <span className="ml-auto text-xs text-primary">+ Add</span>
                   </button>
                 ))}

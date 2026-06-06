@@ -11,5 +11,7 @@ export interface AdminUserUpdate {
   username?: string;
   displayName?: string;
   bio?: string;
+  youtubeLiveUrl?: string;
   role?: AdminUserUpdateRole;
+  mcUsername?: string;
 }

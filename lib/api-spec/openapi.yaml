@@ -24,6 +24,12 @@ tags:
     description: Chat and messaging
   - name: settings
     description: User settings
+  - name: credits
+    description: Server credits system
+  - name: badges
+    description: Profile badge system
+  - name: forms
+    description: Forms and Voting system
 
 paths:
   /healthz:
@@ -125,6 +131,88 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/PublicUser"
+
+  /members/{id}:
+    get:
+      operationId: getPublicProfile
+      tags: [users]
+      summary: Get public member profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Public member profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicUser"
+
+  /members/{id}/followers:
+    get:
+      operationId: getPublicProfileFollowers
+      tags: [users]
+      summary: Get followers of a public member profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Public member followers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicUser"
+
+  /members/{id}/following:
+    get:
+      operationId: getPublicProfileFollowing
+      tags: [users]
+      summary: Get accounts followed by a public member profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Public member following
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicUser"
+
+  /members/{id}/badges:
+    get:
+      operationId: getPublicProfileBadges
+      tags: [badges]
+      summary: Get badges assigned to a public member profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Public member badges
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Badge"
 
   /follows:
     post:
@@ -422,6 +510,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+    delete:
+      operationId: adminDeleteUser
+      tags: [users]
+      summary: Delete a user profile (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: User deleted successfully
 
   /stats:
     get:
@@ -714,6 +815,496 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/PublicUser"
+  /tickets:
+    get:
+      operationId: listTickets
+      tags: [tickets]
+      summary: List support tickets (admins see all, users see their own)
+      responses:
+        "200":
+          description: List of tickets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ticket"
+    post:
+      operationId: createTicket
+      tags: [tickets]
+      summary: Create a support ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTicketInput"
+      responses:
+        "201":
+          description: Created ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+
+  /ticket-reasons:
+    get:
+      operationId: listTicketReasons
+      tags: [tickets]
+      summary: List active support ticket reasons
+      responses:
+        "200":
+          description: List of active ticket reasons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TicketReason"
+
+  /admin/ticket-reasons:
+    get:
+      operationId: listAdminTicketReasons
+      tags: [tickets]
+      summary: List all support ticket reasons (admin only)
+      responses:
+        "200":
+          description: List of all ticket reasons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TicketReason"
+    post:
+      operationId: createTicketReason
+      tags: [tickets]
+      summary: Create a support ticket reason (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TicketReasonInput"
+      responses:
+        "201":
+          description: Created ticket reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketReason"
+
+  /admin/ticket-reasons/{id}:
+    patch:
+      operationId: updateTicketReason
+      tags: [tickets]
+      summary: Update a support ticket reason (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TicketReasonUpdate"
+      responses:
+        "200":
+          description: Updated ticket reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketReason"
+    delete:
+      operationId: deleteTicketReason
+      tags: [tickets]
+      summary: Delete a support ticket reason (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted ticket reason
+
+  /tickets/{id}:
+    patch:
+      operationId: updateTicket
+      tags: [tickets]
+      summary: Update ticket status or assigned admin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTicketInput"
+      responses:
+        "200":
+          description: Updated ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+
+  /tickets/{id}/messages:
+    get:
+      operationId: listTicketMessages
+      tags: [tickets]
+      summary: List replies of a ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of ticket replies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TicketMessage"
+    post:
+      operationId: sendTicketMessage
+      tags: [tickets]
+      summary: Send a reply/message inside a ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendTicketMessageInput"
+      responses:
+        "201":
+          description: Created reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketMessage"
+
+  /credits:
+    get:
+      operationId: listCredits
+      tags: [credits]
+      summary: List all server credits
+      responses:
+        "200":
+          description: List of credits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Credit"
+    post:
+      operationId: createCredit
+      tags: [credits]
+      summary: Create a credit item (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCreditInput"
+      responses:
+        "201":
+          description: Created credit item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credit"
+
+  /credits/{id}:
+    patch:
+      operationId: updateCredit
+      tags: [credits]
+      summary: Update a credit item (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCreditInput"
+      responses:
+        "200":
+          description: Updated credit item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credit"
+    delete:
+      operationId: deleteCredit
+      tags: [credits]
+      summary: Delete a credit item (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /badges:
+    get:
+      operationId: listBadges
+      tags: [badges]
+      summary: List all available profile badges
+      responses:
+        "200":
+          description: List of badges
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Badge"
+
+  /admin/users/{id}/badges:
+    post:
+      operationId: assignUserBadge
+      tags: [badges]
+      summary: Assign a badge to a user (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignBadgeInput"
+      responses:
+        "201":
+          description: Assigned badge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Badge"
+
+  /admin/users/{id}/badges/{badgeId}:
+    delete:
+      operationId: removeUserBadge
+      tags: [badges]
+      summary: Remove a badge from a user (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: badgeId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed badge
+
+  /forms:
+    get:
+      operationId: listForms
+      tags: [forms]
+      summary: List forms and polls (admin sees all, members see open only)
+      responses:
+        "200":
+          description: List of forms/polls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FormSummary"
+    post:
+      operationId: createForm
+      tags: [forms]
+      summary: Admin creates a form or poll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFormInput"
+      responses:
+        "201":
+          description: Created form
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormDetail"
+
+  /forms/{id}:
+    get:
+      operationId: getForm
+      tags: [forms]
+      summary: Get form/poll detail including fields or options
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Form detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormDetail"
+    patch:
+      operationId: updateForm
+      tags: [forms]
+      summary: Admin updates a form/poll
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFormInput"
+      responses:
+        "200":
+          description: Updated form
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormDetail"
+    delete:
+      operationId: deleteForm
+      tags: [forms]
+      summary: Admin deletes a form/poll
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /forms/{id}/vote:
+    post:
+      operationId: submitVote
+      tags: [forms]
+      summary: Member votes on a poll
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitVoteInput"
+      responses:
+        "201":
+          description: Vote recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormResponse"
+
+  /forms/{id}/submit:
+    post:
+      operationId: submitForm
+      tags: [forms]
+      summary: Member submits a form response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitFormInput"
+      responses:
+        "201":
+          description: Submission recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormResponse"
+
+  /forms/{id}/responses:
+    get:
+      operationId: listFormResponses
+      tags: [forms]
+      summary: Admin views all responses or vote results for a form/poll
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Form responses or poll results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormResponsesResult"
+
+  /forms/{id}/my-response:
+    get:
+      operationId: getMyFormResponse
+      tags: [forms]
+      summary: Check if current user has responded to a form/poll
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User response or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyFormResponse"
 
 components:
   schemas:
@@ -727,7 +1318,7 @@ components:
 
     User:
       type: object
-      required: [id, clerkId, username, role, createdAt]
+      required: [id, clerkId, username, userTag, role, createdAt]
       properties:
         id:
           type: integer
@@ -735,14 +1326,21 @@ components:
           type: string
         username:
           type: string
+        userTag:
+          type: string
+          pattern: "^#[0-9]{3,}$"
         displayName:
           type: ["string", "null"]
         avatarUrl:
           type: ["string", "null"]
         role:
           type: string
-          enum: [member, admin]
+          enum: [member, admin, staff, dev]
         bio:
+          type: ["string", "null"]
+        youtubeLiveUrl:
+          type: ["string", "null"]
+        mcUsername:
           type: ["string", "null"]
         createdAt:
           type: string
@@ -754,7 +1352,11 @@ components:
           type: string
         bio:
           type: string
+        youtubeLiveUrl:
+          type: string
         username:
+          type: string
+        mcUsername:
           type: string
 
     UserRoleUpdate:
@@ -763,21 +1365,26 @@ components:
       properties:
         role:
           type: string
-          enum: [member, admin]
+          enum: [member, admin, staff, dev]
 
     PublicUser:
       type: object
-      required: [id, username, createdAt, isFollowing, followerCount, followingCount]
+      required: [id, username, userTag, createdAt, isFollowing, followerCount, followingCount]
       properties:
         id:
           type: integer
         username:
           type: string
+        userTag:
+          type: string
+          pattern: "^#[0-9]{3,}$"
         displayName:
           type: ["string", "null"]
         avatarUrl:
           type: ["string", "null"]
         bio:
+          type: ["string", "null"]
+        youtubeLiveUrl:
           type: ["string", "null"]
         createdAt:
           type: string
@@ -824,9 +1431,13 @@ components:
           type: string
         bio:
           type: string
+        youtubeLiveUrl:
+          type: string
         role:
           type: string
-          enum: [member, admin]
+          enum: [member, admin, staff, dev]
+        mcUsername:
+          type: string
 
     AdminFollowInput:
       type: object
@@ -987,14 +1598,14 @@ components:
       properties:
         messagePrivacy:
           type: string
-          enum: [everyone, friends_only, nobody]
+          enum: [everyone, friends_only, following_only, nobody]
 
     UserSettingsUpdate:
       type: object
       properties:
         messagePrivacy:
           type: string
-          enum: [everyone, friends_only, nobody]
+          enum: [everyone, friends_only, following_only, nobody]
 
     ConversationSummary:
       type: object
@@ -1042,10 +1653,13 @@ components:
           type: ["integer", "null"]
         content:
           type: string
+        imageUrl:
+          type: ["string", "null"]
         createdAt:
           type: string
         updatedAt:
           type: ["string", "null"]
+          format: date-time
         senderUsername:
           type: ["string", "null"]
         senderDisplayName:
@@ -1098,16 +1712,507 @@ components:
 
     SendMessageInput:
       type: object
-      required: [content]
       properties:
         content:
           type: string
           minLength: 1
           maxLength: 4000
+        imageUrl:
+          type: string
 
     AddMemberInput:
       type: object
       required: [userId]
       properties:
         userId:
+          type: integer
+
+    Ticket:
+      type: object
+      required: [id, creatorId, reason, description, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        creatorId:
+          type: integer
+        reason:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, resolved, closed]
+        adminId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        creatorUsername:
+          type: ["string", "null"]
+        creatorDisplayName:
+          type: ["string", "null"]
+        adminUsername:
+          type: ["string", "null"]
+        adminDisplayName:
+          type: ["string", "null"]
+
+    CreateTicketInput:
+      type: object
+      required: [reason, description]
+      properties:
+        reason:
+          type: string
+        description:
+          type: string
+          minLength: 5
+          maxLength: 2000
+
+    TicketReason:
+      type: object
+      required: [id, label, isActive, order, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        description:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        order:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    TicketReasonInput:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 500
+        isActive:
+          type: boolean
+        order:
+          type: integer
+
+    TicketReasonUpdate:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 500
+        isActive:
+          type: boolean
+        order:
+          type: integer
+
+    UpdateTicketInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [open, in_progress, resolved, closed]
+        adminId:
+          type: ["integer", "null"]
+
+    TicketMessage:
+      type: object
+      required: [id, ticketId, senderId, content, createdAt, senderUsername]
+      properties:
+        id:
+          type: integer
+        ticketId:
+          type: integer
+        senderId:
+          type: integer
+        content:
+          type: string
+        createdAt:
+          type: string
+        senderUsername:
+          type: string
+        senderDisplayName:
+          type: ["string", "null"]
+        senderAvatarUrl:
+          type: ["string", "null"]
+
+    SendTicketMessageInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    FormField:
+      type: object
+      required: [id, formId, label, fieldType, required, order]
+      properties:
+        id:
+          type: integer
+        formId:
+          type: integer
+        label:
+          type: string
+        fieldType:
+          type: string
+          enum: [text, textarea, radio, checkbox, select]
+        options:
+          type: ["string", "null"]
+        required:
+          type: boolean
+        order:
+          type: integer
+
+    PollOption:
+      type: object
+      required: [id, formId, label, order]
+      properties:
+        id:
+          type: integer
+        formId:
+          type: integer
+        label:
+          type: string
+        order:
+          type: integer
+        voteCount:
+          type: integer
+
+    FormSummary:
+      type: object
+      required: [id, title, type, status, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [form, poll]
+        status:
+          type: string
+          enum: [open, closed]
+        createdBy:
+          type: integer
+        createdByUsername:
+          type: ["string", "null"]
+        deadline:
+          type: ["string", "null"]
+        responseCount:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    FormDetail:
+      type: object
+      required: [id, title, type, status, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [form, poll]
+        status:
+          type: string
+          enum: [open, closed]
+        createdBy:
+          type: integer
+        createdByUsername:
+          type: ["string", "null"]
+        deadline:
+          type: ["string", "null"]
+        responseCount:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/FormField"
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/PollOption"
+
+    CreateFormInput:
+      type: object
+      required: [title, type]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+        type:
+          type: string
+          enum: [form, poll]
+        deadline:
+          type: string
+        fields:
+          type: array
+          items:
+            type: object
+            required: [label, fieldType]
+            properties:
+              label:
+                type: string
+              fieldType:
+                type: string
+                enum: [text, textarea, radio, checkbox, select]
+              options:
+                type: string
+              required:
+                type: boolean
+              order:
+                type: integer
+        options:
+          type: array
+          items:
+            type: object
+            required: [label]
+            properties:
+              label:
+                type: string
+              order:
+                type: integer
+
+    UpdateFormInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+        status:
+          type: string
+          enum: [open, closed]
+        deadline:
+          type: string
+
+    SubmitVoteInput:
+      type: object
+      required: [optionId]
+      properties:
+        optionId:
+          type: integer
+
+    SubmitFormInput:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items:
+            type: object
+            required: [fieldId, value]
+            properties:
+              fieldId:
+                type: integer
+              value:
+                type: string
+
+    FormResponse:
+      type: object
+      required: [id, formId, userId, createdAt]
+      properties:
+        id:
+          type: integer
+        formId:
+          type: integer
+        userId:
+          type: integer
+        selectedOptionId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    FormResponseDetail:
+      type: object
+      required: [id, userId, username, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        username:
+          type: string
+        displayName:
+          type: ["string", "null"]
+        mcUsername:
+          type: ["string", "null"]
+        selectedOptionId:
+          type: ["integer", "null"]
+        selectedOptionLabel:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        answers:
+          type: array
+          items:
+            type: object
+            required: [fieldId, fieldLabel, value]
+            properties:
+              fieldId:
+                type: integer
+              fieldLabel:
+                type: string
+              value:
+                type: string
+
+    FormResponsesResult:
+      type: object
+      required: [formId, type, responses]
+      properties:
+        formId:
+          type: integer
+        type:
+          type: string
+          enum: [form, poll]
+        responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/FormResponseDetail"
+        pollResults:
+          type: array
+          items:
+            type: object
+            required: [optionId, label, count]
+            properties:
+              optionId:
+                type: integer
+              label:
+                type: string
+              count:
+                type: integer
+
+    MyFormResponse:
+      type: object
+      properties:
+        hasResponded:
+          type: boolean
+        response:
+          $ref: "#/components/schemas/FormResponseDetail"
+
+    Credit:
+      type: object
+      required: [id, name, role, borderType, order, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        backgroundUrl:
+          type: ["string", "null"]
+        role:
+          type: string
+        description:
+          type: ["string", "null"]
+        borderType:
+          type: string
+        order:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    Badge:
+      type: object
+      required: [id, key, label, color, order, createdAt]
+      properties:
+        id:
+          type: integer
+        key:
+          type: string
+        label:
+          type: string
+        color:
+          type: string
+        description:
+          type: ["string", "null"]
+        order:
+          type: integer
+        createdAt:
+          type: string
+
+    AssignBadgeInput:
+      type: object
+      required: [badgeId]
+      properties:
+        badgeId:
+          type: integer
+
+    CreateCreditInput:
+      type: object
+      required: [name, role]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        avatarUrl:
+          type: string
+        backgroundUrl:
+          type: string
+        role:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+        borderType:
+          type: string
+          default: "frame1"
+        order:
+          type: integer
+
+    UpdateCreditInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        avatarUrl:
+          type: string
+        backgroundUrl:
+          type: string
+        role:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+        borderType:
+          type: string
+        order:
           type: integer

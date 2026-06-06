@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { useSignUp } from "@clerk/react/legacy";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from "wouter";
@@ -11,6 +12,7 @@ import Home from "@/pages/home";
 import Member from "@/pages/member";
 import Admin from "@/pages/admin";
 import Friends from "@/pages/friends";
+import Profile from "@/pages/profile";
 import Messages from "@/pages/messages";
 import NotFound from "@/pages/not-found";
 
@@ -158,6 +160,106 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+function ClerkMissingUsernameAutoCompleter() {
+  const { isLoaded, signUp, setActive } = useSignUp();
+  const isSubmittingRef = useRef(false);
+  const [publicUsername, setPublicUsername] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const needsPublicUsername =
+    isLoaded &&
+    signUp?.status === "missing_requirements" &&
+    signUp.missingFields.includes("username");
+
+  async function completeWithPublicUsername(mode: "manual" | "auto") {
+    if (!isLoaded || !signUp || isSubmittingRef.current) return;
+
+    const normalizedManual = publicUsername
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 40);
+
+    if (mode === "manual" && normalizedManual.length < 3) {
+      setError("Handle minimal 3 karakter.");
+      return;
+    }
+
+    const generatedPublicUsername =
+      signUp.emailAddress?.split("@")[0]?.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) ||
+      "player";
+    const chosenPublicUsername = mode === "manual" ? normalizedManual : generatedPublicUsername;
+
+    setError(null);
+    isSubmittingRef.current = true;
+    try {
+      const updated = await signUp.update({
+        username: `arcadia_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        unsafeMetadata: { publicUsername: chosenPublicUsername },
+      });
+
+      if (updated.status === "complete" && updated.createdSessionId) {
+        await setActive({ session: updated.createdSessionId, redirectUrl: `${basePath}/member` });
+      }
+    } catch (error) {
+      console.error("Failed to complete Clerk username", error);
+      setError("Gagal menyimpan handle. Coba lagi.");
+    } finally {
+      isSubmittingRef.current = false;
+    }
+  }
+
+  if (!needsPublicUsername) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background px-4">
+      <div className="w-full max-w-md rounded-2xl border border-[#3b3223] bg-[#16120e] p-8 shadow-2xl">
+        <div className="mb-6 text-center">
+          <img src={`${basePath}/logo.svg`} alt="" className="mx-auto mb-4 h-12 w-12" />
+          <h2 className="text-2xl font-bold text-[#ecd79d]">Pilih Handle Publik</h2>
+          <p className="mt-2 text-sm text-[#b3a486]">
+            Handle boleh sama dengan akun lain karena nanti dibedakan pakai tagar.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <label className="text-sm font-semibold text-[#ecd79d]" htmlFor="public-username">
+            Handle manual
+          </label>
+          <input
+            id="public-username"
+            value={publicUsername}
+            onChange={(event) => setPublicUsername(event.target.value)}
+            placeholder="contoh: steve"
+            className="h-11 w-full rounded-lg border border-[#3b3223] bg-[#1a1512] px-3 text-[#ecd79d] outline-none focus:border-[#d9a05b]"
+          />
+          {error && <p className="text-sm text-red-400">{error}</p>}
+        </div>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => void completeWithPublicUsername("manual")}
+            disabled={isSubmittingRef.current}
+            className="h-11 rounded-lg bg-[#d9a05b] font-bold text-[#13100c] hover:bg-[#e4b272] disabled:opacity-60"
+          >
+            Pakai Manual
+          </button>
+          <button
+            type="button"
+            onClick={() => void completeWithPublicUsername("auto")}
+            disabled={isSubmittingRef.current}
+            className="h-11 rounded-lg border border-[#3b3223] bg-[#1a1512] font-bold text-[#ecd79d] hover:bg-[#251e18] disabled:opacity-60"
+          >
+            Generate Otomatis
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HomeRedirect() {
   return <Home />;
 }
@@ -194,6 +296,19 @@ function FriendsProtected() {
     <>
       <Show when="signed-in">
         <Friends />
+      </Show>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+    </>
+  );
+}
+
+function ProfileProtected() {
+  return (
+    <>
+      <Show when="signed-in">
+        <Profile />
       </Show>
       <Show when="signed-out">
         <Redirect to="/" />
@@ -243,12 +358,14 @@ function ClerkProviderWithRoutes() {
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
       <QueryClientProvider client={queryClient}>
+        <ClerkMissingUsernameAutoCompleter />
         <ClerkQueryClientCacheInvalidator />
         <Switch>
           <Route path="/" component={HomeRedirect} />
           <Route path="/member" component={MemberProtected} />
           <Route path="/admin" component={AdminProtected} />
           <Route path="/friends" component={FriendsProtected} />
+          <Route path="/profile/:id" component={ProfileProtected} />
           <Route path="/messages" component={MessagesProtected} />
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />

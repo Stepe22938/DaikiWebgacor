@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Layout } from "@/components/layout";
-import { useGetStats, useListDevelopments, customFetch } from "@workspace/api-client-react";
+import { useGetStats, useListDevelopments, useGetMe, customFetch } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -26,6 +26,7 @@ import {
 export default function Home() {
   const { data: stats } = useGetStats();
   const { data: developments } = useListDevelopments();
+  const { data: user } = useGetMe();
   const { data: settings = {} } = useQuery({
     queryKey: ["/api/settings"],
     queryFn: () => customFetch<any>("/api/settings"),
@@ -42,6 +43,8 @@ export default function Home() {
   const specsMemory = settings.specsMemory || "32 GB DDR4 ECC";
   const specsStorage = settings.specsStorage || "NVMe PCIe Gen 4 SSD";
   const specsLocation = settings.specsLocation || "Debian VPS Port 5433";
+  const galleryTitle = settings.galleryTitle || "Explore the Realm of Arcadia";
+  const gallerySubtitle = settings.gallerySubtitle || "Take a visual tour through our hand-crafted server landscapes, customized cities, and deadly adventure zones.";
 
   const handleCopyIP = () => {
     navigator.clipboard.writeText(serverIP);
@@ -49,10 +52,10 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const galleryImages = [
+  const fallbackGallery = [
     {
       src: "/lobby.png",
-      title: "The Citadel Spawn",
+      title: "The Arcadia Spawn",
       description: "A monumental medieval hub where all journeys begin, featuring majestic towers and direct portals."
     },
     {
@@ -66,6 +69,12 @@ export default function Home() {
       description: "A dangerous, high-reward dungeon loaded with custom boss mechanics, puzzles, and mythic tier loot."
     }
   ];
+
+  const galleryImages = settings.gallery && Array.isArray(settings.gallery) && settings.gallery.length > 0
+    ? settings.gallery
+    : fallbackGallery;
+
+  const activeGalleryIndex = activeGallery >= galleryImages.length ? 0 : activeGallery;
 
   return (
     <Layout>
@@ -169,25 +178,32 @@ export default function Home() {
       <div className="border-y border-border/60 bg-card/10 backdrop-blur-sm py-20">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-foreground tracking-tight">Explore the Realm of Arcadia</h2>
-            <p className="text-muted-foreground">Take a visual tour through our hand-crafted server landscapes, customized cities, and deadly adventure zones.</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-foreground tracking-tight flex items-center justify-center gap-3">
+              <span>{galleryTitle}</span>
+              {user?.role === "admin" && (
+                <Link href="/admin?tab=gallery" className="inline-flex items-center justify-center p-1.5 rounded-lg bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 transition-all hover:scale-105 active:scale-95" title="Edit Gallery Section">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </Link>
+              )}
+            </h2>
+            <p className="text-muted-foreground">{gallerySubtitle}</p>
           </div>
 
           <div className="grid lg:grid-cols-5 gap-8 items-center">
             {/* Gallery Navigation and Text */}
             <div className="lg:col-span-2 space-y-6">
-              {galleryImages.map((img, idx) => (
+              {galleryImages.map((img: any, idx: number) => (
                 <button
                   key={idx}
                   onClick={() => setActiveGallery(idx)}
                   className={`w-full text-left p-5 rounded-xl border transition-all duration-300 ${
-                    activeGallery === idx
+                    activeGalleryIndex === idx
                       ? "bg-primary/10 border-primary text-foreground shadow-md shadow-primary/5"
                       : "bg-transparent border-transparent hover:bg-card/40 text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   <h3 className="font-bold text-lg flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${activeGallery === idx ? "bg-primary" : "bg-muted-foreground/40"}`} />
+                    <span className={`w-2 h-2 rounded-full ${activeGalleryIndex === idx ? "bg-primary" : "bg-muted-foreground/40"}`} />
                     {img.title}
                   </h3>
                   <p className="text-xs mt-1.5 leading-relaxed opacity-85">
@@ -200,11 +216,13 @@ export default function Home() {
             {/* Display Viewport */}
             <div className="lg:col-span-3">
               <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-border/80 shadow-2xl bg-card">
-                <img
-                  src={galleryImages[activeGallery].src}
-                  alt={galleryImages[activeGallery].title}
-                  className="w-full h-full object-cover animate-fade-in transition-all duration-500"
-                />
+                {galleryImages[activeGalleryIndex] && (
+                  <img
+                    src={galleryImages[activeGalleryIndex].src}
+                    alt={galleryImages[activeGalleryIndex].title}
+                    className="w-full h-full object-cover animate-fade-in transition-all duration-500"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none" />
                 <div className="absolute bottom-6 left-6 right-6">
                   <span className="text-xs font-semibold px-2.5 py-1 rounded bg-primary/80 backdrop-blur-sm text-primary-foreground uppercase tracking-wider">

@@ -16,10 +16,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { Link } from "wouter";
 
 type PublicUser = {
   id: number;
   username: string;
+  userTag: string;
   displayName?: string | null;
   avatarUrl?: string | null;
   bio?: string | null;
@@ -33,20 +35,20 @@ function UserCard({ user, onFollowToggle }: { user: PublicUser; onFollowToggle: 
   return (
     <Card className="bg-card border-border">
       <CardContent className="p-4 flex items-center gap-4">
-        <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-xl font-bold text-primary shrink-0 overflow-hidden">
+        <Link href={`/profile/${user.id}`} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-xl font-bold text-primary shrink-0 overflow-hidden hover:ring-2 hover:ring-primary/70 transition">
           {user.avatarUrl ? (
             <img src={user.avatarUrl} alt={user.username} className="w-full h-full object-cover" />
           ) : (
             (user.displayName || user.username).charAt(0).toUpperCase()
           )}
-        </div>
+        </Link>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-foreground truncate">
+          <Link href={`/profile/${user.id}`} className="block font-semibold text-foreground truncate hover:text-primary transition-colors">
             {user.displayName || user.username}
-          </div>
-          {user.displayName && (
-            <div className="text-xs text-muted-foreground">@{user.username}</div>
-          )}
+          </Link>
+          <Link href={`/profile/${user.id}`} className="block text-xs text-muted-foreground hover:text-primary transition-colors">
+            @{user.username} <span className="text-primary font-medium">{user.userTag}</span>
+          </Link>
           {user.bio && (
             <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{user.bio}</div>
           )}
@@ -111,6 +113,7 @@ export default function Friends() {
     const q = search.toLowerCase();
     return (
       u.username.toLowerCase().includes(q) ||
+      u.userTag.toLowerCase().includes(q) ||
       (u.displayName ?? "").toLowerCase().includes(q)
     );
   });

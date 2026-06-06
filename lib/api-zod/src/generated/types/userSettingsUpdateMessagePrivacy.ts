@@ -12,5 +12,6 @@ export type UserSettingsUpdateMessagePrivacy = typeof UserSettingsUpdateMessageP
 export const UserSettingsUpdateMessagePrivacy = {
   everyone: 'everyone',
   friends_only: 'friends_only',
+  following_only: 'following_only',
   nobody: 'nobody',
 } as const;

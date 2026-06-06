@@ -19,14 +19,20 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary Get current user profile
  */
+export const getMeResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
 export const GetMeResponse = zod.object({
   "id": zod.number(),
   "clerkId": zod.string(),
   "username": zod.string(),
+  "userTag": zod.string().regex(getMeResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
   "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
+  "mcUsername": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -37,17 +43,25 @@ export const GetMeResponse = zod.object({
 export const UpdateMeBody = zod.object({
   "displayName": zod.string().optional(),
   "bio": zod.string().optional(),
-  "username": zod.string().optional()
+  "youtubeLiveUrl": zod.string().optional(),
+  "username": zod.string().optional(),
+  "mcUsername": zod.string().optional()
 })
+
+export const updateMeResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
 
 export const UpdateMeResponse = zod.object({
   "id": zod.number(),
   "clerkId": zod.string(),
   "username": zod.string(),
+  "userTag": zod.string().regex(updateMeResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
   "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
+  "mcUsername": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -55,14 +69,20 @@ export const UpdateMeResponse = zod.object({
 /**
  * @summary List all users (admin only)
  */
+export const listUsersResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
 export const ListUsersResponseItem = zod.object({
   "id": zod.number(),
   "clerkId": zod.string(),
   "username": zod.string(),
+  "userTag": zod.string().regex(listUsersResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
   "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
+  "mcUsername": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -76,17 +96,23 @@ export const UpdateUserRoleParams = zod.object({
 })
 
 export const UpdateUserRoleBody = zod.object({
-  "role": zod.enum(['member', 'admin'])
+  "role": zod.enum(['member', 'admin', 'staff', 'dev'])
 })
+
+export const updateUserRoleResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
 
 export const UpdateUserRoleResponse = zod.object({
   "id": zod.number(),
   "clerkId": zod.string(),
   "username": zod.string(),
+  "userTag": zod.string().regex(updateUserRoleResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
   "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
+  "mcUsername": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -94,18 +120,119 @@ export const UpdateUserRoleResponse = zod.object({
 /**
  * @summary List all members with follow status (authenticated)
  */
+export const listMembersResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
 export const ListMembersResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "userTag": zod.string().regex(listMembersResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
   "followingCount": zod.number()
 })
 export const ListMembersResponse = zod.array(ListMembersResponseItem)
+
+
+/**
+ * @summary Get public member profile
+ */
+export const GetPublicProfileParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const getPublicProfileResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
+export const GetPublicProfileResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "userTag": zod.string().regex(getPublicProfileResponseUserTagRegExp),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "isFollowing": zod.boolean(),
+  "followerCount": zod.number(),
+  "followingCount": zod.number()
+})
+
+
+/**
+ * @summary Get followers of a public member profile
+ */
+export const GetPublicProfileFollowersParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const getPublicProfileFollowersResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
+export const GetPublicProfileFollowersResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "userTag": zod.string().regex(getPublicProfileFollowersResponseUserTagRegExp),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "isFollowing": zod.boolean(),
+  "followerCount": zod.number(),
+  "followingCount": zod.number()
+})
+export const GetPublicProfileFollowersResponse = zod.array(GetPublicProfileFollowersResponseItem)
+
+
+/**
+ * @summary Get accounts followed by a public member profile
+ */
+export const GetPublicProfileFollowingParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const getPublicProfileFollowingResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
+export const GetPublicProfileFollowingResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "userTag": zod.string().regex(getPublicProfileFollowingResponseUserTagRegExp),
+  "displayName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "isFollowing": zod.boolean(),
+  "followerCount": zod.number(),
+  "followingCount": zod.number()
+})
+export const GetPublicProfileFollowingResponse = zod.array(GetPublicProfileFollowingResponseItem)
+
+
+/**
+ * @summary Get badges assigned to a public member profile
+ */
+export const GetPublicProfileBadgesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetPublicProfileBadgesResponseItem = zod.object({
+  "id": zod.number(),
+  "key": zod.string(),
+  "label": zod.string(),
+  "color": zod.string(),
+  "description": zod.string().nullish(),
+  "order": zod.number(),
+  "createdAt": zod.string()
+})
+export const GetPublicProfileBadgesResponse = zod.array(GetPublicProfileBadgesResponseItem)
 
 
 /**
@@ -127,12 +254,17 @@ export const UnfollowUserParams = zod.object({
 /**
  * @summary Get list of users I follow
  */
+export const getMyFollowingResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
 export const GetMyFollowingResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "userTag": zod.string().regex(getMyFollowingResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
@@ -144,12 +276,17 @@ export const GetMyFollowingResponse = zod.array(GetMyFollowingResponseItem)
 /**
  * @summary Get list of users following me
  */
+export const getMyFollowersResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
 export const GetMyFollowersResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "userTag": zod.string().regex(getMyFollowersResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
@@ -378,18 +515,34 @@ export const AdminUpdateUserBody = zod.object({
   "username": zod.string().optional(),
   "displayName": zod.string().optional(),
   "bio": zod.string().optional(),
-  "role": zod.enum(['member', 'admin']).optional()
+  "youtubeLiveUrl": zod.string().optional(),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev']).optional(),
+  "mcUsername": zod.string().optional()
 })
+
+export const adminUpdateUserResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
 
 export const AdminUpdateUserResponse = zod.object({
   "id": zod.number(),
   "clerkId": zod.string(),
   "username": zod.string(),
+  "userTag": zod.string().regex(adminUpdateUserResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
   "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
+  "mcUsername": zod.string().nullish(),
   "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a user profile (admin only)
+ */
+export const AdminDeleteUserParams = zod.object({
+  "id": zod.coerce.number()
 })
 
 
@@ -409,7 +562,7 @@ export const GetStatsResponse = zod.object({
  * @summary Get current user settings
  */
 export const GetMySettingsResponse = zod.object({
-  "messagePrivacy": zod.enum(['everyone', 'friends_only', 'nobody'])
+  "messagePrivacy": zod.enum(['everyone', 'friends_only', 'following_only', 'nobody'])
 })
 
 
@@ -417,11 +570,11 @@ export const GetMySettingsResponse = zod.object({
  * @summary Update current user settings
  */
 export const UpdateMySettingsBody = zod.object({
-  "messagePrivacy": zod.enum(['everyone', 'friends_only', 'nobody']).optional()
+  "messagePrivacy": zod.enum(['everyone', 'friends_only', 'following_only', 'nobody']).optional()
 })
 
 export const UpdateMySettingsResponse = zod.object({
-  "messagePrivacy": zod.enum(['everyone', 'friends_only', 'nobody'])
+  "messagePrivacy": zod.enum(['everyone', 'friends_only', 'following_only', 'nobody'])
 })
 
 
@@ -563,8 +716,9 @@ export const ListMessagesResponseItem = zod.object({
   "conversationId": zod.number(),
   "senderId": zod.number().nullish(),
   "content": zod.string(),
+  "imageUrl": zod.string().nullish(),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().nullish(),
+  "updatedAt": zod.coerce.date().nullish(),
   "senderUsername": zod.string().nullish(),
   "senderDisplayName": zod.string().nullish(),
   "senderAvatarUrl": zod.string().nullish()
@@ -584,7 +738,8 @@ export const sendMessageBodyContentMax = 4000;
 
 
 export const SendMessageBody = zod.object({
-  "content": zod.string().min(1).max(sendMessageBodyContentMax)
+  "content": zod.string().min(1).max(sendMessageBodyContentMax).optional(),
+  "imageUrl": zod.string().optional()
 })
 
 
@@ -638,17 +793,552 @@ export const RemoveConversationMemberParams = zod.object({
 /**
  * @summary Get mutual followers (friends)
  */
+export const getMyFriendsResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
+
+
 export const GetMyFriendsResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "userTag": zod.string().regex(getMyFriendsResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
+  "youtubeLiveUrl": zod.string().nullish(),
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
   "followingCount": zod.number()
 })
 export const GetMyFriendsResponse = zod.array(GetMyFriendsResponseItem)
+
+
+/**
+ * @summary List support tickets (admins see all, users see their own)
+ */
+export const ListTicketsResponseItem = zod.object({
+  "id": zod.number(),
+  "creatorId": zod.number(),
+  "reason": zod.string(),
+  "description": zod.string(),
+  "status": zod.enum(['open', 'in_progress', 'resolved', 'closed']),
+  "adminId": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "creatorUsername": zod.string().nullish(),
+  "creatorDisplayName": zod.string().nullish(),
+  "adminUsername": zod.string().nullish(),
+  "adminDisplayName": zod.string().nullish()
+})
+export const ListTicketsResponse = zod.array(ListTicketsResponseItem)
+
+
+/**
+ * @summary Create a support ticket
+ */
+export const createTicketBodyDescriptionMin = 5;
+export const createTicketBodyDescriptionMax = 2000;
+
+
+
+export const CreateTicketBody = zod.object({
+  "reason": zod.string(),
+  "description": zod.string().min(createTicketBodyDescriptionMin).max(createTicketBodyDescriptionMax)
+})
+
+
+/**
+ * @summary List active support ticket reasons
+ */
+export const ListTicketReasonsResponseItem = zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "order": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListTicketReasonsResponse = zod.array(ListTicketReasonsResponseItem)
+
+
+/**
+ * @summary List all support ticket reasons (admin only)
+ */
+export const ListAdminTicketReasonsResponseItem = zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "order": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListAdminTicketReasonsResponse = zod.array(ListAdminTicketReasonsResponseItem)
+
+
+/**
+ * @summary Create a support ticket reason (admin only)
+ */
+export const createTicketReasonBodyLabelMax = 120;
+
+export const createTicketReasonBodyDescriptionMax = 500;
+
+
+
+export const CreateTicketReasonBody = zod.object({
+  "label": zod.string().min(1).max(createTicketReasonBodyLabelMax),
+  "description": zod.string().max(createTicketReasonBodyDescriptionMax).optional(),
+  "isActive": zod.boolean().optional(),
+  "order": zod.number().optional()
+})
+
+
+/**
+ * @summary Update a support ticket reason (admin only)
+ */
+export const UpdateTicketReasonParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateTicketReasonBodyLabelMax = 120;
+
+export const updateTicketReasonBodyDescriptionMax = 500;
+
+
+
+export const UpdateTicketReasonBody = zod.object({
+  "label": zod.string().min(1).max(updateTicketReasonBodyLabelMax).optional(),
+  "description": zod.string().max(updateTicketReasonBodyDescriptionMax).optional(),
+  "isActive": zod.boolean().optional(),
+  "order": zod.number().optional()
+})
+
+export const UpdateTicketReasonResponse = zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "order": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a support ticket reason (admin only)
+ */
+export const DeleteTicketReasonParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Update ticket status or assigned admin
+ */
+export const UpdateTicketParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTicketBody = zod.object({
+  "status": zod.enum(['open', 'in_progress', 'resolved', 'closed']).optional(),
+  "adminId": zod.number().nullish()
+})
+
+export const UpdateTicketResponse = zod.object({
+  "id": zod.number(),
+  "creatorId": zod.number(),
+  "reason": zod.string(),
+  "description": zod.string(),
+  "status": zod.enum(['open', 'in_progress', 'resolved', 'closed']),
+  "adminId": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "creatorUsername": zod.string().nullish(),
+  "creatorDisplayName": zod.string().nullish(),
+  "adminUsername": zod.string().nullish(),
+  "adminDisplayName": zod.string().nullish()
+})
+
+
+/**
+ * @summary List replies of a ticket
+ */
+export const ListTicketMessagesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListTicketMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "ticketId": zod.number(),
+  "senderId": zod.number(),
+  "content": zod.string(),
+  "createdAt": zod.string(),
+  "senderUsername": zod.string(),
+  "senderDisplayName": zod.string().nullish(),
+  "senderAvatarUrl": zod.string().nullish()
+})
+export const ListTicketMessagesResponse = zod.array(ListTicketMessagesResponseItem)
+
+
+/**
+ * @summary Send a reply/message inside a ticket
+ */
+export const SendTicketMessageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const sendTicketMessageBodyContentMax = 1000;
+
+
+
+export const SendTicketMessageBody = zod.object({
+  "content": zod.string().min(1).max(sendTicketMessageBodyContentMax)
+})
+
+
+/**
+ * @summary List all server credits
+ */
+export const ListCreditsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "backgroundUrl": zod.string().nullish(),
+  "role": zod.string(),
+  "description": zod.string().nullish(),
+  "borderType": zod.string(),
+  "order": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListCreditsResponse = zod.array(ListCreditsResponseItem)
+
+
+/**
+ * @summary Create a credit item (admin only)
+ */
+export const createCreditBodyNameMax = 255;
+
+export const createCreditBodyRoleMax = 255;
+
+export const createCreditBodyBorderTypeDefault = `frame1`;
+
+export const CreateCreditBody = zod.object({
+  "name": zod.string().min(1).max(createCreditBodyNameMax),
+  "avatarUrl": zod.string().optional(),
+  "backgroundUrl": zod.string().optional(),
+  "role": zod.string().min(1).max(createCreditBodyRoleMax),
+  "description": zod.string().optional(),
+  "borderType": zod.string().default(createCreditBodyBorderTypeDefault),
+  "order": zod.number().optional()
+})
+
+
+/**
+ * @summary Update a credit item (admin only)
+ */
+export const UpdateCreditParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateCreditBodyNameMax = 255;
+
+export const updateCreditBodyRoleMax = 255;
+
+
+
+export const UpdateCreditBody = zod.object({
+  "name": zod.string().min(1).max(updateCreditBodyNameMax).optional(),
+  "avatarUrl": zod.string().optional(),
+  "backgroundUrl": zod.string().optional(),
+  "role": zod.string().min(1).max(updateCreditBodyRoleMax).optional(),
+  "description": zod.string().optional(),
+  "borderType": zod.string().optional(),
+  "order": zod.number().optional()
+})
+
+export const UpdateCreditResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "backgroundUrl": zod.string().nullish(),
+  "role": zod.string(),
+  "description": zod.string().nullish(),
+  "borderType": zod.string(),
+  "order": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a credit item (admin only)
+ */
+export const DeleteCreditParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary List all available profile badges
+ */
+export const ListBadgesResponseItem = zod.object({
+  "id": zod.number(),
+  "key": zod.string(),
+  "label": zod.string(),
+  "color": zod.string(),
+  "description": zod.string().nullish(),
+  "order": zod.number(),
+  "createdAt": zod.string()
+})
+export const ListBadgesResponse = zod.array(ListBadgesResponseItem)
+
+
+/**
+ * @summary Assign a badge to a user (admin only)
+ */
+export const AssignUserBadgeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AssignUserBadgeBody = zod.object({
+  "badgeId": zod.number()
+})
+
+
+/**
+ * @summary Remove a badge from a user (admin only)
+ */
+export const RemoveUserBadgeParams = zod.object({
+  "id": zod.coerce.number(),
+  "badgeId": zod.coerce.number()
+})
+
+
+/**
+ * @summary List forms and polls (admin sees all, members see open only)
+ */
+export const ListFormsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "type": zod.enum(['form', 'poll']),
+  "status": zod.enum(['open', 'closed']),
+  "createdBy": zod.number().optional(),
+  "createdByUsername": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "responseCount": zod.number().optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+export const ListFormsResponse = zod.array(ListFormsResponseItem)
+
+
+/**
+ * @summary Admin creates a form or poll
+ */
+export const createFormBodyTitleMax = 255;
+
+
+
+export const CreateFormBody = zod.object({
+  "title": zod.string().min(1).max(createFormBodyTitleMax),
+  "description": zod.string().optional(),
+  "type": zod.enum(['form', 'poll']),
+  "deadline": zod.string().optional(),
+  "fields": zod.array(zod.object({
+  "label": zod.string(),
+  "fieldType": zod.enum(['text', 'textarea', 'radio', 'checkbox', 'select']),
+  "options": zod.string().optional(),
+  "required": zod.boolean().optional(),
+  "order": zod.number().optional()
+})).optional(),
+  "options": zod.array(zod.object({
+  "label": zod.string(),
+  "order": zod.number().optional()
+})).optional()
+})
+
+
+/**
+ * @summary Get form/poll detail including fields or options
+ */
+export const GetFormParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetFormResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "type": zod.enum(['form', 'poll']),
+  "status": zod.enum(['open', 'closed']),
+  "createdBy": zod.number().optional(),
+  "createdByUsername": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "responseCount": zod.number().optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional(),
+  "fields": zod.array(zod.object({
+  "id": zod.number(),
+  "formId": zod.number(),
+  "label": zod.string(),
+  "fieldType": zod.enum(['text', 'textarea', 'radio', 'checkbox', 'select']),
+  "options": zod.string().nullish(),
+  "required": zod.boolean(),
+  "order": zod.number()
+})).optional(),
+  "options": zod.array(zod.object({
+  "id": zod.number(),
+  "formId": zod.number(),
+  "label": zod.string(),
+  "order": zod.number(),
+  "voteCount": zod.number().optional()
+})).optional()
+})
+
+
+/**
+ * @summary Admin updates a form/poll
+ */
+export const UpdateFormParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateFormBodyTitleMax = 255;
+
+
+
+export const UpdateFormBody = zod.object({
+  "title": zod.string().min(1).max(updateFormBodyTitleMax).optional(),
+  "description": zod.string().optional(),
+  "status": zod.enum(['open', 'closed']).optional(),
+  "deadline": zod.string().optional()
+})
+
+export const UpdateFormResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "type": zod.enum(['form', 'poll']),
+  "status": zod.enum(['open', 'closed']),
+  "createdBy": zod.number().optional(),
+  "createdByUsername": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "responseCount": zod.number().optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional(),
+  "fields": zod.array(zod.object({
+  "id": zod.number(),
+  "formId": zod.number(),
+  "label": zod.string(),
+  "fieldType": zod.enum(['text', 'textarea', 'radio', 'checkbox', 'select']),
+  "options": zod.string().nullish(),
+  "required": zod.boolean(),
+  "order": zod.number()
+})).optional(),
+  "options": zod.array(zod.object({
+  "id": zod.number(),
+  "formId": zod.number(),
+  "label": zod.string(),
+  "order": zod.number(),
+  "voteCount": zod.number().optional()
+})).optional()
+})
+
+
+/**
+ * @summary Admin deletes a form/poll
+ */
+export const DeleteFormParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Member votes on a poll
+ */
+export const SubmitVoteParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SubmitVoteBody = zod.object({
+  "optionId": zod.number()
+})
+
+
+/**
+ * @summary Member submits a form response
+ */
+export const SubmitFormParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SubmitFormBody = zod.object({
+  "answers": zod.array(zod.object({
+  "fieldId": zod.number(),
+  "value": zod.string()
+}))
+})
+
+
+/**
+ * @summary Admin views all responses or vote results for a form/poll
+ */
+export const ListFormResponsesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListFormResponsesResponse = zod.object({
+  "formId": zod.number(),
+  "type": zod.enum(['form', 'poll']),
+  "responses": zod.array(zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string().nullish(),
+  "mcUsername": zod.string().nullish(),
+  "selectedOptionId": zod.number().nullish(),
+  "selectedOptionLabel": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "answers": zod.array(zod.object({
+  "fieldId": zod.number(),
+  "fieldLabel": zod.string(),
+  "value": zod.string()
+})).optional()
+})),
+  "pollResults": zod.array(zod.object({
+  "optionId": zod.number(),
+  "label": zod.string(),
+  "count": zod.number()
+})).optional()
+})
+
+
+/**
+ * @summary Check if current user has responded to a form/poll
+ */
+export const GetMyFormResponseParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetMyFormResponseResponse = zod.object({
+  "hasResponded": zod.boolean().optional(),
+  "response": zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string().nullish(),
+  "mcUsername": zod.string().nullish(),
+  "selectedOptionId": zod.number().nullish(),
+  "selectedOptionLabel": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "answers": zod.array(zod.object({
+  "fieldId": zod.number(),
+  "fieldLabel": zod.string(),
+  "value": zod.string()
+})).optional()
+}).optional()
+})
 
 
