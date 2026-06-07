@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { clerkClient, getAuth } from "@clerk/express";
+import { clerkClient } from "@clerk/express";
 import { asc, eq, sql } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
+import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
 import {
   GetMeResponse,
@@ -238,6 +239,12 @@ router.get("/users/switchable", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const currentUser = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "dev")) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 

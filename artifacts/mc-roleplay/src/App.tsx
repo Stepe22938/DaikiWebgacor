@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { MultisessionAppSupport } from "@clerk/react/internal";
 import { useSignUp } from "@clerk/react/legacy";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
@@ -125,7 +126,12 @@ const clerkAppearance = {
 function SignInPage() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#2a2219] to-background">
-      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+      <SignIn
+        routing="path"
+        path={`${basePath}/sign-in`}
+        signUpUrl={`${basePath}/sign-up`}
+        oidcPrompt="login select_account consent"
+      />
     </div>
   );
 }
@@ -133,7 +139,12 @@ function SignInPage() {
 function SignUpPage() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#2a2219] to-background">
-      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/sign-in`}
+        oidcPrompt="login select_account consent"
+      />
     </div>
   );
 }
@@ -358,19 +369,21 @@ function ClerkProviderWithRoutes() {
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
       <QueryClientProvider client={queryClient}>
-        <ClerkMissingUsernameAutoCompleter />
-        <ClerkQueryClientCacheInvalidator />
-        <Switch>
-          <Route path="/" component={HomeRedirect} />
-          <Route path="/member" component={MemberProtected} />
-          <Route path="/admin" component={AdminProtected} />
-          <Route path="/friends" component={FriendsProtected} />
-          <Route path="/profile/:id" component={ProfileProtected} />
-          <Route path="/messages" component={MessagesProtected} />
-          <Route path="/sign-in/*?" component={SignInPage} />
-          <Route path="/sign-up/*?" component={SignUpPage} />
-          <Route component={NotFound} />
-        </Switch>
+        <MultisessionAppSupport>
+          <ClerkMissingUsernameAutoCompleter />
+          <ClerkQueryClientCacheInvalidator />
+          <Switch>
+            <Route path="/" component={HomeRedirect} />
+            <Route path="/member" component={MemberProtected} />
+            <Route path="/admin" component={AdminProtected} />
+            <Route path="/friends" component={FriendsProtected} />
+            <Route path="/profile/:id" component={ProfileProtected} />
+            <Route path="/messages" component={MessagesProtected} />
+            <Route path="/sign-in/*?" component={SignInPage} />
+            <Route path="/sign-up/*?" component={SignUpPage} />
+            <Route component={NotFound} />
+          </Switch>
+        </MultisessionAppSupport>
       </QueryClientProvider>
     </ClerkProvider>
   );

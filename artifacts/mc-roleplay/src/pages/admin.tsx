@@ -21,6 +21,12 @@ import {
   useCreateCredit,
   useUpdateCredit,
   useDeleteCredit,
+  useListTickets,
+  useUpdateTicket,
+  useListAdminTicketReasons,
+  useCreateTicketReason,
+  useUpdateTicketReason,
+  useDeleteTicketReason,
 } from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRef } from "react";
@@ -60,10 +66,12 @@ import {
 
 type DevStatus = "planned" | "in_progress" | "completed" | "paused";
 type AnnType = "update" | "event" | "maintenance" | "general";
+type UserRole = "member" | "admin" | "staff" | "dev";
+type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 
 interface DevForm { title: string; description: string; category: string; status: DevStatus; progress: string; order: string; }
 interface AnnForm { title: string; content: string; type: AnnType; pinned: boolean; }
-interface UserEditForm { username: string; displayName: string; bio: string; role: "member" | "admin"; }
+interface UserEditForm { username: string; displayName: string; bio: string; role: UserRole; }
 interface CreditForm {
   name: string;
   avatarUrl: string;
@@ -71,6 +79,12 @@ interface CreditForm {
   role: string;
   description: string;
   borderType: string;
+  order: string;
+}
+interface TicketReasonForm {
+  label: string;
+  description: string;
+  isActive: boolean;
   order: string;
 }
 
@@ -83,6 +97,12 @@ const emptyCredit: CreditForm = {
   role: "",
   description: "",
   borderType: "frame1",
+  order: "0",
+};
+const emptyTicketReason: TicketReasonForm = {
+  label: "",
+  description: "",
+  isActive: true,
   order: "0",
 };
 
@@ -104,9 +124,17 @@ const STATUS_LABELS: Record<DevStatus, string> = { planned: "Planned", in_progre
 
 export default function Admin() {
   const { data: user, isLoading } = useGetMe();
+  const queryRole = user?.role;
+  const canQueryAdmin = queryRole === "admin";
   const { data: devs, isLoading: devsLoading } = useListDevelopments();
   const { data: anns, isLoading: annsLoading } = useListAnnouncements();
-  const { data: users, isLoading: usersLoading } = useListUsers();
+  const { data: users, isLoading: usersLoading } = useListUsers({
+    query: { enabled: canQueryAdmin } as any,
+  });
+  const { data: tickets = [], isLoading: ticketsLoading } = useListTickets();
+  const { data: ticketReasons = [], isLoading: ticketReasonsLoading } = useListAdminTicketReasons({
+    query: { enabled: canQueryAdmin } as any,
+  });
   const createDev = useCreateDevelopment();
   const updateDev = useUpdateDevelopment();
   const deleteDev = useDeleteDevelopment();
@@ -117,6 +145,10 @@ export default function Admin() {
   const adminFollow = useAdminCreateFollow();
   const bulkFollow = useAdminBulkCreateFollowers();
   const adminUpdateUser = useAdminUpdateUser();
+  const updateTicket = useUpdateTicket();
+  const createTicketReason = useCreateTicketReason();
+  const updateTicketReason = useUpdateTicketReason();
+  const deleteTicketReason = useDeleteTicketReason();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -146,6 +178,10 @@ export default function Admin() {
   const [editingCreditId, setEditingCreditId] = useState<number | null>(null);
   const [creditDialogOpen, setCreditDialogOpen] = useState(false);
   const [deletingCreditId, setDeletingCreditId] = useState<number | null>(null);
+  const [ticketReasonForm, setTicketReasonForm] = useState<TicketReasonForm>(emptyTicketReason);
+  const [editingTicketReasonId, setEditingTicketReasonId] = useState<number | null>(null);
+  const [ticketReasonDialogOpen, setTicketReasonDialogOpen] = useState(false);
+  const [deletingTicketReasonId, setDeletingTicketReasonId] = useState<number | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingBackground, setUploadingBackground] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -219,7 +255,12 @@ export default function Admin() {
   }
 
   if (isLoading) return <Layout><div className="p-8 text-muted-foreground">Loading...</div></Layout>;
-  if (user?.role !== "admin") return <Redirect to="/member" />;
+  const role = user?.role;
+  const canManageAdmin = role === "admin";
+  const canManageAnnouncements = role === "admin" || role === "staff";
+  const canManageTickets = role === "admin" || role === "dev";
+  const defaultTab = role === "staff" ? "announcements" : role === "dev" ? "tickets" : "developments";
+  if (!canManageAdmin && !canManageAnnouncements && !canManageTickets) return <Redirect to="/member" />;
 
   const invalidate = (...keys: string[]) => keys.forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
 
@@ -265,7 +306,7 @@ export default function Admin() {
 
   // ── User Edit ─────────────────────────────────────────────────────────────────
   const openEditUser = (u: NonNullable<typeof users>[number]) => {
-    setUserEditForm({ username: u.username, displayName: u.displayName ?? "", bio: u.bio ?? "", role: u.role as "member" | "admin" });
+    setUserEditForm({ username: u.username, displayName: u.displayName ?? "", bio: u.bio ?? "", role: u.role as UserRole });
     setEditingUserId(u.id); setUserEditDialogOpen(true);
   };
   const handleSaveUser = async () => {
@@ -283,6 +324,72 @@ export default function Admin() {
       invalidate("/api/users");
     } catch { toast({ title: "Error", description: "Failed to update user.", variant: "destructive" }); }
     finally { setSavingUser(false); }
+  };
+
+  const handleUpdateTicketStatus = async (ticketId: number, status: TicketStatus) => {
+    try {
+      await updateTicket.mutateAsync({ id: ticketId, data: { status } });
+      toast({ title: "Ticket updated" });
+      invalidate("/api/tickets");
+    } catch {
+      toast({ title: "Error", description: "Failed to update ticket.", variant: "destructive" });
+    }
+  };
+
+  const openNewTicketReason = () => {
+    setTicketReasonForm(emptyTicketReason);
+    setEditingTicketReasonId(null);
+    setTicketReasonDialogOpen(true);
+  };
+
+  const openEditTicketReason = (reason: NonNullable<typeof ticketReasons>[number]) => {
+    setTicketReasonForm({
+      label: reason.label,
+      description: reason.description ?? "",
+      isActive: reason.isActive,
+      order: String(reason.order),
+    });
+    setEditingTicketReasonId(reason.id);
+    setTicketReasonDialogOpen(true);
+  };
+
+  const handleSaveTicketReason = async () => {
+    if (!ticketReasonForm.label.trim()) {
+      toast({ title: "Error", description: "Reason label is required.", variant: "destructive" });
+      return;
+    }
+
+    const payload = {
+      label: ticketReasonForm.label.trim(),
+      description: ticketReasonForm.description.trim() || undefined,
+      isActive: ticketReasonForm.isActive,
+      order: ticketReasonForm.order ? parseInt(ticketReasonForm.order, 10) : 0,
+    };
+
+    try {
+      if (editingTicketReasonId !== null) {
+        await updateTicketReason.mutateAsync({ id: editingTicketReasonId, data: payload });
+        toast({ title: "Updated", description: "Ticket reason updated." });
+      } else {
+        await createTicketReason.mutateAsync({ data: payload });
+        toast({ title: "Created", description: "Ticket reason added." });
+      }
+      setTicketReasonDialogOpen(false);
+      invalidate("/api/admin/ticket-reasons", "/api/ticket-reasons");
+    } catch {
+      toast({ title: "Error", description: "Failed to save ticket reason.", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTicketReason = async (id: number) => {
+    try {
+      await deleteTicketReason.mutateAsync({ id });
+      toast({ title: "Deleted", description: "Ticket reason deleted." });
+      invalidate("/api/admin/ticket-reasons", "/api/ticket-reasons");
+      setDeletingTicketReasonId(null);
+    } catch {
+      toast({ title: "Error", description: "Failed to delete ticket reason.", variant: "destructive" });
+    }
   };
 
   // ── Bot Follow ────────────────────────────────────────────────────────────────
@@ -419,8 +526,16 @@ export default function Admin() {
           <p className="text-muted-foreground mt-1">Manage the realm from here.</p>
         </div>
 
-        <Tabs defaultValue="developments" className="space-y-6">
+        <Tabs defaultValue={defaultTab} className="space-y-6">
           <TabsList className="bg-card border border-border">
+            {canManageAdmin && <TabsTrigger value="developments">The Forge</TabsTrigger>}
+            {canManageAnnouncements && <TabsTrigger value="announcements">Town Crier</TabsTrigger>}
+            {canManageTickets && <TabsTrigger value="tickets">Tickets</TabsTrigger>}
+            {canManageAdmin && <TabsTrigger value="users">Scribes</TabsTrigger>}
+            {canManageAdmin && <TabsTrigger value="credits">Arcadia Credits</TabsTrigger>}
+            {canManageAdmin && <TabsTrigger value="settings">Realm Settings</TabsTrigger>}
+          </TabsList>
+          <TabsList className="hidden">
             <TabsTrigger value="developments">⚒ The Forge</TabsTrigger>
             <TabsTrigger value="announcements">📣 Town Crier</TabsTrigger>
             <TabsTrigger value="users">👥 Scribes</TabsTrigger>
@@ -499,6 +614,105 @@ export default function Admin() {
           </TabsContent>
 
           {/* ── USERS ─────────────────────────────────────────────────────────── */}
+          <TabsContent value="tickets" className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-foreground">Support Tickets</h2>
+              <span className="text-xs text-muted-foreground">{tickets.length} tickets</span>
+            </div>
+            {ticketsLoading ? <Skeleton className="h-48 w-full" /> : tickets.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground border border-border rounded-xl">No tickets yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {tickets.map((ticket) => (
+                  <Card key={ticket.id} className="bg-card border-border">
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-foreground">#{ticket.id} - {ticket.reason}</span>
+                            <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full uppercase">{ticket.status.replace("_", " ")}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            By {ticket.creatorDisplayName || ticket.creatorUsername || `User ${ticket.creatorId}`}
+                          </p>
+                        </div>
+                        <Select value={ticket.status} onValueChange={(value) => handleUpdateTicketStatus(ticket.id, value as TicketStatus)}>
+                          <SelectTrigger className="w-full md:w-40 bg-input border-border">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="open">Open</SelectItem>
+                            <SelectItem value="in_progress">In Progress</SelectItem>
+                            <SelectItem value="resolved">Resolved</SelectItem>
+                            <SelectItem value="closed">Closed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{ticket.description}</p>
+                      {ticket.adminDisplayName || ticket.adminUsername ? (
+                        <p className="text-xs text-muted-foreground">Handler: {ticket.adminDisplayName || ticket.adminUsername}</p>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {canManageAdmin && (
+              <Card className="bg-card border-border">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-primary text-xl">Ticket Page Settings</CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">Atur opsi alasan yang muncul saat member membuat tiket.</p>
+                    </div>
+                    <Button onClick={openNewTicketReason} className="bg-primary text-primary-foreground hover:bg-primary/90">
+                      + Add Reason
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {ticketReasonsLoading ? <Skeleton className="h-32 w-full" /> : ticketReasons.length === 0 ? (
+                    <div className="text-center py-10 text-muted-foreground border border-border rounded-lg">No ticket reasons yet.</div>
+                  ) : (
+                    <div className="border border-border rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Reason</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead className="w-24">Order</TableHead>
+                            <TableHead className="w-24">Status</TableHead>
+                            <TableHead className="text-right w-40">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {ticketReasons.map((reason) => (
+                            <TableRow key={reason.id}>
+                              <TableCell className="font-medium text-foreground">{reason.label}</TableCell>
+                              <TableCell className="text-muted-foreground">{reason.description || "-"}</TableCell>
+                              <TableCell className="text-muted-foreground">{reason.order}</TableCell>
+                              <TableCell>
+                                <span className={`text-xs px-2 py-1 rounded-full ${reason.isActive ? "bg-green-500/15 text-green-300" : "bg-muted text-muted-foreground"}`}>
+                                  {reason.isActive ? "Active" : "Hidden"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  <Button size="sm" variant="outline" className="border-border h-7 text-xs" onClick={() => openEditTicketReason(reason)}>Edit</Button>
+                                  <Button size="sm" variant="outline" className="border-destructive/50 text-destructive hover:bg-destructive/10 h-7 text-xs" onClick={() => setDeletingTicketReasonId(reason.id)}>Delete</Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
           <TabsContent value="users" className="space-y-8">
             {/* Members Table */}
             <div className="space-y-4">
@@ -523,7 +737,7 @@ export default function Admin() {
                     <TableBody>
                       {users?.filter(u => {
                         const q = userDirSearch.toLowerCase();
-                        return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q) || (u.bio && u.bio.toLowerCase().includes(q));
+                        return !q || u.username.toLowerCase().includes(q) || u.userTag.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q) || (u.bio && u.bio.toLowerCase().includes(q));
                       }).map((u) => (
                         <TableRow key={u.id}>
                           <TableCell>
@@ -531,10 +745,16 @@ export default function Admin() {
                               <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-primary text-xs shrink-0 overflow-hidden">
                                 {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="w-full h-full object-cover" /> : (u.displayName || u.username).charAt(0).toUpperCase()}
                               </div>
-                              <div className="truncate font-medium text-foreground">{u.displayName || u.username}</div>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium text-foreground">
+                                  {u.displayName || u.username} <span className="text-primary font-semibold">{u.userTag}</span>
+                                </div>
+                              </div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-muted-foreground">@{u.username}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            @{u.username} <span className="text-primary font-medium">{u.userTag}</span>
+                          </TableCell>
                           <TableCell className="text-muted-foreground">{u.id}</TableCell>
                           <TableCell>
                             <span className={`text-xs px-2 py-1 rounded-full ${u.role === "admin" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>{u.role}</span>
@@ -543,13 +763,15 @@ export default function Admin() {
                             <div className="flex items-center justify-end gap-2">
                               <Button size="sm" variant="outline" className="border-border h-7 text-xs" onClick={() => openEditUser(u)}>Edit</Button>
                               <Select value={u.role} onValueChange={async (role) => {
-                                try { await updateRole.mutateAsync({ id: u.id, data: { role: role as "member" | "admin" } }); toast({ title: "Role updated" }); invalidate("/api/users"); }
+                                try { await updateRole.mutateAsync({ id: u.id, data: { role: role as UserRole } }); toast({ title: "Role updated" }); invalidate("/api/users"); }
                                 catch { toast({ title: "Error", description: "Failed to update role.", variant: "destructive" }); }
                               }}>
                                 <SelectTrigger className="w-24 h-7 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="member">Member</SelectItem>
                                   <SelectItem value="admin">Admin</SelectItem>
+                                  <SelectItem value="staff">Staff</SelectItem>
+                                  <SelectItem value="dev">Dev</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
@@ -579,13 +801,13 @@ export default function Admin() {
                         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg overflow-hidden">
                           <ScrollArea className="h-60">
                             <div className="p-1">
-                              {(users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }) || []).length === 0 ? (
+                              {(users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || u.userTag.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }) || []).length === 0 ? (
                                 <div className="px-3 py-2 text-xs text-muted-foreground">No results</div>
                               ) : (
-                                users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }).map(u => (
+                                users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || u.userTag.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }).map(u => (
                                   <button key={u.id} onClick={() => { setBotFollowerId(String(u.id)); setShowSingleFollower(false); setSingleSearch(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-md flex items-center gap-2">
                                     <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center font-bold text-primary text-xs shrink-0">{(u.displayName || u.username).charAt(0).toUpperCase()}</div>
-                                    <div className="truncate">{u.displayName || u.username} <span className="text-xs text-muted-foreground">(ID:{u.id})</span></div>
+                                    <div className="truncate">{u.displayName || u.username} <span className="text-primary font-medium">{u.userTag}</span> <span className="text-xs text-muted-foreground">(ID:{u.id})</span></div>
                                   </button>
                                 ))
                               )}
@@ -596,7 +818,7 @@ export default function Admin() {
                     </div>
                     {botFollowerId && (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>Selected: {users?.find(u => String(u.id) === botFollowerId)?.displayName || users?.find(u => String(u.id) === botFollowerId)?.username}</span>
+                        <span>Selected: {users?.find(u => String(u.id) === botFollowerId)?.displayName || users?.find(u => String(u.id) === botFollowerId)?.username} {users?.find(u => String(u.id) === botFollowerId)?.userTag}</span>
                         <button onClick={() => setBotFollowerId("")} className="text-destructive hover:underline">Clear</button>
                       </div>
                     )}
@@ -610,13 +832,13 @@ export default function Admin() {
                         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg overflow-hidden">
                           <ScrollArea className="h-60">
                             <div className="p-1">
-                              {(users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }) || []).length === 0 ? (
+                              {(users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || u.userTag.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }) || []).length === 0 ? (
                                 <div className="px-3 py-2 text-xs text-muted-foreground">No results</div>
                               ) : (
-                                users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }).map(u => (
+                                users?.filter(u => { const q = singleSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || u.userTag.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }).map(u => (
                                   <button key={u.id} onClick={() => { setBotFollowingId(String(u.id)); setShowSingleTarget(false); setSingleSearch(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-md flex items-center gap-2">
                                     <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center font-bold text-primary text-xs shrink-0">{(u.displayName || u.username).charAt(0).toUpperCase()}</div>
-                                    <div className="truncate">{u.displayName || u.username} <span className="text-xs text-muted-foreground">(ID:{u.id})</span></div>
+                                    <div className="truncate">{u.displayName || u.username} <span className="text-primary font-medium">{u.userTag}</span> <span className="text-xs text-muted-foreground">(ID:{u.id})</span></div>
                                   </button>
                                 ))
                               )}
@@ -627,7 +849,7 @@ export default function Admin() {
                     </div>
                     {botFollowingId && (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>Selected: {users?.find(u => String(u.id) === botFollowingId)?.displayName || users?.find(u => String(u.id) === botFollowingId)?.username}</span>
+                        <span>Selected: {users?.find(u => String(u.id) === botFollowingId)?.displayName || users?.find(u => String(u.id) === botFollowingId)?.username} {users?.find(u => String(u.id) === botFollowingId)?.userTag}</span>
                         <button onClick={() => setBotFollowingId("")} className="text-destructive hover:underline">Clear</button>
                       </div>
                     )}
@@ -655,13 +877,13 @@ export default function Admin() {
                         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg overflow-hidden">
                           <ScrollArea className="h-60">
                             <div className="p-1">
-                              {(users?.filter(u => { const q = bulkSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }) || []).length === 0 ? (
+                              {(users?.filter(u => { const q = bulkSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || u.userTag.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }) || []).length === 0 ? (
                                 <div className="px-3 py-2 text-xs text-muted-foreground">No results</div>
                               ) : (
-                                users?.filter(u => { const q = bulkSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }).map(u => (
+                                users?.filter(u => { const q = bulkSearch.toLowerCase(); return !q || u.username.toLowerCase().includes(q) || u.userTag.toLowerCase().includes(q) || (u.displayName && u.displayName.toLowerCase().includes(q)) || String(u.id).includes(q); }).map(u => (
                                   <button key={u.id} onClick={() => { setBulkTargetId(String(u.id)); setShowBulkTarget(false); setBulkSearch(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-md flex items-center gap-2">
                                     <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center font-bold text-primary text-xs shrink-0">{(u.displayName || u.username).charAt(0).toUpperCase()}</div>
-                                    <div className="truncate">{u.displayName || u.username} <span className="text-xs text-muted-foreground">(ID:{u.id})</span></div>
+                                    <div className="truncate">{u.displayName || u.username} <span className="text-primary font-medium">{u.userTag}</span> <span className="text-xs text-muted-foreground">(ID:{u.id})</span></div>
                                   </button>
                                 ))
                               )}
@@ -672,7 +894,7 @@ export default function Admin() {
                     </div>
                     {bulkTargetId && (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>Selected: {users?.find(u => String(u.id) === bulkTargetId)?.displayName || users?.find(u => String(u.id) === bulkTargetId)?.username}</span>
+                        <span>Selected: {users?.find(u => String(u.id) === bulkTargetId)?.displayName || users?.find(u => String(u.id) === bulkTargetId)?.username} {users?.find(u => String(u.id) === bulkTargetId)?.userTag}</span>
                         <button onClick={() => setBulkTargetId("")} className="text-destructive hover:underline">Clear</button>
                       </div>
                     )}
@@ -930,6 +1152,42 @@ export default function Admin() {
       </Dialog>
 
       {/* ── User Edit Dialog ─────────────────────────────────────────────────────── */}
+      <Dialog open={ticketReasonDialogOpen} onOpenChange={setTicketReasonDialogOpen}>
+        <DialogContent className="bg-card border-border max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-primary">{editingTicketReasonId ? "Edit Ticket Reason" : "New Ticket Reason"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Reason Label *</Label>
+              <Input value={ticketReasonForm.label} onChange={(e) => setTicketReasonForm({ ...ticketReasonForm, label: e.target.value })} placeholder="Nickname Minecraft / Instagram / YouTube" className="bg-input border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea value={ticketReasonForm.description} onChange={(e) => setTicketReasonForm({ ...ticketReasonForm, description: e.target.value })} placeholder="Short description shown to admins..." className="bg-input border-border resize-none" rows={3} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={ticketReasonForm.isActive ? "active" : "hidden"} onValueChange={(v) => setTicketReasonForm({ ...ticketReasonForm, isActive: v === "active" })}>
+                  <SelectTrigger className="bg-input border-border"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="hidden">Hidden</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Sort Order</Label>
+                <Input type="number" value={ticketReasonForm.order} onChange={(e) => setTicketReasonForm({ ...ticketReasonForm, order: e.target.value })} placeholder="0" className="bg-input border-border" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="border-border" onClick={() => setTicketReasonDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveTicketReason} className="bg-primary text-primary-foreground hover:bg-primary/90">{editingTicketReasonId ? "Save Changes" : "Create Reason"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={userEditDialogOpen} onOpenChange={setUserEditDialogOpen}>
         <DialogContent className="bg-card border-border max-w-md">
           <DialogHeader><DialogTitle className="text-primary">Edit User</DialogTitle></DialogHeader>
@@ -939,9 +1197,9 @@ export default function Admin() {
             <div className="space-y-2"><Label>Bio</Label><Textarea value={userEditForm.bio} onChange={(e) => setUserEditForm({ ...userEditForm, bio: e.target.value })} placeholder="Optional bio" className="bg-input border-border resize-none" rows={3} /></div>
             <div className="space-y-2">
               <Label>Role</Label>
-              <Select value={userEditForm.role} onValueChange={(v) => setUserEditForm({ ...userEditForm, role: v as "member" | "admin" })}>
+              <Select value={userEditForm.role} onValueChange={(v) => setUserEditForm({ ...userEditForm, role: v as UserRole })}>
                 <SelectTrigger className="bg-input border-border"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="member">Member</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="member">Member</SelectItem><SelectItem value="admin">Admin</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="dev">Dev</SelectItem></SelectContent>
               </Select>
             </div>
           </div>
@@ -976,6 +1234,17 @@ export default function Admin() {
       </Dialog>
 
       {/* ── Credit Edit Dialog ───────────────────────────────────────────────────── */}
+      <Dialog open={deletingTicketReasonId !== null} onOpenChange={() => setDeletingTicketReasonId(null)}>
+        <DialogContent className="bg-card border-border max-w-sm">
+          <DialogHeader><DialogTitle>Delete ticket reason?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Alasan ini tidak akan muncul lagi untuk tiket baru setelah dihapus.</p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="border-border" onClick={() => setDeletingTicketReasonId(null)}>Cancel</Button>
+            <Button className="bg-destructive hover:bg-destructive/90 text-white" onClick={() => deletingTicketReasonId && handleDeleteTicketReason(deletingTicketReasonId)}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={creditDialogOpen} onOpenChange={setCreditDialogOpen}>
         <DialogContent className="bg-card border-border max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-primary">{editingCreditId ? "Edit Credit" : "New Credit"}</DialogTitle></DialogHeader>

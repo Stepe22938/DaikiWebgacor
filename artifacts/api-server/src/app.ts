@@ -48,22 +48,11 @@ app.use(
   })),
 );
 
-// Intercept x-switch-clerk-id for instant local account switching
+// Keep the selected local switch account visible to downstream handlers.
 app.use((req, res, next) => {
   const switchClerkId = req.headers["x-switch-clerk-id"];
   if (switchClerkId && typeof switchClerkId === "string") {
-    (req as any).auth = {
-      userId: switchClerkId,
-      sessionId: "mock-session-id",
-      orgId: null,
-      actor: null,
-      sessionClaims: {
-        sub: switchClerkId,
-      },
-      claims: {
-        sub: switchClerkId,
-      },
-    };
+    (req as any).switchClerkId = switchClerkId.trim();
   }
   next();
 });

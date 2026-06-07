@@ -25,6 +25,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export default function Member() {
   const { data: user, isLoading: userLoading } = useGetMe();
   const { user: clerkUser } = useUser();
@@ -605,14 +607,35 @@ export default function Member() {
 
 function DevSwitchAccountCard() {
   const clerk = useClerk();
-  const { data: users = [], isLoading: isUsersLoading } = useListSwitchableUsers();
   const { data: currentUser } = useGetMe();
+  const activeSwitchClerkId = typeof window !== "undefined" ? localStorage.getItem("switch_clerk_id") : null;
+  const canUseDevSwitch = currentUser?.role === "admin" || currentUser?.role === "dev";
+  const { data: users = [], isLoading: isUsersLoading } = useListSwitchableUsers({
+    query: { enabled: Boolean(canUseDevSwitch) } as any,
+  });
   const [selectedClerkId, setSelectedClerkId] = useState("");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const activeSwitchClerkId = typeof window !== "undefined" ? localStorage.getItem("switch_clerk_id") : null;
   const sessions = clerk.client?.sessions || [];
   const activeSessionId = clerk.session?.id;
+  const activeSwitchUser = users.find((u) => u.clerkId === activeSwitchClerkId);
+
+  useEffect(() => {
+    if (activeSwitchClerkId) {
+      setSelectedClerkId(activeSwitchClerkId);
+      return;
+    }
+    if (!selectedClerkId && currentUser?.clerkId) {
+      setSelectedClerkId(currentUser.clerkId);
+    }
+  }, [activeSwitchClerkId, currentUser?.clerkId, selectedClerkId]);
+
+  const reloadWithFreshCache = async () => {
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    window.location.reload();
+  };
 
   const handleSwitchClerkSession = async (sessionId: string) => {
     try {
@@ -620,7 +643,7 @@ function DevSwitchAccountCard() {
       await clerk.setActive({ session: sessionId });
       // Clear mock bypass when switching to a real session to avoid confusion
       localStorage.removeItem("switch_clerk_id");
-      window.location.reload();
+      await reloadWithFreshCache();
     } catch (err: any) {
       toast({ title: "Failed to switch", description: err.message, variant: "destructive" });
     }
@@ -635,35 +658,32 @@ function DevSwitchAccountCard() {
         if (activeSessionId === sessionId) {
           localStorage.removeItem("switch_clerk_id");
         }
-        window.location.reload();
+        await reloadWithFreshCache();
       }
     } catch (err: any) {
       toast({ title: "Failed to sign out", description: err.message, variant: "destructive" });
     }
   };
 
-  const handleAddAccount = () => {
-    // Redirect to sign in page using Clerk SDK to ensure correct multi-session login flow
-    clerk.redirectToSignIn({
-      signInForceRedirectUrl: window.location.origin + "/member",
-    });
+  const handleAddAccount = async () => {
+    const signInUrl = `${window.location.origin}${basePath}/sign-in`;
+
+    localStorage.removeItem("switch_clerk_id");
+    toast({ title: "Login akun lain", description: "Membuka sign-in flow bawaan Clerk." });
+    window.location.href = signInUrl;
   };
 
   const handleSwitchMock = (clerkId: string) => {
     if (!clerkId) return;
     localStorage.setItem("switch_clerk_id", clerkId);
     toast({ title: "Account Switched (Mock)", description: "Reloading database session..." });
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
+    window.setTimeout(() => void reloadWithFreshCache(), 500);
   };
 
   const handleRevertMock = () => {
     localStorage.removeItem("switch_clerk_id");
     toast({ title: "Session Reverted", description: "Reloading original Clerk account..." });
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
+    window.setTimeout(() => void reloadWithFreshCache(), 500);
   };
 
   const isLoading = isUsersLoading;
@@ -679,19 +699,28 @@ function DevSwitchAccountCard() {
           </CardTitle>
           {activeSwitchClerkId && (
             <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider">
-              Mock Bypassed
+              Bypassed
             </span>
           )}
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Simpan banyak akun login dan berpindah secara instan, atau gunakan mode bypass developer.
+          Simpan banyak akun login dan berpindah cepat. Mode bypass hanya untuk admin/dev.
         </p>
+        {activeSwitchClerkId && (
+          <div className="mt-3 rounded-md border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+            Aktif sebagai <strong>{activeSwitchUser?.displayName || activeSwitchUser?.username || currentUser?.displayName || currentUser?.username}</strong>
+            {activeSwitchUser?.userTag && <span className="ml-1 text-amber-400">{activeSwitchUser.userTag}</span>}
+            <Button variant="link" onClick={handleRevertMock} className="ml-2 h-auto p-0 text-xs font-bold text-amber-400">
+              Revert
+            </Button>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <Tabs defaultValue="sessions" className="w-full">
           <TabsList className="grid w-full grid-cols-2 bg-background/60 border border-border/60 mb-4 h-9">
             <TabsTrigger value="sessions" className="text-xs py-1.5">Saved Accounts ({sessions.length})</TabsTrigger>
-            <TabsTrigger value="bypass" className="text-xs py-1.5">Dev Quick Switch</TabsTrigger>
+            <TabsTrigger value="bypass" className="text-xs py-1.5" disabled={!canUseDevSwitch && !activeSwitchClerkId}>Dev Quick Switch</TabsTrigger>
           </TabsList>
 
           {/* Clerk Native Sessions Switcher (Roblox-style) */}
@@ -700,6 +729,16 @@ function DevSwitchAccountCard() {
               {sessions.map((sess) => {
                 const u = sess.user;
                 if (!u) return null;
+                const dbUser =
+                  users.find((candidate) => candidate.clerkId === u.id) ??
+                  (currentUser?.clerkId === u.id ? currentUser : undefined);
+                const sessionDisplayName = dbUser?.displayName || dbUser?.username || u.fullName || u.username || "Player";
+                const sessionUsername =
+                  dbUser?.username ||
+                  u.username ||
+                  u.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+                  "player";
+                const sessionTag = dbUser?.userTag;
                 const isActive = sess.id === activeSessionId && !activeSwitchClerkId;
                 return (
                   <div key={sess.id} className={`flex items-center justify-between p-3 transition-colors ${isActive ? "bg-amber-500/5" : "hover:bg-muted/10"}`}>
@@ -707,12 +746,13 @@ function DevSwitchAccountCard() {
                       <Avatar className="h-9 w-9 border border-border/80">
                         <AvatarImage src={u.imageUrl} />
                         <AvatarFallback className="text-xs font-bold">
-                          {getInitials(u.fullName || u.username || u.primaryEmailAddress?.emailAddress)}
+                          {getInitials(sessionDisplayName)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                          {u.fullName || u.username || "Player"}
+                          <span className="truncate">{sessionDisplayName}</span>
+                          {sessionTag && <span className="shrink-0 text-xs font-bold text-primary">{sessionTag}</span>}
                           {isActive && (
                             <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-semibold uppercase">
                               Active
@@ -720,7 +760,10 @@ function DevSwitchAccountCard() {
                           )}
                         </p>
                         <p className="text-[11px] text-muted-foreground truncate">
-                          {u.primaryEmailAddress?.emailAddress || `@${u.username}`}
+                          @{sessionUsername}
+                          {u.primaryEmailAddress?.emailAddress && (
+                            <span className="text-muted-foreground/70"> · {u.primaryEmailAddress.emailAddress}</span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -754,7 +797,7 @@ function DevSwitchAccountCard() {
             </div>
 
             <Button
-              onClick={handleAddAccount}
+              onClick={() => void handleAddAccount()}
               className="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold"
             >
               ➕ Add Account (Sign In ke Akun Lain)
@@ -766,6 +809,15 @@ function DevSwitchAccountCard() {
 
           {/* Dev Mock Bypass Switcher */}
           <TabsContent value="bypass" className="space-y-4">
+            {!canUseDevSwitch && activeSwitchClerkId ? (
+              <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-200">
+                Kamu sedang memakai mode bypass. Klik <strong>Revert</strong> untuk balik ke akun Clerk asli.
+              </div>
+            ) : !canUseDevSwitch ? (
+              <div className="rounded-lg border border-border bg-background/25 p-3 text-xs text-muted-foreground">
+                Dev Quick Switch hanya tersedia untuk role admin/dev.
+              </div>
+            ) : (
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
               <div className="flex-1">
                 <Select
@@ -808,7 +860,7 @@ function DevSwitchAccountCard() {
               <div className="flex gap-2">
                 <Button
                   onClick={() => handleSwitchMock(selectedClerkId)}
-                  disabled={!selectedClerkId || selectedClerkId === currentUser?.clerkId}
+                  disabled={!selectedClerkId || selectedClerkId === activeSwitchClerkId || (!activeSwitchClerkId && selectedClerkId === currentUser?.clerkId)}
                   className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs"
                 >
                   Bypass Switch
@@ -824,6 +876,7 @@ function DevSwitchAccountCard() {
                 )}
               </div>
             </div>
+            )}
 
             {activeSwitchClerkId && (
               <p className="text-[10px] text-amber-500/90 bg-amber-500/5 border border-amber-500/20 rounded p-2 leading-relaxed">

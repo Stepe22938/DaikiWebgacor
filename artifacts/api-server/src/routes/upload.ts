@@ -1,5 +1,5 @@
 import express, { Router, type IRouter } from "express";
-import { getAuth } from "@clerk/express";
+import { getAuth } from "../lib/auth";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import fs from "node:fs";
