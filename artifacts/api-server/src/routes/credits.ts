@@ -11,6 +11,10 @@ async function getDbUser(clerkId: string) {
   return db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, clerkId) });
 }
 
+function canManageCredits(role: string | null | undefined) {
+  return role === "admin" || role === "dev_website";
+}
+
 // --- GET ALL CREDITS ---
 router.get("/credits", async (req, res): Promise<void> => {
   try {
@@ -40,7 +44,7 @@ router.post("/credits", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await getDbUser(auth.userId);
-  if (!user || user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!user || !canManageCredits(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const parsed = CreateCreditSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -77,7 +81,7 @@ router.patch("/credits/:id", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await getDbUser(auth.userId);
-  if (!user || user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!user || !canManageCredits(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const creditId = parseInt(req.params.id as string, 10);
   if (isNaN(creditId)) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -115,7 +119,7 @@ router.delete("/credits/:id", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await getDbUser(auth.userId);
-  if (!user || user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!user || !canManageCredits(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const creditId = parseInt(req.params.id as string, 10);
   if (isNaN(creditId)) { res.status(400).json({ error: "Invalid ID" }); return; }

@@ -29,7 +29,7 @@ export const GetMeResponse = zod.object({
   "userTag": zod.string().regex(getMeResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
@@ -58,7 +58,7 @@ export const UpdateMeResponse = zod.object({
   "userTag": zod.string().regex(updateMeResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
@@ -79,7 +79,7 @@ export const ListUsersResponseItem = zod.object({
   "userTag": zod.string().regex(listUsersResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
@@ -101,7 +101,7 @@ export const ListSwitchableUsersResponseItem = zod.object({
   "userTag": zod.string().regex(listSwitchableUsersResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
@@ -118,7 +118,7 @@ export const UpdateUserRoleParams = zod.object({
 })
 
 export const UpdateUserRoleBody = zod.object({
-  "role": zod.enum(['member', 'admin', 'staff', 'dev'])
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website'])
 })
 
 export const updateUserRoleResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
@@ -131,7 +131,7 @@ export const UpdateUserRoleResponse = zod.object({
   "userTag": zod.string().regex(updateUserRoleResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
@@ -538,7 +538,7 @@ export const AdminUpdateUserBody = zod.object({
   "displayName": zod.string().optional(),
   "bio": zod.string().optional(),
   "youtubeLiveUrl": zod.string().optional(),
-  "role": zod.enum(['member', 'admin', 'staff', 'dev']).optional(),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']).optional(),
   "mcUsername": zod.string().optional()
 })
 
@@ -552,7 +552,7 @@ export const AdminUpdateUserResponse = zod.object({
   "userTag": zod.string().regex(adminUpdateUserResponseUserTagRegExp),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "role": zod.enum(['member', 'admin', 'staff', 'dev']),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
@@ -1362,5 +1362,4 @@ export const GetMyFormResponseResponse = zod.object({
 })).optional()
 }).optional()
 })
-
 

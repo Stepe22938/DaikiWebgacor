@@ -193,7 +193,7 @@ export default function Member() {
             </h1>
             <p className="text-muted-foreground">Your player portal.</p>
           </div>
-          {["admin", "staff", "dev"].includes(user?.role ?? "") && (
+          {["admin", "staff", "dev", "dev_website"].includes(user?.role ?? "") && (
             <Link href="/admin" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors">
               Admin Arcadia
             </Link>
@@ -609,7 +609,7 @@ function DevSwitchAccountCard() {
   const clerk = useClerk();
   const { data: currentUser } = useGetMe();
   const activeSwitchClerkId = typeof window !== "undefined" ? localStorage.getItem("switch_clerk_id") : null;
-  const canUseDevSwitch = currentUser?.role === "admin" || currentUser?.role === "dev";
+  const canUseDevSwitch = currentUser?.role === "dev_website";
   const { data: users = [], isLoading: isUsersLoading } = useListSwitchableUsers({
     query: { enabled: Boolean(canUseDevSwitch) } as any,
   });
@@ -704,7 +704,7 @@ function DevSwitchAccountCard() {
           )}
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Simpan banyak akun login dan berpindah cepat. Mode bypass hanya untuk admin/dev.
+          Simpan banyak akun login dan berpindah cepat. Mode bypass hanya untuk Dev Website.
         </p>
         {activeSwitchClerkId && (
           <div className="mt-3 rounded-md border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
@@ -815,7 +815,7 @@ function DevSwitchAccountCard() {
               </div>
             ) : !canUseDevSwitch ? (
               <div className="rounded-lg border border-border bg-background/25 p-3 text-xs text-muted-foreground">
-                Dev Quick Switch hanya tersedia untuk role admin/dev.
+                Dev Quick Switch hanya tersedia untuk role Dev Website.
               </div>
             ) : (
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">

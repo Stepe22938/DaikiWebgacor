@@ -66,7 +66,7 @@ import {
 
 type DevStatus = "planned" | "in_progress" | "completed" | "paused";
 type AnnType = "update" | "event" | "maintenance" | "general";
-type UserRole = "member" | "admin" | "staff" | "dev";
+type UserRole = "member" | "admin" | "staff" | "dev" | "dev_website";
 type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 
 interface DevForm { title: string; description: string; category: string; status: DevStatus; progress: string; order: string; }
@@ -121,11 +121,27 @@ const STATUS_COLORS: Record<DevStatus, string> = {
   paused: "bg-gray-700/40 text-gray-400",
 };
 const STATUS_LABELS: Record<DevStatus, string> = { planned: "Planned", in_progress: "In Progress", completed: "Completed", paused: "Paused" };
+const ROLE_LABELS: Record<UserRole, string> = {
+  member: "Member",
+  admin: "Admin",
+  staff: "Staff",
+  dev: "Dev",
+  dev_website: "Dev Website",
+};
+
+const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
+  member: "bg-muted text-muted-foreground",
+  admin: "bg-primary/20 text-primary",
+  staff: "bg-sky-500/15 text-sky-300",
+  dev: "bg-emerald-500/15 text-emerald-300",
+  dev_website: "bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30",
+};
 
 export default function Admin() {
   const { data: user, isLoading } = useGetMe();
   const queryRole = user?.role;
-  const canQueryAdmin = queryRole === "admin";
+  const isDevWebsite = queryRole === "dev_website";
+  const canQueryAdmin = queryRole === "admin" || isDevWebsite;
   const { data: devs, isLoading: devsLoading } = useListDevelopments();
   const { data: anns, isLoading: annsLoading } = useListAnnouncements();
   const { data: users, isLoading: usersLoading } = useListUsers({
@@ -256,9 +272,10 @@ export default function Admin() {
 
   if (isLoading) return <Layout><div className="p-8 text-muted-foreground">Loading...</div></Layout>;
   const role = user?.role;
-  const canManageAdmin = role === "admin";
-  const canManageAnnouncements = role === "admin" || role === "staff";
-  const canManageTickets = role === "admin" || role === "dev";
+  const canManageAdmin = role === "admin" || role === "dev_website";
+  const canManageAnnouncements = role === "admin" || role === "staff" || role === "dev_website";
+  const canManageTickets = role === "admin" || role === "dev" || role === "dev_website";
+  const canManageDevWebsiteRole = role === "dev_website";
   const defaultTab = role === "staff" ? "announcements" : role === "dev" ? "tickets" : "developments";
   if (!canManageAdmin && !canManageAnnouncements && !canManageTickets) return <Redirect to="/member" />;
 
@@ -757,21 +774,32 @@ export default function Admin() {
                           </TableCell>
                           <TableCell className="text-muted-foreground">{u.id}</TableCell>
                           <TableCell>
-                            <span className={`text-xs px-2 py-1 rounded-full ${u.role === "admin" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>{u.role}</span>
+                            <span className={`text-xs px-2 py-1 rounded-full ${ROLE_BADGE_CLASSES[u.role as UserRole] ?? ROLE_BADGE_CLASSES.member}`}>
+                              {ROLE_LABELS[u.role as UserRole] ?? u.role}
+                            </span>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button size="sm" variant="outline" className="border-border h-7 text-xs" onClick={() => openEditUser(u)}>Edit</Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-border h-7 text-xs"
+                                onClick={() => openEditUser(u)}
+                                disabled={u.role === "dev_website" && !canManageDevWebsiteRole}
+                              >
+                                Edit
+                              </Button>
                               <Select value={u.role} onValueChange={async (role) => {
                                 try { await updateRole.mutateAsync({ id: u.id, data: { role: role as UserRole } }); toast({ title: "Role updated" }); invalidate("/api/users"); }
                                 catch { toast({ title: "Error", description: "Failed to update role.", variant: "destructive" }); }
-                              }}>
-                                <SelectTrigger className="w-24 h-7 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
+                              }} disabled={u.role === "dev_website" && !canManageDevWebsiteRole}>
+                                <SelectTrigger className="w-32 h-7 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="member">Member</SelectItem>
                                   <SelectItem value="admin">Admin</SelectItem>
                                   <SelectItem value="staff">Staff</SelectItem>
                                   <SelectItem value="dev">Dev</SelectItem>
+                                  {(canManageDevWebsiteRole || u.role === "dev_website") && <SelectItem value="dev_website">Dev Website</SelectItem>}
                                 </SelectContent>
                               </Select>
                             </div>
@@ -1199,7 +1227,13 @@ export default function Admin() {
               <Label>Role</Label>
               <Select value={userEditForm.role} onValueChange={(v) => setUserEditForm({ ...userEditForm, role: v as UserRole })}>
                 <SelectTrigger className="bg-input border-border"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="member">Member</SelectItem><SelectItem value="admin">Admin</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="dev">Dev</SelectItem></SelectContent>
+                <SelectContent>
+                  <SelectItem value="member">Member</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="staff">Staff</SelectItem>
+                  <SelectItem value="dev">Dev</SelectItem>
+                  {canManageDevWebsiteRole && <SelectItem value="dev_website">Dev Website</SelectItem>}
+                </SelectContent>
               </Select>
             </div>
           </div>

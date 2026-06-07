@@ -19,7 +19,7 @@ async function requireAdmin(req: Request) {
   const auth = getAuth(req);
   if (!auth.userId) return null;
   const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  return user?.role === "admin" ? user : null;
+  return user?.role === "admin" || user?.role === "dev_website" ? user : null;
 }
 
 async function getUserBadges(userId: number) {

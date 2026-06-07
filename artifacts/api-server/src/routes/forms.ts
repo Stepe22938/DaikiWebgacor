@@ -19,6 +19,10 @@ async function getDbUser(clerkId: string) {
   return db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, clerkId) });
 }
 
+function canManageForms(role: string | null | undefined) {
+  return role === "admin" || role === "dev_website";
+}
+
 // Helper to build a full form detail (with fields/options + counts)
 async function buildFormDetail(formId: number) {
   const form = await db.query.formsTable.findFirst({ where: eq(formsTable.id, formId) });
@@ -86,7 +90,7 @@ router.get("/forms", async (req, res): Promise<void> => {
   const user = await getDbUser(auth.userId);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-  const rows = user.role === "admin"
+  const rows = canManageForms(user.role)
     ? await db.select().from(formsTable).orderBy(desc(formsTable.createdAt))
     : await db.select().from(formsTable).where(eq(formsTable.status, "open")).orderBy(desc(formsTable.createdAt));
 
@@ -130,7 +134,7 @@ router.post("/forms", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await getDbUser(auth.userId);
-  if (!user || user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!user || !canManageForms(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const parsed = CreateFormSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -187,7 +191,7 @@ router.get("/forms/:id", async (req, res): Promise<void> => {
   if (!detail) { res.status(404).json({ error: "Form not found" }); return; }
 
   // Members can only see open forms
-  if (user.role !== "admin" && detail.status !== "open") {
+  if (!canManageForms(user.role) && detail.status !== "open") {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
@@ -206,7 +210,7 @@ router.patch("/forms/:id", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await getDbUser(auth.userId);
-  if (!user || user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!user || !canManageForms(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const formId = parseInt(req.params.id as string, 10);
   const form = await db.query.formsTable.findFirst({ where: eq(formsTable.id, formId) });
@@ -231,7 +235,7 @@ router.delete("/forms/:id", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await getDbUser(auth.userId);
-  if (!user || user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!user || !canManageForms(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const formId = parseInt(req.params.id as string, 10);
   await db.delete(formsTable).where(eq(formsTable.id, formId));
@@ -328,7 +332,7 @@ router.get("/forms/:id/responses", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await getDbUser(auth.userId);
-  if (!user || user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!user || !canManageForms(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const formId = parseInt(req.params.id as string, 10);
   const form = await db.query.formsTable.findFirst({ where: eq(formsTable.id, formId) });

@@ -17,6 +17,7 @@ export const UserRole = {
   admin: 'admin',
   staff: 'staff',
   dev: 'dev',
+  dev_website: 'dev_website',
 } as const;
 
 export interface User {
@@ -55,6 +56,7 @@ export const UserRoleUpdateRole = {
   admin: 'admin',
   staff: 'staff',
   dev: 'dev',
+  dev_website: 'dev_website',
 } as const;
 
 export interface UserRoleUpdate {
@@ -106,6 +108,7 @@ export const AdminUserUpdateRole = {
   admin: 'admin',
   staff: 'staff',
   dev: 'dev',
+  dev_website: 'dev_website',
 } as const;
 
 export interface AdminUserUpdate {
@@ -797,4 +800,3 @@ export interface UpdateCreditInput {
   borderType?: string;
   order?: number;
 }
-

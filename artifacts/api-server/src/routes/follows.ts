@@ -317,7 +317,7 @@ router.post("/admin/bulk-followers", async (req, res): Promise<void> => {
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  if (!me || me.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!me || (me.role !== "admin" && me.role !== "dev_website")) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const parsed = AdminBulkCreateFollowersBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -385,7 +385,7 @@ router.post("/admin/follows", async (req, res): Promise<void> => {
   }
 
   const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  if (!me || me.role !== "admin") {
+  if (!me || (me.role !== "admin" && me.role !== "dev_website")) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }

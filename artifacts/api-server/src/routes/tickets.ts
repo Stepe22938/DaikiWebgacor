@@ -30,11 +30,11 @@ async function requireAdmin(req: Parameters<typeof getAuth>[0]) {
   const auth = getAuth(req);
   if (!auth.userId) return null;
   const user = await getDbUser(auth.userId);
-  return user?.role === "admin" ? user : null;
+  return user?.role === "admin" || user?.role === "dev_website" ? user : null;
 }
 
 function canManageTickets(user: typeof usersTable.$inferSelect) {
-  return user.role === "admin" || user.role === "dev";
+  return user.role === "admin" || user.role === "dev" || user.role === "dev_website";
 }
 
 router.get("/ticket-reasons", async (_req, res): Promise<void> => {

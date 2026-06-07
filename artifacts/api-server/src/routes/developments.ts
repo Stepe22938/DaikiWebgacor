@@ -20,7 +20,7 @@ async function requireAdmin(req: any): Promise<boolean> {
   const auth = getAuth(req);
   if (!auth.userId) return false;
   const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  return user?.role === "admin";
+  return user?.role === "admin" || user?.role === "dev_website";
 }
 
 router.get("/developments", async (req, res): Promise<void> => {

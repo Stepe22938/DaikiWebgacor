@@ -80,7 +80,7 @@ router.post("/settings", async (req, res): Promise<void> => {
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const user = await getDbUser(auth.userId);
-  if (!user || user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!user || (user.role !== "admin" && user.role !== "dev_website")) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const parsed = HomepageSettingsSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }

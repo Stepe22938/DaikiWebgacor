@@ -30,7 +30,7 @@ router.get("/announcements", async (req, res): Promise<void> => {
 
 router.post("/announcements", async (req, res): Promise<void> => {
   const { role, userId, username } = await getActor(req);
-  if (role !== "admin" && role !== "staff") {
+  if (role !== "admin" && role !== "staff" && role !== "dev_website") {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -69,7 +69,7 @@ router.get("/announcements/:id", async (req, res): Promise<void> => {
 
 router.patch("/announcements/:id", async (req, res): Promise<void> => {
   const { role } = await getActor(req);
-  if (role !== "admin") {
+  if (role !== "admin" && role !== "dev_website") {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -102,7 +102,7 @@ router.patch("/announcements/:id", async (req, res): Promise<void> => {
 
 router.delete("/announcements/:id", async (req, res): Promise<void> => {
   const { role } = await getActor(req);
-  if (role !== "admin") {
+  if (role !== "admin" && role !== "dev_website") {
     res.status(403).json({ error: "Forbidden" });
     return;
   }

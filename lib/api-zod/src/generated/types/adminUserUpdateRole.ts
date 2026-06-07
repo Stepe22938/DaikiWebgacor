@@ -14,4 +14,5 @@ export const AdminUserUpdateRole = {
   admin: 'admin',
   staff: 'staff',
   dev: 'dev',
+  dev_website: 'dev_website',
 } as const;

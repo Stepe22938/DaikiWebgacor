@@ -21,6 +21,16 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+const DEV_WEBSITE_ROLE = "dev_website";
+
+function canManageAdminTools(role: string | null | undefined) {
+  return role === "admin" || role === DEV_WEBSITE_ROLE;
+}
+
+function canManageProtectedRole(actorRole: string | null | undefined, nextRole?: string | null, targetRole?: string | null) {
+  if (actorRole === DEV_WEBSITE_ROLE) return true;
+  return nextRole !== DEV_WEBSITE_ROLE && targetRole !== DEV_WEBSITE_ROLE;
+}
 
 function normalizeUserTagBase(name: string) {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -243,7 +253,7 @@ router.get("/users/switchable", async (req, res): Promise<void> => {
   }
 
   const currentUser = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "dev")) {
+  if (!currentUser || currentUser.role !== DEV_WEBSITE_ROLE) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -260,7 +270,7 @@ router.get("/users", async (req, res): Promise<void> => {
   }
 
   const currentUser = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  if (!currentUser || currentUser.role !== "admin") {
+  if (!currentUser || !canManageAdminTools(currentUser.role)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -277,7 +287,7 @@ router.patch("/users/:id/role", async (req, res): Promise<void> => {
   }
 
   const currentUser = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  if (!currentUser || currentUser.role !== "admin") {
+  if (!currentUser || !canManageAdminTools(currentUser.role)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -295,15 +305,21 @@ router.patch("/users/:id/role", async (req, res): Promise<void> => {
     return;
   }
 
+  const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, params.data.id) });
+  if (!targetUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  if (!canManageProtectedRole(currentUser.role, body.data.role, targetUser.role)) {
+    res.status(403).json({ error: "Only Dev Website can manage Dev Website role" });
+    return;
+  }
+
   const [updated] = await db.update(usersTable)
     .set({ role: body.data.role, updatedAt: new Date() })
     .where(eq(usersTable.id, params.data.id))
     .returning();
-
-  if (!updated) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
 
   res.json(UpdateUserRoleResponse.parse(serializeDates(updated)));
 });
@@ -313,7 +329,7 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const currentUser = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  if (!currentUser || currentUser.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!currentUser || !canManageAdminTools(currentUser.role)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = AdminUpdateUserParams.safeParse({ id: parseInt(rawId, 10) });
@@ -321,6 +337,13 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
 
   const body = AdminUpdateUserBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+
+  const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, params.data.id) });
+  if (!targetUser) { res.status(404).json({ error: "User not found" }); return; }
+  if (!canManageProtectedRole(currentUser.role, body.data.role, targetUser.role)) {
+    res.status(403).json({ error: "Only Dev Website can manage Dev Website role" });
+    return;
+  }
 
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (body.data.username !== undefined) updateData.username = body.data.username;
@@ -335,7 +358,6 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
     .where(eq(usersTable.id, params.data.id))
     .returning();
 
-  if (!updated) { res.status(404).json({ error: "User not found" }); return; }
   res.json(AdminUpdateUserResponse.parse(serializeDates(updated)));
 });
 
@@ -344,7 +366,7 @@ router.delete("/admin/users/:id", async (req, res): Promise<void> => {
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const currentUser = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
-  if (!currentUser || currentUser.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!currentUser || !canManageAdminTools(currentUser.role)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const userId = parseInt(rawId, 10);
@@ -353,6 +375,11 @@ router.delete("/admin/users/:id", async (req, res): Promise<void> => {
   try {
     const userToDelete = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userId) });
     if (!userToDelete) { res.status(404).json({ error: "User not found" }); return; }
+
+    if (!canManageProtectedRole(currentUser.role, null, userToDelete.role)) {
+      res.status(403).json({ error: "Only Dev Website can delete Dev Website users" });
+      return;
+    }
 
     // Prevent deleting self
     if (userToDelete.clerkId === auth.userId) {
