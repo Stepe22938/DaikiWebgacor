@@ -1351,7 +1351,7 @@ components:
           type: ["string", "null"]
         role:
           type: string
-          enum: [member, admin, staff, dev]
+          enum: [member, admin, staff, dev, dev_website]
         bio:
           type: ["string", "null"]
         youtubeLiveUrl:
@@ -1381,7 +1381,7 @@ components:
       properties:
         role:
           type: string
-          enum: [member, admin, staff, dev]
+          enum: [member, admin, staff, dev, dev_website]
 
     PublicUser:
       type: object
@@ -1451,7 +1451,7 @@ components:
           type: string
         role:
           type: string
-          enum: [member, admin, staff, dev]
+          enum: [member, admin, staff, dev, dev_website]
         mcUsername:
           type: string
 
@@ -1648,6 +1648,8 @@ components:
           type: ["string", "null"]
         otherAvatarUrl:
           type: ["string", "null"]
+        otherUserRole:
+          type: ["string", "null"]
         lastMessageContent:
           type: ["string", "null"]
         lastMessageAt:
@@ -1681,6 +1683,8 @@ components:
         senderDisplayName:
           type: ["string", "null"]
         senderAvatarUrl:
+          type: ["string", "null"]
+        senderRole:
           type: ["string", "null"]
 
     ConversationMemberInfo:

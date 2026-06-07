@@ -320,6 +320,8 @@ export interface ConversationSummary {
   /** @nullable */
   otherAvatarUrl?: string | null;
   /** @nullable */
+  otherUserRole?: string | null;
+  /** @nullable */
   lastMessageContent?: string | null;
   /** @nullable */
   lastMessageAt?: string | null;
@@ -345,6 +347,8 @@ export interface Message {
   senderDisplayName?: string | null;
   /** @nullable */
   senderAvatarUrl?: string | null;
+  /** @nullable */
+  senderRole?: string | null;
 }
 
 export interface ConversationMemberInfo {
@@ -800,3 +804,4 @@ export interface UpdateCreditInput {
   borderType?: string;
   order?: number;
 }
+

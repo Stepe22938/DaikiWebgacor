@@ -31,7 +31,171 @@ import { format } from "date-fns";
 import { Phone, Video } from "lucide-react";
 import { Link } from "wouter";
 
-const JITSI_BASE = "https://meet.jit.si/arcadia-studio-conv-";
+const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || "conv";
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  member: "Member",
+  admin: "Admin",
+  staff: "Staff",
+  dev: "Dev",
+  dev_website: "Dev Website",
+};
+
+const ROLE_BADGE_CLASSES: Record<string, string> = {
+  member: "bg-muted text-muted-foreground",
+  admin: "bg-primary/20 text-primary",
+  staff: "bg-sky-500/15 text-sky-300",
+  dev: "bg-emerald-500/15 text-emerald-300",
+  dev_website: "bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30",
+};
+
+function JitsiCall({
+  roomName,
+  displayName,
+  avatarUrl,
+  audioOnly,
+  onClose,
+  subject,
+}: {
+  roomName: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  audioOnly: boolean;
+  onClose?: () => void;
+  subject: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const apiRef = useRef<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const scriptId = "jitsi-external-api-script";
+    const targetSrc = "https://jitsi.sixtopia.net/external_api.js";
+    let script = document.getElementById(scriptId) as HTMLScriptElement;
+    let timer: any = null;
+    let handleLoad: (() => void) | null = null;
+
+    if (script && script.src !== targetSrc) {
+      script.remove();
+      script = null as any;
+      if ((window as any).JitsiMeetExternalAPI) {
+        delete (window as any).JitsiMeetExternalAPI;
+      }
+    }
+
+    const initJitsi = () => {
+      if (!containerRef.current) return;
+      
+      if (apiRef.current) {
+        apiRef.current.dispose();
+      }
+
+      try {
+        const domain = "jitsi.sixtopia.net";
+        const options = {
+          roomName,
+          width: "100%",
+          height: "100%",
+          parentNode: containerRef.current,
+          configOverwrite: {
+            subject,
+            startAudioOnly: audioOnly,
+            startWithVideoMuted: audioOnly,
+            prejoinConfig: {
+              enabled: false,
+            },
+            prejoinPageEnabled: false,
+            disableDeepLinking: true,
+            p2p: {
+              enabled: true,
+            },
+          },
+          userInfo: {
+            displayName,
+            ...(avatarUrl && { avatarUrl }),
+          },
+        };
+
+        apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options);
+        
+        apiRef.current.addEventListener("videoConferenceJoined", () => {
+          setLoading(false);
+        });
+
+        apiRef.current.addEventListener("videoConferenceLeft", () => {
+          if (onClose) onClose();
+        });
+
+        apiRef.current.addEventListener("readyToClose", () => {
+          if (onClose) onClose();
+        });
+
+        // Fail-safe to hide loading spinner after 5 seconds if conference joined event doesn't fire
+        timer = setTimeout(() => {
+          setLoading(false);
+        }, 5000);
+      } catch (err) {
+        console.error("Failed to load Jitsi API:", err);
+        setLoading(false);
+      }
+    };
+
+    if (!script) {
+      script = document.createElement("script");
+      script.id = scriptId;
+      script.src = targetSrc;
+      script.async = true;
+      script.onload = () => {
+        initJitsi();
+      };
+      document.body.appendChild(script);
+    } else {
+      if ((window as any).JitsiMeetExternalAPI) {
+        initJitsi();
+      } else {
+        handleLoad = () => {
+          initJitsi();
+        };
+        script.addEventListener("load", handleLoad);
+      }
+    }
+
+    return () => {
+      if (apiRef.current) {
+        apiRef.current.dispose();
+        apiRef.current = null;
+      }
+      if (script && handleLoad) {
+        script.removeEventListener("load", handleLoad);
+      }
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [roomName, displayName, avatarUrl, audioOnly]);
+
+  return (
+    <div className="relative flex-1 w-full min-h-[500px] flex flex-col bg-card overflow-hidden">
+      {loading && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-card gap-4 z-10">
+          <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+          <div className="text-center space-y-1">
+            <p className="text-sm font-bold text-foreground">Menghubungkan ke Saluran Suara...</p>
+            <p className="text-xs text-muted-foreground animate-pulse">Sedang menyinkronkan data audio & profil</p>
+          </div>
+        </div>
+      )}
+      <div ref={containerRef} className="flex-1 w-full h-full min-h-[500px]" />
+    </div>
+  );
+}
 
 function formatMessageDateSeparator(dateStr: string): string {
   const d = new Date(dateStr);
@@ -93,7 +257,14 @@ function ConvItem({
       </Avatar>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-1">
-          <span className="font-medium text-sm truncate">{name}</span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="font-medium text-sm truncate">{name}</span>
+            {conv.type === "dm" && conv.otherUserRole && conv.otherUserRole !== "member" && (
+              <Badge className={`text-[8px] px-1 py-0 h-3 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[conv.otherUserRole] ?? ""}`}>
+                {ROLE_LABELS[conv.otherUserRole] ?? conv.otherUserRole}
+              </Badge>
+            )}
+          </div>
           {conv.type === "group" && (
             <Badge variant="secondary" className="text-[10px] shrink-0">
               Group
@@ -107,6 +278,8 @@ function ConvItem({
     </button>
   );
 }
+
+
 
 function MessageBubble({
   msg,
@@ -130,8 +303,17 @@ function MessageBubble({
         <div
           className={`max-w-[70%] flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}
         >
-          <div className="flex items-center gap-2">
-            {!isOwn && <span className="text-xs text-muted-foreground">{name}</span>}
+          <div className={`flex items-center gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
+            {(!isOwn || (msg.senderRole && msg.senderRole !== "member")) && (
+              <div className={`flex items-center gap-1.5 ${isOwn ? "flex-row-reverse" : ""}`}>
+                {!isOwn && <span className="text-xs text-muted-foreground">{name}</span>}
+                {msg.senderRole && msg.senderRole !== "member" && (
+                  <Badge className={`text-[9px] px-1.5 py-0 h-4 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[msg.senderRole] ?? ""}`}>
+                    {ROLE_LABELS[msg.senderRole] ?? msg.senderRole}
+                  </Badge>
+                )}
+              </div>
+            )}
             <span className="text-[10px] text-muted-foreground">
               {format(new Date(msg.createdAt), "HH:mm")}
             </span>
@@ -466,8 +648,11 @@ export default function MessagesPage() {
                       size="sm"
                       variant="outline"
                       className="h-7 px-2 text-xs"
-                      onClick={() => setShowCall(true)}
-                      title="Voice / Video Call"
+                      onClick={() => {
+                        setCallType("voice");
+                        setShowCall(true);
+                      }}
+                      title="Voice Call"
                     >
                       📞 Call
                     </Button>
@@ -830,15 +1015,20 @@ export default function MessagesPage() {
                   </div>
                 </div>
               ) : (
-                <iframe
-                  src={`${JITSI_BASE}${selectedId}${
-                    callType === "voice"
-                      ? "#config.startAudioOnly=true&config.startWithVideoMuted=true&config.prejoinPageEnabled=false"
-                      : "#config.startAudioOnly=false&config.startWithVideoMuted=false&config.prejoinPageEnabled=false"
-                  }`}
-                  allow="camera; microphone; display-capture; fullscreen"
-                  className="flex-1 w-full border-0 min-h-[500px]"
-                  title="Jitsi Call"
+                <JitsiCall
+                  roomName={`arcadia-studio-${selectedConv?.type === "group" ? "group" : "dm"}-${slugify(selectedName)}-${String(selectedId).padStart(3, "0")}`}
+                  displayName={me?.displayName ?? me?.username ?? "Anonymous"}
+                  avatarUrl={me?.avatarUrl}
+                  audioOnly={callType === "voice"}
+                  onClose={() => {
+                    setShowCall(false);
+                    setCallType(null);
+                  }}
+                  subject={
+                    selectedConv?.type === "group"
+                      ? `${selectedName} #${String(selectedId).padStart(3, "0")}`
+                      : selectedName
+                  }
                 />
               )}
             </>

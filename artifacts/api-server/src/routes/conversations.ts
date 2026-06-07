@@ -45,6 +45,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
       username: usersTable.username,
       displayName: usersTable.displayName,
       avatarUrl: usersTable.avatarUrl,
+      role: usersTable.role,
     })
     .from(conversationMembersTable)
     .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
@@ -63,6 +64,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
   let otherUsername: string | null = null;
   let otherDisplayName: string | null = null;
   let otherAvatarUrl: string | null = null;
+  let otherUserRole: string | null = null;
 
   if (conv.type === "dm") {
     const other = memberRows.find((m) => m.userId !== currentUserId);
@@ -71,6 +73,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
       otherUsername = other.username;
       otherDisplayName = other.displayName ?? null;
       otherAvatarUrl = other.avatarUrl ?? null;
+      otherUserRole = other.role ?? null;
       name = other.displayName ?? other.username;
       iconUrl = other.avatarUrl ?? null;
     }
@@ -87,6 +90,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     otherUsername,
     otherDisplayName,
     otherAvatarUrl,
+    otherUserRole,
     lastMessageContent: lastMsg ? (lastMsg.content || (lastMsg.imageUrl ? "📷 Image" : "")) : null,
     lastMessageAt: lastMsg ? serializeDates(lastMsg).createdAt : null,
     lastMessageSenderId: lastMsg?.senderId ?? null,
@@ -340,6 +344,7 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       senderUsername: usersTable.username,
       senderDisplayName: usersTable.displayName,
       senderAvatarUrl: usersTable.avatarUrl,
+      senderRole: usersTable.role,
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -383,6 +388,7 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     senderUsername: user.username,
     senderDisplayName: user.displayName ?? null,
     senderAvatarUrl: user.avatarUrl ?? null,
+    senderRole: user.role ?? null,
   });
 });
 

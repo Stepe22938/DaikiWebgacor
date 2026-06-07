@@ -26,6 +26,8 @@ export interface ConversationSummary {
   /** @nullable */
   otherAvatarUrl?: string | null;
   /** @nullable */
+  otherUserRole?: string | null;
+  /** @nullable */
   lastMessageContent?: string | null;
   /** @nullable */
   lastMessageAt?: string | null;

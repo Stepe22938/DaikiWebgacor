@@ -23,4 +23,6 @@ export interface Message {
   senderDisplayName?: string | null;
   /** @nullable */
   senderAvatarUrl?: string | null;
+  /** @nullable */
+  senderRole?: string | null;
 }

@@ -614,6 +614,7 @@ export const ListConversationsResponseItem = zod.object({
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),
   "otherAvatarUrl": zod.string().nullish(),
+  "otherUserRole": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -653,6 +654,7 @@ export const CreateOrGetDmResponse = zod.object({
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),
   "otherAvatarUrl": zod.string().nullish(),
+  "otherUserRole": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -678,6 +680,7 @@ export const GetConversationResponse = zod.object({
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),
   "otherAvatarUrl": zod.string().nullish(),
+  "otherUserRole": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -711,6 +714,7 @@ export const UpdateGroupResponse = zod.object({
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),
   "otherAvatarUrl": zod.string().nullish(),
+  "otherUserRole": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -743,7 +747,8 @@ export const ListMessagesResponseItem = zod.object({
   "updatedAt": zod.coerce.date().nullish(),
   "senderUsername": zod.string().nullish(),
   "senderDisplayName": zod.string().nullish(),
-  "senderAvatarUrl": zod.string().nullish()
+  "senderAvatarUrl": zod.string().nullish(),
+  "senderRole": zod.string().nullish()
 })
 export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
 
@@ -1362,4 +1367,5 @@ export const GetMyFormResponseResponse = zod.object({
 })).optional()
 }).optional()
 })
+
 
