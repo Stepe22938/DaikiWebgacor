@@ -15,14 +15,16 @@ import {
   useRemoveConversationMember,
   useGetMyFriends,
   useGetMe,
+  customFetch,
 } from "@workspace/api-client-react";
 import type { ConversationSummary, Message } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -48,7 +50,13 @@ import {
   ArrowUpRight,
   MessageSquare,
   Users,
-  Home
+  Home,
+  Camera,
+  SendHorizontal,
+  X,
+  ArrowLeft,
+  MoreVertical,
+  UserCircle
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -313,18 +321,20 @@ function MessageBubble({
 
   return (
     <>
-      <div className={`flex gap-2.5 group ${isOwn ? "flex-row-reverse" : ""}`}>
-        <Avatar className="w-8 h-8 shrink-0 mt-0.5 border border-[#eae8f5]">
+      <div className={`flex gap-2 group ${isOwn ? "flex-row-reverse" : ""}`}>
+        {!isOwn && (
+        <Avatar className="w-8 h-8 shrink-0 mt-0.5 border border-[#d7e4de]">
           <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
-          <AvatarFallback className="text-[10px] bg-slate-100 font-bold">{getInitials(name)}</AvatarFallback>
+          <AvatarFallback className="text-[10px] bg-[#edf5f1] font-bold text-[#0b6b58]">{getInitials(name)}</AvatarFallback>
         </Avatar>
+        )}
         <div
-          className={`max-w-[70%] flex flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}
+          className={`max-w-[84%] sm:max-w-[72%] flex flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}
         >
-          <div className={`flex items-center gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
+          <div className={`flex items-center gap-2 px-1 ${isOwn ? "flex-row-reverse" : ""}`}>
             {(!isOwn || (msg.senderRole && msg.senderRole !== "member")) && (
               <div className={`flex items-center gap-1.5 ${isOwn ? "flex-row-reverse" : ""}`}>
-                {!isOwn && <span className="text-xs font-extrabold text-[#110e3d]">{name}</span>}
+                {!isOwn && <span className="text-[11px] font-extrabold text-[#075e54]">{name}</span>}
                 {msg.senderRole && msg.senderRole !== "member" && (
                   <Badge className={`text-[8px] px-1.5 py-0 h-3.5 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[msg.senderRole] ?? ""}`}>
                     {ROLE_LABELS[msg.senderRole] ?? msg.senderRole}
@@ -332,23 +342,20 @@ function MessageBubble({
                 )}
               </div>
             )}
-            <span className="text-[9px] font-bold text-slate-400">
-              {format(new Date(msg.createdAt), "HH:mm")}
-            </span>
             {isOwn && onDelete && (
               <button
                 onClick={onDelete}
-                className="text-[9px] font-bold text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                className="text-[10px] font-bold text-slate-400 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
               >
                 delete
               </button>
             )}
           </div>
           <div
-            className={`rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+            className={`relative rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm break-words whitespace-pre-wrap ${
               isOwn
-                ? "bg-[#6366f1] text-white rounded-tr-sm shadow-sm font-semibold"
-                : "bg-white border border-[#eae8f5] text-slate-700 rounded-tl-sm shadow-sm font-semibold"
+                ? "bg-[#dcf8c6] text-[#18251f] rounded-tr-[4px]"
+                : "bg-white border border-[#dfe8e3] text-[#18251f] rounded-tl-[4px]"
             }`}
           >
             {msg.imageUrl && (
@@ -359,11 +366,14 @@ function MessageBubble({
                 <img
                   src={msg.imageUrl}
                   alt="Chat attachment"
-                  className="w-full h-auto object-cover max-h-60 rounded-md border border-[#eae8f5]"
+                  className="w-full h-auto object-cover max-h-64 rounded-md border border-black/5"
                 />
               </div>
             )}
-            {msg.content}
+            {msg.content && <span className="pr-12 inline-block">{msg.content}</span>}
+            <span className="absolute bottom-1.5 right-3 text-[10px] font-semibold text-[#66756f]">
+              {format(new Date(msg.createdAt), "HH:mm")}
+            </span>
           </div>
         </div>
       </div>
@@ -387,7 +397,13 @@ export default function MessagesPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: me } = useGetMe();
+  const { data: realmSettings = {} } = useQuery({
+    queryKey: ["/api/settings"],
+    queryFn: () => customFetch<any>("/api/settings"),
+  });
   const { signOut } = useClerk();
+  const realmName = realmSettings.realmName || "Arcadia Guild";
+  const realmLogoUrl = realmSettings.realmLogoUrl || "";
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [messageText, setMessageText] = useState("");
@@ -588,11 +604,15 @@ export default function MessagesPage() {
         <div className="flex flex-col min-h-0 overflow-y-auto">
           {/* Logo Branding */}
           <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20">
-              A
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20 overflow-hidden">
+              {realmLogoUrl ? (
+                <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+              ) : (
+                realmName.slice(0, 1).toUpperCase()
+              )}
             </div>
             <div>
-              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia Guild</h2>
+              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Player Hub</span>
             </div>
           </Link>
@@ -710,11 +730,15 @@ export default function MessagesPage() {
             <div className="space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-[#eae8f5]">
                 <Link href="/" onClick={() => setMobileSidebarOpen(false)} className="flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-                  <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center text-white font-black">
-                    A
+                  <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center text-white font-black overflow-hidden">
+                    {realmLogoUrl ? (
+                      <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+                    ) : (
+                      realmName.slice(0, 1).toUpperCase()
+                    )}
                   </div>
                   <div>
-                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia</h2>
+                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
                     <span className="text-[10px] text-slate-400 font-bold">Player Hub</span>
                   </div>
                 </Link>
@@ -819,7 +843,7 @@ export default function MessagesPage() {
       {/* ── Main Content Area ────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Header Bar */}
-        <header className="h-16 bg-white border-b border-[#eae8f5] px-6 flex items-center justify-between shrink-0">
+        <header className="h-14 md:h-16 bg-white border-b border-[#eae8f5] px-3 sm:px-4 md:px-6 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
@@ -830,10 +854,13 @@ export default function MessagesPage() {
               <Menu className="w-5.5 h-5.5" />
             </Button>
             {/* Breadcrumbs */}
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+            <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-slate-400">
               <span>Guild Portal</span>
               <span>/</span>
               <span className="text-[#110e3d]">Messages</span>
+            </div>
+            <div className="sm:hidden">
+              <p className="text-sm font-extrabold text-[#110e3d]">Messages</p>
             </div>
           </div>
 
@@ -868,15 +895,15 @@ export default function MessagesPage() {
         {/* Content Container (Full Height chat panel layout) */}
         <div className="flex-1 flex overflow-hidden min-h-0">
           {/* Chat Sidebar: Conversations List */}
-          <div className="w-80 border-r border-[#eae8f5] bg-white flex flex-col shrink-0 min-h-0">
+          <div className={`${selectedConv ? "hidden md:flex" : "flex"} w-full md:w-80 border-r border-[#eae8f5] bg-white flex-col shrink-0 min-h-0`}>
             {/* Header + Create Dm/Group buttons */}
-            <div className="p-4 border-b border-[#eae8f5] flex items-center justify-between shrink-0">
-              <h2 className="font-extrabold text-sm text-[#110e3d]">Messages</h2>
+            <div className="p-3 sm:p-4 border-b border-[#eae8f5] flex items-center justify-between shrink-0">
+              <h2 className="font-extrabold text-lg md:text-sm text-[#110e3d]">Chats</h2>
               <div className="flex gap-1.5">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 px-2.5 rounded-xl text-xs font-bold border-[#eae8f5] text-slate-500 hover:bg-violet-50 hover:text-[#6366f1] transition-all"
+                  className="h-8 px-3 rounded-full text-xs font-bold border-[#d7e4de] text-[#075e54] hover:bg-[#e7f6f1] hover:text-[#075e54] transition-all"
                   onClick={() => setShowNewDm(true)}
                 >
                   + DM
@@ -884,7 +911,7 @@ export default function MessagesPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 px-2.5 rounded-xl text-xs font-bold border-[#eae8f5] text-slate-500 hover:bg-violet-50 hover:text-[#6366f1] transition-all"
+                  className="h-8 px-3 rounded-full text-xs font-bold border-[#d7e4de] text-[#075e54] hover:bg-[#e7f6f1] hover:text-[#075e54] transition-all"
                   onClick={() => setShowNewGroup(true)}
                 >
                   + Group
@@ -925,7 +952,7 @@ export default function MessagesPage() {
           </div>
 
           {/* Active Chat Screen Console */}
-          <div className="flex-1 flex flex-col bg-[#fcfbfe] overflow-hidden min-h-0">
+          <div className={`${selectedConv ? "flex" : "hidden md:flex"} flex-1 flex-col bg-[#efe7dd] overflow-hidden min-h-0`}>
             {selectedConv === null ? (
               <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
                 <div className="w-16 h-16 rounded-2xl bg-violet-50 flex items-center justify-center text-[#6366f1] shadow-inner">
@@ -939,8 +966,17 @@ export default function MessagesPage() {
             ) : (
               <>
                 {/* Chat Top Header Panel */}
-                <div className="h-16 border-b border-[#eae8f5] bg-white px-6 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-3">
+                <div className="h-16 border-b border-[#d7e4de] bg-[#075e54] px-2 sm:px-4 md:px-6 flex items-center justify-between shrink-0 text-white">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="md:hidden h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white shrink-0"
+                      onClick={() => setSelectedId(null)}
+                      title="Back to chats"
+                    >
+                      <ArrowLeft className="h-5 w-5" />
+                    </Button>
                     <Avatar className="w-9 h-9 border border-[#eae8f5]">
                       <AvatarImage
                         src={
@@ -951,37 +987,37 @@ export default function MessagesPage() {
                       />
                       <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(selectedName)}</AvatarFallback>
                     </Avatar>
-                    <div>
-                      <p className="font-extrabold text-sm text-[#110e3d] leading-none">{selectedName}</p>
-                      <p className="text-[10px] text-slate-400 font-bold mt-1">
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-sm leading-none truncate max-w-[42vw] sm:max-w-none">{selectedName}</p>
+                      <p className="text-[10px] text-white/70 font-bold mt-1">
                         {selectedConv.type === "dm" ? "Direct Message" : `${selectedConv.memberCount} members`}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                     {selectedConv.type === "dm" && selectedConv.otherUserId && (
-                      <Button asChild size="sm" variant="ghost" className="h-8 px-3 text-xs font-bold rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors">
-                        <Link href={`/profile/${selectedConv.otherUserId}`}>View Profile</Link>
+                      <Button asChild size="icon" variant="ghost" className="h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white transition-colors" title="View Profile">
+                        <Link href={`/profile/${selectedConv.otherUserId}`}><UserCircle className="h-5 w-5" /></Link>
                       </Button>
                     )}
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="h-8 px-3 text-xs font-bold border-[#eae8f5] rounded-xl text-slate-600 hover:bg-violet-50 hover:text-[#6366f1] hover:border-violet-200 transition-colors"
+                      variant="ghost"
+                      className="h-9 w-9 rounded-full p-0 text-white hover:bg-white/10 hover:text-white transition-colors"
                       onClick={() => {
                         setCallType("voice");
                         setShowCall(true);
                       }}
                       title="Voice Call"
                     >
-                      📞 Call Room
+                      <Phone className="h-5 w-5" />
                     </Button>
                     {selectedConv.type === "group" && (
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="h-8 px-3 text-xs font-bold border-[#eae8f5] rounded-xl text-slate-600 hover:bg-violet-50 hover:text-[#6366f1] hover:border-violet-200 transition-colors"
+                        variant="ghost"
+                        className="hidden sm:inline-flex h-8 px-3 text-xs font-bold rounded-full text-white hover:bg-white/10 hover:text-white transition-colors"
                         onClick={() => setShowMembers(true)}
                       >
                         Members
@@ -990,18 +1026,27 @@ export default function MessagesPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-8 px-3 text-xs font-bold text-slate-400 hover:text-[#ef4444] hover:bg-red-50 rounded-xl transition-colors"
+                      className="hidden sm:inline-flex h-8 px-3 text-xs font-bold text-white/75 hover:text-white hover:bg-white/10 rounded-full transition-colors"
                       onClick={handleLeaveOrDelete}
                     >
                       {selectedConv.type === "group" && selectedConv.ownerId === me?.id
                         ? "Delete"
                         : "Leave"}
                     </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="sm:hidden h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white"
+                      onClick={selectedConv.type === "group" ? () => setShowMembers(true) : handleLeaveOrDelete}
+                      title={selectedConv.type === "group" ? "Members" : "Leave"}
+                    >
+                      <MoreVertical className="h-5 w-5" />
+                    </Button>
                   </div>
                 </div>
 
                 {/* Messages Bubbles Feed */}
-                <ScrollArea className="flex-1 px-6 py-4 min-h-0 bg-[#fbfafc]">
+                <ScrollArea className="flex-1 px-2.5 sm:px-4 md:px-6 py-3 sm:py-4 min-h-0 bg-[#efe7dd]">
                   {msgsLoading ? (
                     <div className="space-y-4">
                       {Array.from({ length: 6 }).map((_, i) => (
@@ -1030,10 +1075,10 @@ export default function MessagesPage() {
                         lastDateStr = dateKey;
 
                         return (
-                          <div key={msg.id} className="flex flex-col gap-3 mb-4">
+                          <div key={msg.id} className="flex flex-col gap-2 mb-2.5">
                             {showDivider && (
-                              <div className="flex items-center justify-center my-4">
-                                <div className="bg-white text-slate-400 text-[9px] font-black px-3 py-1 rounded-xl uppercase tracking-wider border border-[#eae8f5] shadow-sm">
+                              <div className="flex items-center justify-center my-3">
+                                <div className="bg-[#dcebe7] text-[#52635d] text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wider shadow-sm">
                                   {formatMessageDateSeparator(msg.createdAt)}
                                 </div>
                               </div>
@@ -1056,19 +1101,19 @@ export default function MessagesPage() {
                 </ScrollArea>
 
                 {/* Bottom Input Console */}
-                <div className="px-6 py-4 border-t border-[#eae8f5] bg-white shrink-0">
+                <div className="px-2.5 sm:px-4 md:px-6 py-2.5 sm:py-3 border-t border-[#d8cec1] bg-[#f0e7dd] shrink-0">
                   {attachedImageUrl && (
-                    <div className="relative mb-3 inline-block rounded-xl overflow-hidden border border-[#eae8f5] bg-slate-50 max-w-[120px] aspect-video group">
+                    <div className="relative mb-2 ml-12 inline-block rounded-xl overflow-hidden border border-[#d7e4de] bg-white max-w-[132px] aspect-video group">
                       <img src={attachedImageUrl} alt="Attachment preview" className="w-full h-full object-cover" />
                       <button
                         onClick={() => setAttachedImageUrl(null)}
-                        className="absolute top-1 right-1 bg-black/60 hover:bg-black text-white rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors"
+                        className="absolute top-1 right-1 bg-black/60 hover:bg-black text-white rounded-full w-6 h-6 flex items-center justify-center transition-colors"
                       >
-                        ✕
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   )}
-                  <div className="flex gap-3">
+                  <div className="flex items-end gap-2">
                     <input
                       type="file"
                       accept="image/*"
@@ -1082,16 +1127,18 @@ export default function MessagesPage() {
                       size="icon"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploading}
-                      className="hover:scale-105 hover:bg-slate-50 transition-all shrink-0 rounded-xl h-10 w-10 border border-[#eae8f5]"
+                      className="hover:bg-white/70 transition-all shrink-0 rounded-full h-11 w-11 text-[#54656f]"
+                      title="Attach image"
                     >
                       {uploading ? (
-                        <span className="animate-spin text-xs">⏳</span>
+                        <span className="h-4 w-4 rounded-full border-2 border-[#075e54]/20 border-t-[#075e54] animate-spin" />
                       ) : (
-                        <span className="text-base">📷</span>
+                        <Camera className="h-5 w-5" />
                       )}
                     </Button>
-                    <Input
-                      placeholder="Type a message…"
+                    <Textarea
+                      rows={1}
+                      placeholder="Message"
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
                       onKeyDown={(e) => {
@@ -1100,14 +1147,15 @@ export default function MessagesPage() {
                           handleSend();
                         }
                       }}
-                      className="bg-white border-[#eae8f5] focus-visible:ring-violet-500 rounded-xl h-10 text-slate-700 font-semibold"
+                      className="min-h-11 max-h-32 resize-none bg-white border-0 focus-visible:ring-1 focus-visible:ring-[#25d366] rounded-3xl px-4 py-3 text-[15px] text-[#18251f] font-medium shadow-sm"
                     />
                     <Button
                       onClick={handleSend}
                       disabled={(!messageText.trim() && !attachedImageUrl) || sendMessage.isPending || uploading}
-                      className="bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl h-10 px-5 font-bold shadow-md shadow-violet-500/10"
+                      className="bg-[#00a884] text-white hover:bg-[#008f72] rounded-full h-11 w-11 p-0 shrink-0 shadow-md shadow-emerald-900/10"
+                      title="Send"
                     >
-                      Send
+                      <SendHorizontal className="h-5 w-5" />
                     </Button>
                   </div>
                 </div>

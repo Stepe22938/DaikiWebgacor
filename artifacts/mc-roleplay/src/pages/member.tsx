@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +62,10 @@ export default function Member() {
   const { data: developments, isLoading: developmentsLoading } = useListDevelopments();
   const updateMe = useUpdateMe();
   const { data: settings } = useGetMySettings();
+  const { data: realmSettings = {} } = useQuery({
+    queryKey: ["/api/settings"],
+    queryFn: () => customFetch<any>("/api/settings"),
+  });
   const updateSettings = useUpdateMySettings();
   const { data: tickets = [], isLoading: ticketsLoading } = useListTickets();
   const { data: ticketReasons = [], isLoading: ticketReasonsLoading } = useListTicketReasons();
@@ -74,6 +78,8 @@ export default function Member() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const realmName = realmSettings.realmName || "Arcadia Guild";
+  const realmLogoUrl = realmSettings.realmLogoUrl || "";
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -275,11 +281,15 @@ export default function Member() {
         <div className="flex flex-col">
           {/* Logo Branding */}
           <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20">
-              A
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20 overflow-hidden">
+              {realmLogoUrl ? (
+                <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+              ) : (
+                realmName.slice(0, 1).toUpperCase()
+              )}
             </div>
             <div>
-              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia Guild</h2>
+              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Player Hub</span>
             </div>
           </Link>
@@ -449,11 +459,15 @@ export default function Member() {
             <div className="space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-[#eae8f5]">
                 <Link href="/" onClick={() => setMobileSidebarOpen(false)} className="flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-                  <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center text-white font-black">
-                    A
+                  <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center text-white font-black overflow-hidden">
+                    {realmLogoUrl ? (
+                      <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+                    ) : (
+                      realmName.slice(0, 1).toUpperCase()
+                    )}
                   </div>
                   <div>
-                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia</h2>
+                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
                     <span className="text-[10px] text-slate-400 font-bold">Player Hub</span>
                   </div>
                 </Link>

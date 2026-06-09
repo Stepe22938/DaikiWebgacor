@@ -13,6 +13,8 @@ const GalleryItemSchema = z.object({
 });
 
 const HomepageSettingsSchema = z.object({
+  realmName: z.string().min(1).optional(),
+  realmLogoUrl: z.string().optional(),
   heroTitle: z.string().min(1),
   heroSubtitle: z.string().min(1),
   serverIP: z.string().min(1),
@@ -27,6 +29,8 @@ const HomepageSettingsSchema = z.object({
 });
 
 const DEFAULT_SETTINGS = {
+  realmName: "Arcadia Guild",
+  realmLogoUrl: "",
   heroTitle: "Forge Your Legend in Arcadia",
   heroSubtitle: "Step into an immersive, highly customized Minecraft roleplay and RPG experience. Build nations, command economies, and fight dungeons alongside fellow adventurers.",
   serverIP: "play.arcadiamc.net",

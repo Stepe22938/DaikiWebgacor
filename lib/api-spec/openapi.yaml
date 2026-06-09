@@ -1385,7 +1385,7 @@ components:
 
     PublicUser:
       type: object
-      required: [id, username, userTag, createdAt, isFollowing, followerCount, followingCount]
+      required: [id, username, userTag, role, createdAt, isFollowing, followerCount, followingCount]
       properties:
         id:
           type: integer
@@ -1394,6 +1394,9 @@ components:
         userTag:
           type: string
           pattern: "^#[0-9]{3,}$"
+        role:
+          type: string
+          enum: [member, admin, staff, dev, dev_website]
         displayName:
           type: ["string", "null"]
         avatarUrl:

@@ -365,6 +365,8 @@ export default function Admin() {
   });
 
   const [settingsForm, setSettingsForm] = useState({
+    realmName: "",
+    realmLogoUrl: "",
     heroTitle: "",
     heroSubtitle: "",
     serverIP: "",
@@ -378,6 +380,8 @@ export default function Admin() {
   const [hasInitializedForm, setHasInitializedForm] = useState(false);
   if (currentSettings && !hasInitializedForm) {
     setSettingsForm({
+      realmName: currentSettings.realmName || "Arcadia Guild",
+      realmLogoUrl: currentSettings.realmLogoUrl || "",
       heroTitle: currentSettings.heroTitle || "",
       heroSubtitle: currentSettings.heroSubtitle || "",
       serverIP: currentSettings.serverIP || "",
@@ -389,6 +393,8 @@ export default function Admin() {
     });
     setHasInitializedForm(true);
   }
+  const realmName = currentSettings?.realmName || "Arcadia Guild";
+  const realmLogoUrl = currentSettings?.realmLogoUrl || "";
 
   const { signOut } = useClerk();
   if (isLoading) return <div className="p-8 text-slate-500 font-bold bg-[#f8f7fa] min-h-screen flex items-center justify-center">Loading Admin Portal...</div>;
@@ -731,11 +737,15 @@ export default function Admin() {
         <div className="flex flex-col">
           {/* Logo Branding */}
           <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20">
-              A
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20 overflow-hidden">
+              {realmLogoUrl ? (
+                <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+              ) : (
+                realmName.slice(0, 1).toUpperCase()
+              )}
             </div>
             <div>
-              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia Studio</h2>
+              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Admin Portal</span>
             </div>
           </Link>
@@ -907,11 +917,15 @@ export default function Admin() {
             <div className="space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-[#eae8f5]">
                 <Link href="/" onClick={() => setMobileSidebarOpen(false)} className="flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-                  <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center text-white font-black">
-                    A
+                  <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center text-white font-black overflow-hidden">
+                    {realmLogoUrl ? (
+                      <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+                    ) : (
+                      realmName.slice(0, 1).toUpperCase()
+                    )}
                   </div>
                   <div>
-                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia</h2>
+                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
                     <span className="text-[10px] text-slate-400 font-bold">Admin Portal</span>
                   </div>
                 </Link>
@@ -1841,6 +1855,27 @@ export default function Admin() {
                   <Skeleton className="h-48 w-full rounded-2xl" />
                 ) : (
                   <div className="space-y-4 pt-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-600">Realm Name</Label>
+                        <Input
+                          value={settingsForm.realmName}
+                          onChange={(e) => setSettingsForm({ ...settingsForm, realmName: e.target.value })}
+                          placeholder="Arcadia Guild"
+                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-600">Realm Logo URL</Label>
+                        <Input
+                          value={settingsForm.realmLogoUrl}
+                          onChange={(e) => setSettingsForm({ ...settingsForm, realmLogoUrl: e.target.value })}
+                          placeholder="/logo.svg or https://..."
+                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                        />
+                      </div>
+                    </div>
+
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-slate-600">Homepage Hero Title</Label>
                       <Input

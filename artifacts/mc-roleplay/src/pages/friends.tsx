@@ -6,6 +6,7 @@ import {
   useFollowUser,
   useUnfollowUser,
   useGetMe,
+  customFetch,
 } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Link } from "wouter";
@@ -112,11 +113,17 @@ export default function Friends() {
   const followUser = useFollowUser();
   const unfollowUser = useUnfollowUser();
   const queryClient = useQueryClient();
+  const { data: realmSettings = {} } = useQuery({
+    queryKey: ["/api/settings"],
+    queryFn: () => customFetch<any>("/api/settings"),
+  });
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const { signOut } = useClerk();
+  const realmName = realmSettings.realmName || "Arcadia Guild";
+  const realmLogoUrl = realmSettings.realmLogoUrl || "";
 
   const handleCopyIP = () => {
     navigator.clipboard.writeText("play.arcadiamc.net");
@@ -171,11 +178,15 @@ export default function Friends() {
         <div className="flex flex-col">
           {/* Logo Branding */}
           <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20">
-              A
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20 overflow-hidden">
+              {realmLogoUrl ? (
+                <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+              ) : (
+                realmName.slice(0, 1).toUpperCase()
+              )}
             </div>
             <div>
-              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia Guild</h2>
+              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Player Hub</span>
             </div>
           </Link>
@@ -293,11 +304,15 @@ export default function Friends() {
             <div className="space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-[#eae8f5]">
                 <Link href="/" onClick={() => setMobileSidebarOpen(false)} className="flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-                  <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center text-white font-black">
-                    A
+                  <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center text-white font-black overflow-hidden">
+                    {realmLogoUrl ? (
+                      <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+                    ) : (
+                      realmName.slice(0, 1).toUpperCase()
+                    )}
                   </div>
                   <div>
-                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia</h2>
+                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
                     <span className="text-[10px] text-slate-400 font-bold">Player Hub</span>
                   </div>
                 </Link>

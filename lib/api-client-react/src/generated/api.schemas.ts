@@ -68,6 +68,7 @@ export interface PublicUser {
   username: string;
   /** @pattern ^#[0-9]{3,}$ */
   userTag: string;
+  role: 'member' | 'admin' | 'staff' | 'dev' | 'dev_website';
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
@@ -804,4 +805,3 @@ export interface UpdateCreditInput {
   borderType?: string;
   order?: number;
 }
-

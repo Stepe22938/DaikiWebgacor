@@ -1,8 +1,8 @@
 import { Link } from "wouter";
 import { useClerk, Show } from "@clerk/react";
 import { Button } from "@/components/ui/button";
-import { useGetMe, useUpdateMe } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { customFetch, useGetMe, useUpdateMe } from "@workspace/api-client-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, useEffect } from "react";
 import { User, LogOut, Settings, MessageSquare, Users, Home, ChevronDown, Gamepad2, ShieldAlert } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +13,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { signOut } = useClerk();
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const { data: me } = useGetMe();
+  const { data: realmSettings = {} } = useQuery({
+    queryKey: ["/api/settings"],
+    queryFn: () => customFetch<any>("/api/settings"),
+  });
   const updateMe = useUpdateMe();
   const queryClient = useQueryClient();
   const [mcName, setMcName] = useState("");
@@ -20,6 +24,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [errorMc, setErrorMc] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const realmName = realmSettings.realmName || "Arcadia Studio";
+  const realmLogoUrl = realmSettings.realmLogoUrl || `${basePath}/logo.svg`;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -38,8 +44,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border bg-card/50 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <img src={`${basePath}/logo.svg`} alt="Arcadia Studio" className="w-8 h-8" />
-            <span className="font-bold text-xl text-primary tracking-wider">Arcadia Studio</span>
+            <img src={realmLogoUrl} alt={realmName} className="w-8 h-8 rounded object-cover" />
+            <span className="font-bold text-xl text-primary tracking-wider">{realmName}</span>
           </Link>
           
           <div className="relative" ref={dropdownRef}>
@@ -139,7 +145,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       
       <footer className="border-t border-border bg-card/80 py-8">
         <div className="container mx-auto px-4 text-center text-muted-foreground text-sm">
-          <p>Arcadia Studio &copy; {new Date().getFullYear()}. Forged in myth.</p>
+          <p>{realmName} &copy; {new Date().getFullYear()}. Forged in myth.</p>
         </div>
       </footer>
 
@@ -153,7 +159,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </DialogHeader>
           <div className="space-y-4 py-2 text-center">
             <p className="text-sm text-muted-foreground">
-              Selamat datang di **Arcadia Studio**! Silakan masukkan username Minecraft Anda terlebih dahulu untuk melanjutkan.
+              Selamat datang di <strong>{realmName}</strong>! Silakan masukkan username Minecraft Anda terlebih dahulu untuk melanjutkan.
             </p>
             <div className="space-y-2 text-left">
               <Label htmlFor="promptMcUsername">Username Minecraft</Label>

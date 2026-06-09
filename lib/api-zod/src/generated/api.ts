@@ -149,6 +149,7 @@ export const ListMembersResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "userTag": zod.string().regex(listMembersResponseUserTagRegExp),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
@@ -175,6 +176,7 @@ export const GetPublicProfileResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "userTag": zod.string().regex(getPublicProfileResponseUserTagRegExp),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
@@ -200,6 +202,7 @@ export const GetPublicProfileFollowersResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "userTag": zod.string().regex(getPublicProfileFollowersResponseUserTagRegExp),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
@@ -226,6 +229,7 @@ export const GetPublicProfileFollowingResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "userTag": zod.string().regex(getPublicProfileFollowingResponseUserTagRegExp),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
@@ -1367,5 +1371,4 @@ export const GetMyFormResponseResponse = zod.object({
 })).optional()
 }).optional()
 })
-
 
