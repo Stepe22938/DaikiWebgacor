@@ -396,15 +396,12 @@ export default function Admin() {
   const realmName = currentSettings?.realmName || "Arcadia Guild";
   const realmLogoUrl = currentSettings?.realmLogoUrl || "";
 
-  const { signOut } = useClerk();
-  if (isLoading) return <div className="p-8 text-slate-500 font-bold bg-[#f8f7fa] min-h-screen flex items-center justify-center">Loading Admin Portal...</div>;
   const role = user?.role;
   const canManageAdmin = role === "admin" || role === "dev_website";
   const canManageAnnouncements = role === "admin" || role === "staff" || role === "dev_website";
   const canManageTickets = role === "admin" || role === "dev" || role === "dev_website";
   const canManageDevWebsiteRole = role === "dev_website";
   const defaultTab = role === "staff" ? "announcements" : role === "dev" ? "tickets" : "developments";
-  if (!canManageAdmin && !canManageAnnouncements && !canManageTickets) return <Redirect to="/member" />;
 
   const [location, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState(defaultTab === "developments" ? "dashboard" : defaultTab);
@@ -417,6 +414,11 @@ export default function Admin() {
       setActiveTab(tab);
     }
   }, [window.location.search]);
+
+  const { signOut } = useClerk();
+
+  if (isLoading) return <div className="p-8 text-slate-500 font-bold bg-[#f8f7fa] min-h-screen flex items-center justify-center">Loading Admin Portal...</div>;
+  if (!canManageAdmin && !canManageAnnouncements && !canManageTickets) return <Redirect to="/member" />;
 
   const handleTabChange = (tabName: string) => {
     setActiveTab(tabName);
