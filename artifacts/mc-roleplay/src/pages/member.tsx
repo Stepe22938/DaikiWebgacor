@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { Layout } from "@/components/layout";
 import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers } from "@workspace/api-client-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useUser, useClerk } from "@clerk/react";
+import { useUser, useClerk, UserProfile } from "@clerk/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
@@ -14,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -24,6 +23,35 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  LayoutGrid,
+  Megaphone,
+  Hammer,
+  Ticket,
+  ClipboardList,
+  User,
+  ShieldAlert,
+  LogOut,
+  Menu,
+  Sparkles,
+  Activity,
+  Copy,
+  Check,
+  ArrowUpRight,
+  MessageSquare,
+  Users,
+  Home,
+  Settings
+} from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Bar,
+  Cell
+} from "recharts";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -42,6 +70,32 @@ export default function Member() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [location, setLocation] = useLocation();
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings"].includes(tab)) {
+      setActiveTab(tab);
+    } else if (!tab) {
+      setActiveTab("dashboard");
+    }
+  }, [window.location.search]);
+
+  const handleTabChange = (tabName: string) => {
+    setActiveTab(tabName);
+    setLocation(`/member?tab=${tabName}`);
+  };
+
+  const handleTabChangeMobile = (tabName: string) => {
+    setActiveTab(tabName);
+    setLocation(`/member?tab=${tabName}`);
+    setMobileSidebarOpen(false);
+  };
+
   const [ticketDialogOpen, setTicketDialogOpen] = useState(false);
   const [ticketReason, setTicketReason] = useState("");
   const [ticketDescription, setTicketDescription] = useState("");
@@ -53,6 +107,13 @@ export default function Member() {
       setTicketReason(ticketReasons[0].label);
     }
   }, [ticketReason, ticketReasons]);
+
+  const handleCopyIP = () => {
+    navigator.clipboard.writeText("play.arcadiamc.net");
+    setCopied(true);
+    toast({ title: "Copied!", description: "IP copied to clipboard: play.arcadiamc.net" });
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleUpdatePrivacy = async (value: string) => {
     try {
@@ -175,366 +236,1043 @@ export default function Member() {
     }
   };
 
+  const { signOut } = useClerk();
+
   if (userLoading) {
     return (
-      <Layout>
-        <div className="container mx-auto p-8"><Skeleton className="h-[200px] w-full" /></div>
-      </Layout>
+      <div className="p-8 text-slate-500 font-bold bg-[#f4f3f8] min-h-screen flex items-center justify-center">
+        Loading Guild Portal...
+      </div>
     );
   }
 
+  // Calculate actual counts for member dashboard widgets:
+  const activeRoadmapCount = developments ? developments.filter(d => d.status === "planned" || d.status === "in_progress").length : 0;
+  const myOpenTicketsCount = tickets ? tickets.filter(t => t.status === "open" || t.status === "in_progress").length : 0;
+  const announcementsCount = announcements ? announcements.length : 0;
+
+  // Chart data calculations
+  const devStatusCounts = developments ? {
+    planned: developments.filter(d => d.status === "planned").length,
+    in_progress: developments.filter(d => d.status === "in_progress").length,
+    completed: developments.filter(d => d.status === "completed").length,
+    paused: developments.filter(d => d.status === "paused").length,
+  } : { planned: 0, in_progress: 0, completed: 0, paused: 0 };
+
+  const devChartData = [
+    { name: "Planned", count: devStatusCounts.planned, color: "#818cf8" },
+    { name: "In Progress", count: devStatusCounts.in_progress, color: "#fbbf24" },
+    { name: "Completed", count: devStatusCounts.completed, color: "#34d399" },
+    { name: "Paused", count: devStatusCounts.paused, color: "#9ca3af" },
+  ];
+
+  const recentAnnouncements = announcements ? announcements.slice(0, 2) : [];
+
   return (
-    <Layout>
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
-        <div className="flex items-center justify-between mb-8 pb-4 border-b border-border">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">
-              Welcome back, {user?.displayName || user?.username} <span className="text-xl text-primary">{user?.userTag}</span>
-            </h1>
-            <p className="text-muted-foreground">Your player portal.</p>
-          </div>
-          {["admin", "staff", "dev", "dev_website"].includes(user?.role ?? "") && (
-            <Link href="/admin" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors">
-              Admin Arcadia
-            </Link>
-          )}
-        </div>
+    <div className="min-h-screen bg-[#f4f3f8] text-[#1e1b4b] flex font-sans antialiased">
+      {/* ── Left Sidebar (Desktop) ────────────────────────────────────────── */}
+      <aside className="w-64 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex">
+        <div className="flex flex-col">
+          {/* Logo Branding */}
+          <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20">
+              A
+            </div>
+            <div>
+              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia Guild</h2>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Player Hub</span>
+            </div>
+          </Link>
 
-        <Tabs defaultValue="announcements" className="space-y-8">
-          <TabsList className="bg-card border border-border flex-wrap h-auto gap-y-1">
-            <TabsTrigger value="announcements">Town Crier</TabsTrigger>
-            <TabsTrigger value="developments">The Forge</TabsTrigger>
-            <TabsTrigger value="tickets">Tiket Bantuan</TabsTrigger>
-            <TabsTrigger value="forms">🗳️ Voting & Formulir</TabsTrigger>
-            <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="credits">🛡️ Credits</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="announcements" className="space-y-4">
-            {announcementsLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : announcements?.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">The town is quiet today.</div>
-            ) : (
-              announcements?.map((ann) => (
-                <Card 
-                  key={ann.id} 
-                  className="bg-card border-border hover:border-primary/40 hover:shadow-lg transition-all duration-300 cursor-pointer hover:scale-[1.01] active:scale-[0.99] group"
-                  onClick={() => setSelectedAnnouncement(ann)}
+          {/* Sidebar Links */}
+          <div className="p-4 space-y-6">
+            <div className="space-y-1.5">
+              <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">General</span>
+              <nav className="space-y-1">
+                <button
+                  onClick={() => handleTabChange("dashboard")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "dashboard"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
                 >
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-xl text-primary flex items-center justify-between group-hover:text-amber-400 transition-colors">
-                      <span>{ann.title}</span>
-                      <span className="text-xs bg-muted px-2 py-1 rounded text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary transition-colors">
-                        {ann.type.toUpperCase()}
-                      </span>
-                    </CardTitle>
-                    <div className="text-xs text-muted-foreground">
-                      By {ann.authorName} â€¢ {format(new Date(ann.createdAt), 'MMM d, yyyy')}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm whitespace-pre-wrap line-clamp-3 text-muted-foreground group-hover:text-foreground/90 transition-colors">{ann.content}</p>
-                    {ann.content.length > 200 && (
-                      <span className="text-xs text-primary/80 group-hover:text-primary font-semibold mt-2 inline-block">
-                        Read details...
-                      </span>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </TabsContent>
-
-          <TabsContent value="developments" className="grid gap-4 md:grid-cols-2">
-            {developmentsLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : (
-              developments?.map((dev) => (
-                <Card key={dev.id} className="bg-card border-border flex flex-col">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex justify-between items-center">
-                      {dev.title}
-                      <span className="text-xs px-2 py-1 bg-muted text-muted-foreground rounded">
-                        {dev.status.replace('_', ' ').toUpperCase()}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex-1 flex flex-col justify-between space-y-4">
-                    <p className="text-sm text-muted-foreground">{dev.description}</p>
-                    {dev.progress !== null && dev.progress !== undefined && (
-                      <div className="space-y-1 mt-4">
-                        <div className="flex justify-between text-xs">
-                          <span>Progress</span>
-                          <span>{dev.progress}%</span>
-                        </div>
-                        <Progress value={dev.progress} className="h-2" />
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </TabsContent>
-
-          <TabsContent value="tickets" className="space-y-4">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">Tiket Bantuan</h2>
-                <p className="text-sm text-muted-foreground">Kirim atau kelola tiket bantuan moderator Anda.</p>
-              </div>
-              <Button onClick={() => setTicketDialogOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90">
-                + Buat Tiket
-              </Button>
+                  <LayoutGrid className="w-4.5 h-4.5" /> Dashboard
+                </button>
+                <button
+                  onClick={() => handleTabChange("announcements")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "announcements"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Megaphone className="w-4.5 h-4.5" /> Town Crier
+                </button>
+                <button
+                  onClick={() => handleTabChange("developments")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "developments"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Hammer className="w-4.5 h-4.5" /> The Forge
+                </button>
+                <button
+                  onClick={() => handleTabChange("tickets")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "tickets"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Ticket className="w-4.5 h-4.5" /> Support Tickets
+                </button>
+                <button
+                  onClick={() => handleTabChange("forms")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "forms"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <ClipboardList className="w-4.5 h-4.5" /> Voting & Forms
+                </button>
+              </nav>
             </div>
 
-            {ticketsLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : tickets.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground border border-border rounded-xl bg-card/20">
-                Belum ada tiket bantuan. Butuh bantuan? Silakan klik tombol di atas.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {tickets.map((t) => (
-                  <Card key={t.id} className="bg-card border-border">
-                    <CardHeader className="pb-2">
-                      <div className="flex justify-between items-start gap-4 flex-wrap">
-                        <div className="space-y-1">
-                          <CardTitle className="text-lg font-bold flex items-center gap-2">
-                            <span>#{t.id} - {t.reason}</span>
-                          </CardTitle>
-                          <p className="text-xs text-muted-foreground">
-                            Dibuat pada: {format(new Date(t.createdAt), "dd MMM yyyy, HH:mm")}
-                          </p>
-                        </div>
-                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
-                          t.status === "open"
-                            ? "bg-yellow-900/40 text-yellow-300 border-yellow-800/40"
-                            : t.status === "in_progress"
-                            ? "bg-blue-900/40 text-blue-300 border-blue-800/40"
-                            : t.status === "resolved"
-                            ? "bg-green-900/40 text-green-300 border-green-800/40"
-                            : "bg-gray-700/40 text-gray-400 border-gray-600/40"
-                        }`}>
-                          {t.status === "open" && "Terbuka"}
-                          {t.status === "in_progress" && "Sedang Ditangani"}
-                          {t.status === "resolved" && "Selesai"}
-                          {t.status === "closed" && "Ditutup"}
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <p className="text-sm text-foreground/90 whitespace-pre-wrap">{t.description}</p>
-                      
-                      <div className="flex justify-between items-center gap-4 flex-wrap pt-2 border-t border-border/40 text-xs text-muted-foreground">
-                        <div>
-                          {t.adminId ? (
-                            <span>Ditangani oleh: <strong className="text-foreground">{t.adminDisplayName || t.adminUsername}</strong></span>
-                          ) : (
-                            <span className="italic text-yellow-500/90">Menunggu respon moderator...</span>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="secondary" className="h-7 px-3 text-[11px]" onClick={() => setSelectedTicketChat(t)}>
-                            Detail & Balas
-                          </Button>
-                          {t.status !== "closed" && t.status !== "resolved" && (
-                            <Button size="sm" variant="outline" className="h-7 px-2 border-destructive/40 text-destructive hover:bg-destructive/10 text-[11px]" onClick={() => handleCloseTicket(t.id)}>
-                              Tutup Tiket
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+            <div className="space-y-1.5">
+              <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">Social</span>
+              <nav className="space-y-1">
+                <Link
+                  href="/"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                >
+                  <Home className="w-4.5 h-4.5" /> Home Page
+                </Link>
+                <Link
+                  href="/messages"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                >
+                  <MessageSquare className="w-4.5 h-4.5" /> Messages
+                </Link>
+                <Link
+                  href="/friends"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                >
+                  <Users className="w-4.5 h-4.5" /> Guilds
+                </Link>
+              </nav>
+            </div>
+
+            {user?.role && ["admin", "staff", "dev", "dev_website"].includes(user.role) && (
+              <div className="space-y-1.5">
+                <span className="px-3 text-[10px] font-black text-amber-600 uppercase tracking-widest block">Management</span>
+                <nav className="space-y-1">
+                  <Link
+                    href="/admin"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-amber-600 hover:bg-amber-50 hover:text-amber-700 border border-amber-200/30 bg-amber-50/10"
+                  >
+                    <ShieldAlert className="w-4.5 h-4.5 text-amber-500" /> Admin Portal
+                  </Link>
+                </nav>
               </div>
             )}
-          </TabsContent>
 
-          {/* â”€â”€ Voting & Formulir Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-          <TabsContent value="forms" className="space-y-4">
-            <FormsTab />
-          </TabsContent>
-
-          <TabsContent value="profile" className="space-y-6 max-w-xl">
-            <DevSwitchAccountCard />
-            <Card className="bg-card border-border">
-              <CardHeader>
-                <CardTitle className="text-primary">Edit Profile</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Handle: <span className="text-foreground font-medium">@{user?.username}</span>
-                  {user?.userTag && <> <span className="text-primary font-medium">{user.userTag}</span></>}
-                  {user?.displayName && <> Â· Display name: <span className="text-foreground font-medium">{user.displayName}</span></>}
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username">Handle</Label>
-                  <Input
-                    id="username"
-                    placeholder={user?.username ?? ""}
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="bg-input border-border"
-                  />
-                  <p className="text-xs text-muted-foreground">Handle publik. Nama yang sama boleh dipakai karena dibedakan oleh tagar.</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="displayName">Display Name</Label>
-                  <Input
-                    id="displayName"
-                    placeholder={user?.displayName ?? "Optional display name"}
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="bg-input border-border"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="bio">Bio</Label>
-                  <Textarea
-                    id="bio"
-                    placeholder={user?.bio ?? "Tell the realm who you are..."}
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                    className="bg-input border-border resize-none"
-                    rows={3}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="youtubeLiveUrl">YouTube Live Banner</Label>
-                  <Input
-                    id="youtubeLiveUrl"
-                    placeholder={user?.youtubeLiveUrl ?? "https://www.youtube.com/watch?v=..."}
-                    value={youtubeLiveUrl}
-                    onChange={(e) => setYoutubeLiveUrl(e.target.value)}
-                    className="bg-input border-border"
-                  />
-                  <p className="text-xs text-muted-foreground">Link YouTube ini akan tampil sebagai banner di profile publik. Kosongkan lalu save untuk menghapus.</p>
-                </div>
-                <Button
-                  onClick={handleSaveProfile}
-                  disabled={savingProfile}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+            <div className="space-y-1.5">
+              <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">Account</span>
+              <nav className="space-y-1">
+                <button
+                  onClick={() => handleTabChange("profile")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "profile"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
                 >
-                  {savingProfile ? "Saving..." : "Save Profile"}
-                </Button>
-              </CardContent>
-            </Card>
+                  <User className="w-4.5 h-4.5" /> My Profile
+                </button>
+                <button
+                  onClick={() => handleTabChange("settings")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "settings"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Settings className="w-4.5 h-4.5" /> Account Settings
+                </button>
+                <button
+                  onClick={() => handleTabChange("credits")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "credits"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <ShieldAlert className="w-4.5 h-4.5" /> Arcadia Credits
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
 
-            <Card className="bg-card border-border mt-6">
-              <CardHeader>
-                <CardTitle className="text-primary">Messaging Privacy</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Control who can start a direct message conversation with you.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="messagePrivacy">Who can send you messages?</Label>
-                  <Select
-                    value={settings?.messagePrivacy ?? "friends_only"}
-                    onValueChange={handleUpdatePrivacy}
+        {/* User Account / Profile Details Bottom Sidebar */}
+        <div className="p-4 border-t border-[#eae8f5] space-y-3">
+          <div className="flex items-center gap-3 px-2 py-1">
+            <Avatar className="h-9 w-9 border border-[#eae8f5]">
+              <AvatarImage src={user?.avatarUrl || undefined} />
+              <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
+                {getInitials(user?.displayName || user?.username)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-[#110e3d] truncate">{user?.displayName || user?.username}</p>
+              <p className="text-[10px] text-slate-400 font-bold capitalize">{user?.role?.replace('_', ' ') || "Member"}</p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => signOut({ redirectUrl: "/" })}
+            className="w-full justify-start gap-3 text-slate-500 hover:text-[#ef4444] hover:bg-red-50 rounded-xl py-2 px-3 text-xs font-bold h-9"
+          >
+            <LogOut className="w-4.5 h-4.5 text-[#ef4444]" /> Log out
+          </Button>
+        </div>
+      </aside>
+
+      {/* ── Mobile Sidebar Drawer ────────────────────────────────────────── */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden bg-black/40 backdrop-blur-sm">
+          <div className="w-64 bg-white flex flex-col justify-between p-4 shadow-2xl animate-slide-in">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between pb-4 border-b border-[#eae8f5]">
+                <Link href="/" onClick={() => setMobileSidebarOpen(false)} className="flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
+                  <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center text-white font-black">
+                    A
+                  </div>
+                  <div>
+                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">Arcadia</h2>
+                    <span className="text-[10px] text-slate-400 font-bold">Player Hub</span>
+                  </div>
+                </Link>
+                <Button variant="ghost" size="sm" onClick={() => setMobileSidebarOpen(false)} className="text-slate-400 hover:text-[#110e3d]">✕</Button>
+              </div>
+
+              <nav className="space-y-1">
+                <button
+                  onClick={() => handleTabChangeMobile("dashboard")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "dashboard" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <LayoutGrid className="w-4.5 h-4.5" /> Dashboard
+                </button>
+                <button
+                  onClick={() => handleTabChangeMobile("announcements")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "announcements" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Megaphone className="w-4.5 h-4.5" /> Town Crier
+                </button>
+                <button
+                  onClick={() => handleTabChangeMobile("developments")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "developments" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Hammer className="w-4.5 h-4.5" /> The Forge
+                </button>
+                <button
+                  onClick={() => handleTabChangeMobile("tickets")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "tickets" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Ticket className="w-4.5 h-4.5" /> Support Tickets
+                </button>
+                <button
+                  onClick={() => handleTabChangeMobile("forms")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "forms" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <ClipboardList className="w-4.5 h-4.5" /> Voting & Forms
+                </button>
+
+                <div className="py-2 border-t border-[#eae8f5] my-2">
+                  <span className="px-3 text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Social</span>
+                  <Link
+                    href="/"
+                    onClick={() => setMobileSidebarOpen(false)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                   >
-                    <SelectTrigger id="messagePrivacy" className="bg-input border-border w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border border-border">
-                      <SelectItem value="everyone">Everyone</SelectItem>
-                      <SelectItem value="following_only">People I Follow</SelectItem>
-                      <SelectItem value="friends_only">Mutual Friends (Followers who follow back)</SelectItem>
-                      <SelectItem value="nobody">Nobody</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Home className="w-4.5 h-4.5" /> Home Page
+                  </Link>
+                  <Link
+                    href="/messages"
+                    onClick={() => setMobileSidebarOpen(false)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  >
+                    <MessageSquare className="w-4.5 h-4.5" /> Messages
+                  </Link>
+                  <Link
+                    href="/friends"
+                    onClick={() => setMobileSidebarOpen(false)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  >
+                    <Users className="w-4.5 h-4.5" /> Guilds
+                  </Link>
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card className="bg-card border-border">
-              <CardHeader>
-                <CardTitle className="text-primary">Change Password</CardTitle>
-                <p className="text-sm text-muted-foreground">Leave current password empty if your account was created with OAuth</p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="currentPassword">Current Password</Label>
-                  <Input
-                    id="currentPassword"
-                    type="password"
-                    placeholder="Current password (if any)"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="bg-input border-border"
-                  />
+                {user?.role && ["admin", "staff", "dev", "dev_website"].includes(user.role) && (
+                  <div className="py-2 border-t border-[#eae8f5] my-2">
+                    <span className="px-3 text-[9px] font-black text-amber-600 uppercase tracking-widest block mb-1">Management</span>
+                    <Link
+                      href="/admin"
+                      onClick={() => setMobileSidebarOpen(false)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-amber-600 hover:bg-amber-50 hover:text-amber-700 border border-amber-200/30 bg-amber-50/10"
+                    >
+                      <ShieldAlert className="w-4.5 h-4.5 text-amber-500" /> Admin Portal
+                    </Link>
+                  </div>
+                )}
+
+                <div className="py-2 border-t border-[#eae8f5] my-2">
+                  <span className="px-3 text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Account</span>
+                  <button
+                    onClick={() => handleTabChangeMobile("profile")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "profile" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    <User className="w-4.5 h-4.5" /> My Profile
+                  </button>
+                  <button
+                    onClick={() => handleTabChangeMobile("settings")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "settings" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Settings className="w-4.5 h-4.5" /> Account Settings
+                  </button>
+                  <button
+                    onClick={() => handleTabChangeMobile("credits")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "credits" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    <ShieldAlert className="w-4.5 h-4.5" /> Arcadia Credits
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="newPassword">New Password</Label>
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    placeholder="Min. 8 characters"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="bg-input border-border"
-                  />
+              </nav>
+            </div>
+
+            <div className="p-4 border-t border-[#eae8f5]">
+              <Button
+                variant="ghost"
+                onClick={() => signOut({ redirectUrl: "/" })}
+                className="w-full justify-start gap-3 text-[#ef4444] hover:bg-red-50 rounded-xl py-2 px-3 text-xs font-bold h-9"
+              >
+                <LogOut className="w-4.5 h-4.5" /> Log out
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Main Content Area ────────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        {/* Top Header Bar */}
+        <header className="h-16 bg-white border-b border-[#eae8f5] px-6 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="md:hidden p-1 text-slate-500 hover:text-slate-900"
+            >
+              <Menu className="w-5.5 h-5.5" />
+            </Button>
+            {/* Breadcrumbs */}
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+              <span>Guild Portal</span>
+              <span>/</span>
+              <span className="text-[#110e3d] capitalize">
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : "Arcadia Credits"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {/* Copy server IP widget */}
+            <button
+              onClick={handleCopyIP}
+              className="hidden sm:flex items-center gap-2 border border-[#eae8f5] bg-slate-50 hover:bg-violet-50/50 hover:border-violet-200 transition-all rounded-xl py-1.5 px-3 group text-left cursor-pointer"
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+              <div className="flex flex-col">
+                <span className="text-[9px] font-bold text-slate-400 leading-none">SERVER IP</span>
+                <span className="text-[10px] font-black text-slate-700 leading-tight">play.arcadiamc.net</span>
+              </div>
+              <div className="ml-1 text-slate-400 group-hover:text-[#6366f1] transition-colors">
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+              </div>
+            </button>
+
+            {/* Quick Link to Admin Panel for Authorized Roles */}
+            {["admin", "staff", "dev", "dev_website"].includes(user?.role ?? "") && (
+              <Link
+                href="/admin"
+                className="inline-flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all shadow-md shadow-violet-500/10 cursor-pointer"
+              >
+                Arcadia Admin <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            )}
+          </div>
+        </header>
+
+        {/* Content Container */}
+        <div className="flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6">
+          {/* Dashboard Tab Overview */}
+          {activeTab === "dashboard" && (
+            <div className="space-y-6">
+              {/* Premium Welcome Banner */}
+              <div className="relative rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 p-6 md:p-8 text-white overflow-hidden shadow-lg shadow-indigo-500/10">
+                <div className="absolute right-0 top-0 w-1/3 h-full opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white to-transparent" />
+                <div className="relative z-10 space-y-2 max-w-xl">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 text-xs font-bold backdrop-blur-sm">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300 animate-bounce" /> Season II: Rise of the Guilds
+                  </div>
+                  <h1 className="text-2xl md:text-3xl font-black tracking-tight">Rise of the Guilds is Live!</h1>
+                  <p className="text-xs md:text-sm text-indigo-100 font-semibold leading-relaxed">
+                    Connect to <strong className="text-white">play.arcadiamc.net</strong> to build your town, forge your legacy, and climb the guild ranks. Let's write history together!
+                  </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    placeholder="Repeat new password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="bg-input border-border"
-                  />
+              </div>
+
+              {/* Overview Metrics Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardContent className="p-5 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Guild Citizen</span>
+                      <h3 className="text-base font-extrabold text-[#110e3d] mt-1 truncate max-w-[150px]">{user?.displayName || user?.username}</h3>
+                      <span className="text-[10px] text-[#6366f1] font-bold mt-0.5 block">{user?.userTag || "@citizen"}</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center text-[#6366f1]">
+                      <User className="w-5 h-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardContent className="p-5 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Forge Items</span>
+                      <h3 className="text-2xl font-black text-[#110e3d] mt-1">{activeRoadmapCount}</h3>
+                      <span className="text-[10px] text-slate-400 font-bold mt-0.5 block">Active Roadmap Updates</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500">
+                      <Hammer className="w-5 h-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardContent className="p-5 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Tickets</span>
+                      <h3 className="text-2xl font-black text-[#110e3d] mt-1">{myOpenTicketsCount}</h3>
+                      <span className="text-[10px] text-slate-400 font-bold mt-0.5 block">My Help Desk Requests</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500">
+                      <Ticket className="w-5 h-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardContent className="p-5 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Announcements</span>
+                      <h3 className="text-2xl font-black text-[#110e3d] mt-1">{announcementsCount}</h3>
+                      <span className="text-[10px] text-slate-400 font-bold mt-0.5 block">Total Town Crier Posts</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
+                      <Megaphone className="w-5 h-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Interactive charts and mini Announcement feed */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Forge status graph */}
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-[#6366f1]" /> Development Activity
+                    </CardTitle>
+                    <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Distribution of features in The Forge roadmap</p>
+                  </CardHeader>
+                  <CardContent className="pt-2">
+                    {developmentsLoading ? (
+                      <div className="h-[200px] flex items-center justify-center"><Skeleton className="h-full w-full rounded-xl" /></div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={devChartData}>
+                          <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                          <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={25} />
+                          <Tooltip
+                            contentStyle={{ background: "#ffffff", border: "1px solid #eae8f5", borderRadius: "12px", fontSize: "11px" }}
+                            labelStyle={{ fontWeight: "bold", color: "#110e3d" }}
+                            cursor={{ fill: "#f1f0f7" }}
+                          />
+                          <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                            {devChartData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Latest Announcements */}
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+                        <Megaphone className="w-4 h-4 text-[#6366f1]" /> Latest from Town Crier
+                      </CardTitle>
+                      <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Latest announcements and events</p>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab("announcements")}
+                      className="text-xs font-bold text-[#6366f1] hover:text-indigo-700 transition-colors"
+                    >
+                      View all
+                    </button>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {announcementsLoading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-14 w-full rounded-xl" />
+                        <Skeleton className="h-14 w-full rounded-xl" />
+                      </div>
+                    ) : recentAnnouncements.length === 0 ? (
+                      <div className="text-center py-8 text-xs text-slate-400 font-semibold">The town crier is silent today.</div>
+                    ) : (
+                      recentAnnouncements.map((ann) => (
+                        <div
+                          key={ann.id}
+                          onClick={() => setSelectedAnnouncement(ann)}
+                          className="p-3 bg-slate-50 border border-[#eae8f5] rounded-xl hover:border-violet-200 hover:bg-violet-50/20 transition-all cursor-pointer group"
+                        >
+                          <div className="flex justify-between items-start">
+                            <h4 className="text-xs font-extrabold text-[#110e3d] truncate group-hover:text-[#6366f1] transition-colors">{ann.title}</h4>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase shrink-0 ml-2">
+                              {format(new Date(ann.createdAt), 'MMM d')}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-semibold line-clamp-2 mt-1 leading-relaxed">
+                            {ann.content}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* Announcements / Town Crier Tab */}
+          {activeTab === "announcements" && (
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-black text-[#110e3d]">Town Crier</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Hear the news of the realm</p>
+              </div>
+
+              <div className="space-y-4">
+                {announcementsLoading ? (
+                  <Skeleton className="h-32 w-full rounded-2xl" />
+                ) : announcements?.length === 0 ? (
+                  <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
+                    No announcements available at this time.
+                  </div>
+                ) : (
+                  announcements?.map((ann) => (
+                    <Card
+                      key={ann.id}
+                      className="bg-white border-[#eae8f5] hover:border-violet-300 hover:shadow-md transition-all duration-300 cursor-pointer group rounded-2xl"
+                      onClick={() => setSelectedAnnouncement(ann)}
+                    >
+                      <CardHeader className="pb-2">
+                        <div className="flex justify-between items-start gap-4">
+                          <div>
+                            <CardTitle className="text-sm font-extrabold text-[#110e3d] group-hover:text-[#6366f1] transition-colors">
+                              {ann.title}
+                            </CardTitle>
+                            <span className="text-[10px] text-slate-400 font-bold mt-1 block">
+                              By {ann.authorName} • {format(new Date(ann.createdAt), 'MMMM d, yyyy')}
+                            </span>
+                          </div>
+                          <span className="text-[9px] font-black tracking-wider uppercase bg-violet-50 text-[#6366f1] border border-violet-100 px-2 py-0.5 rounded-lg">
+                            {ann.type}
+                          </span>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-xs text-slate-500 font-semibold line-clamp-3 leading-relaxed whitespace-pre-wrap">
+                          {ann.content}
+                        </p>
+                        {ann.content.length > 200 && (
+                          <span className="text-[10px] font-extrabold text-[#6366f1] mt-2.5 inline-block group-hover:underline">
+                            Read details...
+                          </span>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Developments / The Forge Tab */}
+          {activeTab === "developments" && (
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-black text-[#110e3d]">The Forge</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Track real-time server development and roadmap items</p>
+              </div>
+
+              {developmentsLoading ? (
+                <Skeleton className="h-48 w-full rounded-2xl" />
+              ) : developments?.length === 0 ? (
+                <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
+                  The Forge is resting. No active projects currently.
                 </div>
-                <Button
-                  onClick={handleChangePassword}
-                  disabled={savingPassword || !newPassword}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2">
+                  {developments?.map((dev) => (
+                    <Card key={dev.id} className="bg-white border-[#eae8f5] shadow-sm rounded-2xl flex flex-col justify-between">
+                      <CardHeader className="pb-3">
+                        <div className="flex justify-between items-start gap-4">
+                          <CardTitle className="text-sm font-extrabold text-[#110e3d]">
+                            {dev.title}
+                          </CardTitle>
+                          <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border ${
+                            dev.status === "completed" 
+                              ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
+                              : dev.status === "in_progress" 
+                              ? "bg-amber-50 text-amber-500 border-amber-100" 
+                              : dev.status === "planned" 
+                              ? "bg-blue-50 text-blue-500 border-blue-100" 
+                              : "bg-slate-50 text-slate-500 border-slate-100"
+                          }`}>
+                            {dev.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-bold mt-1 block">Category: {dev.category || "General"}</span>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col justify-between pt-1">
+                        <p className="text-xs text-slate-500 font-semibold leading-relaxed mb-4">{dev.description}</p>
+                        {dev.progress !== null && dev.progress !== undefined && (
+                          <div className="space-y-1.5 mt-auto pt-2 border-t border-slate-50">
+                            <div className="flex justify-between text-[10px] font-bold">
+                              <span className="text-slate-400">Progress</span>
+                              <span className="text-[#6366f1]">{dev.progress}%</span>
+                            </div>
+                            <Progress value={dev.progress} className="h-1.5 bg-slate-100" />
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tickets / Help Desk Tab */}
+          {activeTab === "tickets" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex flex-col">
+                  <h2 className="text-lg font-black text-[#110e3d]">Support Tickets</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Manage and send direct help desk tickets</p>
+                </div>
+                <Button 
+                  onClick={() => setTicketDialogOpen(true)} 
+                  className="bg-[#6366f1] hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all shadow-md shadow-violet-500/10"
                 >
-                  {savingPassword ? "Updating..." : "Change Password"}
+                  + Create Ticket
                 </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              </div>
 
-          <TabsContent value="credits" className="space-y-4">
-            <CreditsTab />
-          </TabsContent>
-        </Tabs>
-      </div>
+              {ticketsLoading ? (
+                <Skeleton className="h-32 w-full rounded-2xl" />
+              ) : tickets.length === 0 ? (
+                <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
+                  You have not created any support tickets. If you need help, click "+ Create Ticket".
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {tickets.map((t) => (
+                    <Card key={t.id} className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <div className="flex justify-between items-start gap-4 flex-wrap">
+                          <div className="space-y-0.5">
+                            <CardTitle className="text-sm font-extrabold text-[#110e3d]">
+                              #{t.id} - {t.reason}
+                            </CardTitle>
+                            <p className="text-[10px] text-slate-400 font-bold">
+                              Created: {format(new Date(t.createdAt), "dd MMM yyyy, HH:mm")}
+                            </p>
+                          </div>
+                          <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${
+                            t.status === "open"
+                              ? "bg-amber-50 text-amber-600 border-amber-100"
+                              : t.status === "in_progress"
+                              ? "bg-blue-50 text-blue-600 border-blue-100"
+                              : t.status === "resolved"
+                              ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+                              : "bg-slate-50 text-slate-500 border-slate-100"
+                          }`}>
+                            {t.status === "open" && "Open"}
+                            {t.status === "in_progress" && "In Progress"}
+                            {t.status === "resolved" && "Resolved"}
+                            {t.status === "closed" && "Closed"}
+                          </span>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4 pt-1">
+                        <p className="text-xs text-slate-500 font-semibold whitespace-pre-wrap leading-relaxed">
+                          {t.description}
+                        </p>
+                        
+                        <div className="flex justify-between items-center gap-4 flex-wrap pt-3 border-t border-slate-50 text-[10px] font-bold">
+                          <div className="text-slate-400">
+                            {t.adminId ? (
+                              <span>Assigned Moderator: <span className="text-slate-700">{t.adminDisplayName || t.adminUsername}</span></span>
+                            ) : (
+                              <span className="italic text-amber-500/90 animate-pulse">Awaiting moderator response...</span>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="h-8 rounded-lg bg-slate-50 hover:bg-slate-100 border border-[#eae8f5] text-[#110e3d] text-[10px] font-extrabold px-3.5"
+                              onClick={() => setSelectedTicketChat(t)}
+                            >
+                              Detail & Reply
+                            </Button>
+                            {t.status !== "closed" && t.status !== "resolved" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 rounded-lg border-red-100 text-red-500 hover:bg-red-50 text-[10px] font-extrabold px-3.5"
+                                onClick={() => handleCloseTicket(t.id)}
+                              >
+                                Close Ticket
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Voting & Forms Tab */}
+          {activeTab === "forms" && (
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-black text-[#110e3d]">Voting & Forums</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Cast votes or fill forms deployed by the realm lords</p>
+              </div>
+              <FormsTab />
+            </div>
+          )}
+
+          {/* Player Profile Tab */}
+          {activeTab === "profile" && (
+            <div className="space-y-6 max-w-2xl">
+              {/* Edit Profile Form */}
+              <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                <CardHeader>
+                  <CardTitle className="text-sm font-extrabold text-[#110e3d]">Edit Profile Settings</CardTitle>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-1">
+                    Handle: <span className="text-slate-800 font-bold">@{user?.username}</span>
+                    {user?.userTag && <> <span className="text-[#6366f1] font-bold">{user.userTag}</span></>}
+                    {user?.displayName && <> · Display Name: <span className="text-slate-800 font-bold">{user.displayName}</span></>}
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="username" className="text-xs font-bold text-slate-600">Handle / Nickname</Label>
+                    <Input
+                      id="username"
+                      placeholder={user?.username ?? ""}
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                    />
+                    <p className="text-[10px] text-slate-400 font-semibold">Public handle. Multiple users can share the same display name.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="displayName" className="text-xs font-bold text-slate-600">Display Name</Label>
+                    <Input
+                      id="displayName"
+                      placeholder={user?.displayName ?? "Your screen name"}
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bio" className="text-xs font-bold text-slate-600">Short Bio</Label>
+                    <Textarea
+                      id="bio"
+                      placeholder={user?.bio ?? "Tell the realm who you are..."}
+                      value={bio}
+                      onChange={(e) => setBio(e.target.value)}
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs min-h-[80px] resize-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="youtubeLiveUrl" className="text-xs font-bold text-slate-600">YouTube Live Banner URL</Label>
+                    <Input
+                      id="youtubeLiveUrl"
+                      placeholder={user?.youtubeLiveUrl ?? "https://www.youtube.com/watch?v=..."}
+                      value={youtubeLiveUrl}
+                      onChange={(e) => setYoutubeLiveUrl(e.target.value)}
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                    />
+                    <p className="text-[10px] text-slate-400 font-semibold">Displays as a header backdrop card in public views. Keep empty to clear.</p>
+                  </div>
+                  <Button
+                    onClick={handleSaveProfile}
+                    disabled={savingProfile}
+                    className="bg-[#6366f1] hover:bg-indigo-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all shadow-md shadow-violet-500/10"
+                  >
+                    {savingProfile ? "Saving Profile..." : "Save Changes"}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Message Privacy Dropdown */}
+              <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                <CardHeader>
+                  <CardTitle className="text-sm font-extrabold text-[#110e3d]">Direct Message Privacy</CardTitle>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-1">Control who can initiate a direct conversation with you</p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="messagePrivacy" className="text-xs font-bold text-slate-600">Allowed Sender Scope</Label>
+                    <Select
+                      value={settings?.messagePrivacy ?? "friends_only"}
+                      onValueChange={handleUpdatePrivacy}
+                    >
+                      <SelectTrigger id="messagePrivacy" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 w-full text-[#1e1b4b] font-bold">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-[#eae8f5] rounded-xl text-slate-700">
+                        <SelectItem value="everyone">Everyone</SelectItem>
+                        <SelectItem value="following_only">People I Follow</SelectItem>
+                        <SelectItem value="friends_only">Mutual Followers (Friends)</SelectItem>
+                        <SelectItem value="nobody">Nobody</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Change Password Card */}
+              <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                <CardHeader>
+                  <CardTitle className="text-sm font-extrabold text-[#110e3d]">Change Account Password</CardTitle>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-1">Keep current password blank if signed in via Google/Discord</p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="currentPassword" className="text-xs font-bold text-slate-600">Current Password</Label>
+                    <Input
+                      id="currentPassword"
+                      type="password"
+                      placeholder="••••••••"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="newPassword" className="text-xs font-bold text-slate-600">New Password</Label>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      placeholder="Min. 8 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirmPassword" className="text-xs font-bold text-slate-600">Confirm New Password</Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      placeholder="Repeat new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleChangePassword}
+                    disabled={savingPassword || !newPassword}
+                    className="bg-[#6366f1] hover:bg-indigo-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all shadow-md shadow-violet-500/10"
+                  >
+                    {savingPassword ? "Updating..." : "Change Password"}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Account Settings Tab */}
+          {activeTab === "settings" && (
+            <div className="space-y-6 max-w-4xl">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-black text-[#110e3d]">Account Settings</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Manage your email, two-factor authentication, and connected accounts</p>
+              </div>
+              <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden p-1 sm:p-4 md:p-6">
+                <UserProfile 
+                  routing="hash" 
+                  appearance={{
+                    elements: {
+                      rootBox: "w-full",
+                      cardBox: "w-full shadow-none border-0 bg-transparent max-w-none flex",
+                      card: "shadow-none border-0 bg-transparent w-full",
+                      navbar: "hidden md:flex bg-slate-50/50 border-r border-[#eae8f5] p-4 rounded-l-xl shrink-0",
+                      pageScrollable: "p-4 sm:p-6 md:p-8 w-full",
+                      profileSectionTitleText: "!text-slate-800 font-bold",
+                      profileSectionSubtitleText: "!text-slate-500 text-xs",
+                      headerTitle: "!text-[#110e3d] font-extrabold",
+                      headerSubtitle: "!text-slate-500",
+                      formButtonPrimary: "bg-[#6366f1] hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl",
+                      navbarButton: "text-slate-500 hover:text-slate-900 hover:bg-slate-100 font-bold text-xs rounded-lg px-3 py-2",
+                      navbarButtonActive: "text-[#6366f1] bg-violet-50/80 hover:text-[#6366f1] hover:bg-violet-50 font-bold",
+                      profileSection: "border-b border-[#eae8f5] pb-6 mb-6 last:border-0",
+                      userPreview: "bg-slate-50 border border-[#eae8f5] p-4 rounded-xl",
+                      userPreviewTextContainer: "ml-3",
+                      userPreviewTitle: "!text-[#110e3d] font-extrabold",
+                      userPreviewSubtitle: "!text-slate-400 font-bold",
+                      formFieldLabel: "!text-slate-700 font-bold text-xs",
+                      formFieldInput: "!bg-slate-50 !border-[#eae8f5] !text-[#1e1b4b] rounded-xl text-xs h-9",
+                      dividerText: "!text-slate-400",
+                      dividerLine: "!bg-slate-200",
+                      identityPreviewEditButton: "!text-[#6366f1] hover:underline",
+                      formFieldSuccessText: "!text-emerald-600",
+                      alertText: "!text-red-500",
+                      alert: "!bg-red-50 !border-red-200",
+                      otpCodeFieldInput: "!bg-slate-50 !border-[#eae8f5] !text-[#1e1b4b]",
+                      navbarTitle: "!text-[#110e3d] !font-extrabold",
+                      navbarSubtitle: "!text-slate-400",
+                      breadcrumbsItem: "!text-slate-500",
+                      breadcrumbsItemActive: "!text-[#110e3d] !font-bold",
+                      breadcrumbsSeparator: "!text-slate-300",
+                      accordionTriggerButton: "!text-slate-700",
+                      accordionContent: "!text-slate-600",
+                    },
+                    variables: {
+                      colorPrimary: "#6366f1",
+                      colorBackground: "#ffffff",
+                      colorText: "#1e1b4b",
+                      colorTextSecondary: "#64748b",
+                      colorForeground: "#1e1b4b",
+                      colorMutedForeground: "#64748b",
+                      colorInput: "#f8fafc",
+                      colorInputForeground: "#1e1b4b",
+                      colorNeutral: "#cbd5e1",
+                      borderRadius: "0.75rem",
+                    }
+                  }}
+                >
+                  <UserProfile.Page label="account" />
+                  <UserProfile.Page label="security" />
+                  <UserProfile.Page
+                    label="Switch Account"
+                    url="switch"
+                    labelIcon={<Users className="w-4.5 h-4.5" />}
+                  >
+                    <div className="space-y-4 pt-1">
+                      <div className="flex flex-col mb-4">
+                        <h3 className="text-base font-extrabold text-[#110e3d]">Switch Account</h3>
+                        <p className="text-xs text-slate-400 font-semibold mt-0.5">Keep multiple active sessions and quickly toggle characters</p>
+                      </div>
+                      <DevSwitchAccountCard />
+                    </div>
+                  </UserProfile.Page>
+                </UserProfile>
+              </Card>
+            </div>
+          )}
+
+          {/* Contributor Credits Tab */}
+          {activeTab === "credits" && (
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-black text-[#110e3d]">Arcadia Credits</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Meet the creators and developers who forged this realm</p>
+              </div>
+              <CreditsTab />
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* ── Dialog Modals ────────────────────────────────────────────────── */}
 
       {/* Announcement Detail Modal */}
       <Dialog open={selectedAnnouncement !== null} onOpenChange={() => setSelectedAnnouncement(null)}>
-        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-white border-[#eae8f5] max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6">
           {selectedAnnouncement && (
             <>
               <DialogHeader>
                 <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 bg-primary/20 text-primary border border-primary/20 rounded">
+                  <span className="text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 bg-violet-50 text-[#6366f1] border border-violet-100 rounded-lg">
                     {selectedAnnouncement.type}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-slate-400 font-bold">
                     {format(new Date(selectedAnnouncement.createdAt), 'MMMM d, yyyy')}
                   </span>
                 </div>
-                <DialogTitle className="text-2xl font-black text-foreground leading-tight">
+                <DialogTitle className="text-lg font-extrabold text-[#110e3d] leading-tight">
                   {selectedAnnouncement.title}
                 </DialogTitle>
-                <div className="text-xs text-muted-foreground mt-1">
-                  By <span className="text-foreground font-semibold">{selectedAnnouncement.authorName}</span>
+                <div className="text-[10px] text-slate-400 font-bold mt-1.5">
+                  By <span className="text-slate-700">{selectedAnnouncement.authorName}</span>
                 </div>
               </DialogHeader>
-              <div className="border-t border-border/60 my-4 pt-4">
-                <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
+              <div className="border-t border-slate-50 my-4 pt-4">
+                <p className="text-xs text-slate-500 font-semibold whitespace-pre-wrap leading-relaxed">
                   {selectedAnnouncement.content}
                 </p>
               </div>
               <DialogFooter>
-                <Button onClick={() => setSelectedAnnouncement(null)} className="bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold">
+                <Button onClick={() => setSelectedAnnouncement(null)} className="bg-slate-100 hover:bg-slate-200 border border-[#eae8f5] text-slate-700 text-xs font-bold rounded-xl h-9 px-4">
                   Close Announcement
                 </Button>
               </DialogFooter>
@@ -545,21 +1283,21 @@ export default function Member() {
 
       {/* Ticket Create Dialog */}
       <Dialog open={ticketDialogOpen} onOpenChange={setTicketDialogOpen}>
-        <DialogContent className="bg-card border-border max-w-md">
+        <DialogContent className="bg-white border-[#eae8f5] max-w-md rounded-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="text-primary">Buat Tiket Bantuan</DialogTitle>
+            <DialogTitle className="text-[#110e3d] font-extrabold text-base">Create Support Ticket</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="reason">Alasan Tiket</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="reason" className="text-xs font-bold text-slate-600">Ticket Category</Label>
               <Select
                 value={ticketReason}
                 onValueChange={setTicketReason}
               >
-                <SelectTrigger id="reason" className="bg-input border-border w-full">
-                  <SelectValue placeholder={ticketReasonsLoading ? "Loading..." : "Pilih alasan"} />
+                <SelectTrigger id="reason" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 w-full text-[#1e1b4b] font-bold">
+                  <SelectValue placeholder={ticketReasonsLoading ? "Loading categories..." : "Select reason"} />
                 </SelectTrigger>
-                <SelectContent className="bg-card border border-border">
+                <SelectContent className="bg-white border-[#eae8f5] rounded-xl text-slate-700">
                   {ticketReasons.map((reason) => (
                     <SelectItem key={reason.id} value={reason.label}>
                       {reason.label}
@@ -568,26 +1306,29 @@ export default function Member() {
                 </SelectContent>
               </Select>
               {ticketReasons.length === 0 && (
-                <p className="text-[10px] text-destructive">Belum ada alasan tiket aktif. Hubungi admin.</p>
+                <p className="text-[10px] text-red-500 font-bold">No active support categories. Contact admin.</p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Deskripsi Kejadian / Bantuan</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="description" className="text-xs font-bold text-slate-600">Description / Details</Label>
               <Textarea
                 id="description"
-                placeholder="Tuliskan kronologi atau detail bantuan yang Anda butuhkan..."
+                placeholder="Explain the issues you are facing, or detail what assistance is required..."
                 value={ticketDescription}
                 onChange={(e) => setTicketDescription(e.target.value)}
-                className="bg-input border-border resize-none"
-                rows={4}
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs min-h-[100px] resize-none"
               />
-              <p className="text-[10px] text-muted-foreground">Minimal 5 karakter.</p>
+              <p className="text-[10px] text-slate-400 font-semibold">Minimum 5 characters.</p>
             </div>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" className="border-border" onClick={() => setTicketDialogOpen(false)}>Batal</Button>
-            <Button onClick={handleCreateTicket} disabled={submittingTicket || !ticketReason || ticketDescription.trim().length < 5} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              {submittingTicket ? "Mengirim..." : "Kirim Tiket"}
+          <DialogFooter className="gap-2 pt-4 border-t border-slate-50">
+            <Button variant="outline" className="border-[#eae8f5] text-slate-600 hover:bg-slate-50 text-xs font-bold rounded-xl h-9 px-4" onClick={() => setTicketDialogOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={handleCreateTicket} 
+              disabled={submittingTicket || !ticketReason || ticketDescription.trim().length < 5} 
+              className="bg-[#6366f1] text-white hover:bg-indigo-700 text-xs font-bold rounded-xl h-9 px-4 shadow-md shadow-violet-500/5"
+            >
+              {submittingTicket ? "Submitting..." : "Submit Ticket"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -595,13 +1336,13 @@ export default function Member() {
 
       {/* Ticket Chat Dialog */}
       <Dialog open={selectedTicketChat !== null} onOpenChange={(open) => { if (!open) setSelectedTicketChat(null); }}>
-        <DialogContent className="bg-card border-border max-w-lg flex flex-col h-[80vh] p-0 overflow-hidden">
+        <DialogContent className="bg-white border-[#eae8f5] max-w-lg flex flex-col h-[80vh] p-0 overflow-hidden rounded-2xl">
           {selectedTicketChat && (
             <TicketChatContent ticket={selectedTicketChat} onClose={() => setSelectedTicketChat(null)} />
           )}
         </DialogContent>
       </Dialog>
-    </Layout>
+    </div>
   );
 }
 
@@ -641,7 +1382,6 @@ function DevSwitchAccountCard() {
     try {
       toast({ title: "Switching account...", description: "Mohon tunggu sebentar." });
       await clerk.setActive({ session: sessionId });
-      // Clear mock bypass when switching to a real session to avoid confusion
       localStorage.removeItem("switch_clerk_id");
       await reloadWithFreshCache();
     } catch (err: any) {
@@ -667,7 +1407,6 @@ function DevSwitchAccountCard() {
 
   const handleAddAccount = async () => {
     const signInUrl = `${window.location.origin}${basePath}/sign-in`;
-
     localStorage.removeItem("switch_clerk_id");
     toast({ title: "Login akun lain", description: "Membuka sign-in flow bawaan Clerk." });
     window.location.href = signInUrl;
@@ -688,29 +1427,29 @@ function DevSwitchAccountCard() {
 
   const isLoading = isUsersLoading;
 
-  if (isLoading) return <Skeleton className="h-48 w-full" />;
+  if (isLoading) return <Skeleton className="h-48 w-full rounded-2xl" />;
 
   return (
-    <Card className="bg-card border-border border-2 border-amber-500/30 shadow-md">
+    <Card className="bg-white border-2 border-amber-500/30 shadow-md shadow-amber-500/5 rounded-2xl">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-amber-500 font-bold flex items-center gap-2">
-            <span className="text-lg">🛠️ Switch Account (Roblox Style)</span>
+          <CardTitle className="text-amber-600 font-extrabold text-sm flex items-center gap-2">
+            <span>🛠️ Switch Account (Roblox Style)</span>
           </CardTitle>
           {activeSwitchClerkId && (
-            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider">
+            <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-lg font-bold uppercase tracking-wider">
               Bypassed
             </span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          Simpan banyak akun login dan berpindah cepat. Mode bypass hanya untuk Dev Website.
+        <p className="text-[10px] text-slate-400 font-semibold mt-1">
+          Keep multiple credentials active and switch roles quickly. Mock bypass is enabled for Dev Website.
         </p>
         {activeSwitchClerkId && (
-          <div className="mt-3 rounded-md border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
-            Aktif sebagai <strong>{activeSwitchUser?.displayName || activeSwitchUser?.username || currentUser?.displayName || currentUser?.username}</strong>
-            {activeSwitchUser?.userTag && <span className="ml-1 text-amber-400">{activeSwitchUser.userTag}</span>}
-            <Button variant="link" onClick={handleRevertMock} className="ml-2 h-auto p-0 text-xs font-bold text-amber-400">
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/30 px-3 py-2 text-xs text-amber-800 font-semibold">
+            Bypassed as: <strong>{activeSwitchUser?.displayName || activeSwitchUser?.username || currentUser?.displayName || currentUser?.username}</strong>
+            {activeSwitchUser?.userTag && <span className="ml-1 text-[#6366f1]">{activeSwitchUser.userTag}</span>}
+            <Button variant="link" onClick={handleRevertMock} className="ml-2 h-auto p-0 text-xs font-extrabold text-amber-600 hover:text-amber-700">
               Revert
             </Button>
           </div>
@@ -718,14 +1457,14 @@ function DevSwitchAccountCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         <Tabs defaultValue="sessions" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-background/60 border border-border/60 mb-4 h-9">
-            <TabsTrigger value="sessions" className="text-xs py-1.5">Saved Accounts ({sessions.length})</TabsTrigger>
-            <TabsTrigger value="bypass" className="text-xs py-1.5" disabled={!canUseDevSwitch && !activeSwitchClerkId}>Dev Quick Switch</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 bg-slate-50 border border-[#eae8f5] mb-4 h-9 p-0.5 rounded-xl">
+            <TabsTrigger value="sessions" className="text-[11px] py-1 font-bold rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-800">Saved Accounts ({sessions.length})</TabsTrigger>
+            <TabsTrigger value="bypass" className="text-[11px] py-1 font-bold rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-800" disabled={!canUseDevSwitch && !activeSwitchClerkId}>Dev Quick Switch</TabsTrigger>
           </TabsList>
 
           {/* Clerk Native Sessions Switcher (Roblox-style) */}
           <TabsContent value="sessions" className="space-y-3">
-            <div className="divide-y divide-border/40 rounded-lg border border-border/60 bg-background/25 max-h-[220px] overflow-y-auto">
+            <div className="divide-y divide-slate-100 rounded-xl border border-[#eae8f5] bg-slate-50/30 max-h-[220px] overflow-y-auto">
               {sessions.map((sess) => {
                 const u = sess.user;
                 if (!u) return null;
@@ -741,28 +1480,28 @@ function DevSwitchAccountCard() {
                 const sessionTag = dbUser?.userTag;
                 const isActive = sess.id === activeSessionId && !activeSwitchClerkId;
                 return (
-                  <div key={sess.id} className={`flex items-center justify-between p-3 transition-colors ${isActive ? "bg-amber-500/5" : "hover:bg-muted/10"}`}>
+                  <div key={sess.id} className={`flex items-center justify-between p-3 transition-all ${isActive ? "bg-amber-50/20" : "hover:bg-slate-50/50"}`}>
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9 border border-border/80">
+                      <Avatar className="h-9 w-9 border border-[#eae8f5]">
                         <AvatarImage src={u.imageUrl} />
-                        <AvatarFallback className="text-xs font-bold">
+                        <AvatarFallback className="text-[10px] font-bold">
                           {getInitials(sessionDisplayName)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                           <span className="truncate">{sessionDisplayName}</span>
-                          {sessionTag && <span className="shrink-0 text-xs font-bold text-primary">{sessionTag}</span>}
+                          {sessionTag && <span className="shrink-0 text-[10px] font-bold text-[#6366f1]">{sessionTag}</span>}
                           {isActive && (
-                            <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-semibold uppercase">
+                            <span className="text-[8px] bg-emerald-50 text-emerald-600 border border-emerald-100 px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
                               Active
                             </span>
                           )}
                         </p>
-                        <p className="text-[11px] text-muted-foreground truncate">
+                        <p className="text-[10px] text-slate-400 font-semibold truncate">
                           @{sessionUsername}
                           {u.primaryEmailAddress?.emailAddress && (
-                            <span className="text-muted-foreground/70"> · {u.primaryEmailAddress.emailAddress}</span>
+                            <span className="text-slate-400/70"> · {u.primaryEmailAddress.emailAddress}</span>
                           )}
                         </p>
                       </div>
@@ -772,7 +1511,7 @@ function DevSwitchAccountCard() {
                         <Button
                           size="sm"
                           onClick={() => handleSwitchClerkSession(sess.id)}
-                          className="h-7 px-2.5 text-[11px] bg-amber-600 hover:bg-amber-500 text-white font-bold"
+                          className="h-7 px-2.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg"
                         >
                           Switch
                         </Button>
@@ -781,7 +1520,7 @@ function DevSwitchAccountCard() {
                         size="sm"
                         variant="ghost"
                         onClick={() => handleSignOutSession(sess.id)}
-                        className="h-7 px-2 text-[11px] text-destructive hover:bg-destructive/10 font-bold"
+                        className="h-7 px-2 text-[10px] text-red-500 hover:bg-red-50 font-bold rounded-lg"
                       >
                         Log Out
                       </Button>
@@ -790,32 +1529,32 @@ function DevSwitchAccountCard() {
                 );
               })}
               {sessions.length === 0 && (
-                <div className="text-center py-6 text-xs text-muted-foreground">
-                  Belum ada sesi akun tersimpan.
+                <div className="text-center py-6 text-xs text-slate-400 font-semibold">
+                  No saved sessions.
                 </div>
               )}
             </div>
 
             <Button
               onClick={() => void handleAddAccount()}
-              className="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold"
+              className="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl h-9 shadow-sm"
             >
-              ➕ Add Account (Sign In ke Akun Lain)
+              ➕ Add Account (Sign In to Another Account)
             </Button>
-            <p className="text-[10px] text-muted-foreground/70 text-center leading-relaxed">
-              *Pastikan Multi-session diaktifkan di dashboard Clerk Anda agar bisa menyimpan banyak akun sekaligus.
+            <p className="text-[9px] text-slate-400 font-semibold text-center leading-relaxed">
+              *Ensure multi-sessions are enabled in your Clerk dashboard configuration.
             </p>
           </TabsContent>
 
           {/* Dev Mock Bypass Switcher */}
           <TabsContent value="bypass" className="space-y-4">
             {!canUseDevSwitch && activeSwitchClerkId ? (
-              <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-200">
-                Kamu sedang memakai mode bypass. Klik <strong>Revert</strong> untuk balik ke akun Clerk asli.
+              <div className="rounded-xl border border-amber-200 bg-amber-50/20 p-3 text-xs text-amber-800 font-semibold">
+                You are in bypass mode. Click <strong>Revert</strong> to return to your original Clerk credentials.
               </div>
             ) : !canUseDevSwitch ? (
-              <div className="rounded-lg border border-border bg-background/25 p-3 text-xs text-muted-foreground">
-                Dev Quick Switch hanya tersedia untuk role Dev Website.
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 text-xs text-slate-450 font-semibold">
+                Bypass switch is only accessible to Dev Website roles.
               </div>
             ) : (
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
@@ -824,30 +1563,30 @@ function DevSwitchAccountCard() {
                   value={selectedClerkId || (currentUser?.clerkId ?? "")}
                   onValueChange={setSelectedClerkId}
                 >
-                  <SelectTrigger className="bg-input border-border w-full">
-                    <SelectValue placeholder="Pilih akun database..." />
+                  <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 w-full text-[#1e1b4b] font-bold">
+                    <SelectValue placeholder="Choose database record..." />
                   </SelectTrigger>
-                  <SelectContent className="bg-card border border-border">
+                  <SelectContent className="bg-white border-[#eae8f5] rounded-xl text-slate-700">
                     {users.map((u) => (
                       <SelectItem key={u.id} value={u.clerkId}>
                         <div className="flex items-center gap-2">
-                          <Avatar className="w-5 h-5">
+                          <Avatar className="w-5 h-5 border border-slate-100">
                             <AvatarImage src={u.avatarUrl ?? undefined} />
-                            <AvatarFallback className="text-[9px] font-bold bg-muted-foreground/30">
+                            <AvatarFallback className="text-[8px] font-bold bg-slate-100 text-slate-600">
                               {getInitials(u.displayName || u.username)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="font-semibold text-xs text-foreground">
+                          <span className="font-bold text-xs text-slate-800">
                             {u.displayName || u.username}
                           </span>
-                          <span className="text-[10px] text-muted-foreground font-mono">
+                          <span className="text-[10px] text-slate-400 font-bold font-mono">
                             @{u.username}
                           </span>
-                          <span className="text-[9px] bg-primary/20 text-primary border border-primary/20 px-1.5 py-0.2 rounded font-bold uppercase">
+                          <span className="text-[9px] bg-violet-50 text-[#6366f1] border border-violet-100 px-1.5 py-0.2 rounded-lg font-bold uppercase">
                             {u.role}
                           </span>
                           {u.mcUsername && (
-                            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded font-mono">
+                            <span className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-100 px-1.5 py-0.2 rounded-lg font-bold font-mono">
                               🎮 {u.mcUsername}
                             </span>
                           )}
@@ -861,7 +1600,7 @@ function DevSwitchAccountCard() {
                 <Button
                   onClick={() => handleSwitchMock(selectedClerkId)}
                   disabled={!selectedClerkId || selectedClerkId === activeSwitchClerkId || (!activeSwitchClerkId && selectedClerkId === currentUser?.clerkId)}
-                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs"
+                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl h-9"
                 >
                   Bypass Switch
                 </Button>
@@ -869,7 +1608,7 @@ function DevSwitchAccountCard() {
                   <Button
                     variant="outline"
                     onClick={handleRevertMock}
-                    className="border-destructive/30 hover:bg-destructive/10 text-destructive text-xs font-bold"
+                    className="border-red-100 text-red-500 hover:bg-red-50 text-xs font-bold rounded-xl h-9"
                   >
                     Revert Original
                   </Button>
@@ -879,8 +1618,8 @@ function DevSwitchAccountCard() {
             )}
 
             {activeSwitchClerkId && (
-              <p className="text-[10px] text-amber-500/90 bg-amber-500/5 border border-amber-500/20 rounded p-2 leading-relaxed">
-                <strong>Catatan:</strong> Anda sedang berselancar menggunakan akun tiruan <strong>{currentUser?.displayName || currentUser?.username}</strong>. Seluruh sistem API server Arcadia akan membaca Anda sebagai user terpilih di atas.
+              <p className="text-[9px] text-amber-700 bg-amber-50/20 border border-amber-200 rounded-xl p-2.5 leading-relaxed font-semibold">
+                <strong>Warning:</strong> You are actively mimicking the account <strong>{currentUser?.displayName || currentUser?.username}</strong>. The entire Arcadia platform will resolve your API queries under this mock identity.
               </p>
             )}
           </TabsContent>
@@ -937,42 +1676,42 @@ function TicketChatContent({ ticket, onClose }: TicketChatContentProps) {
 
   return (
     <>
-      <DialogHeader className="px-5 pt-5 pb-3 border-b border-border bg-card/85">
+      <DialogHeader className="px-5 pt-5 pb-3 border-b border-slate-100 bg-white">
         <div className="flex justify-between items-start gap-4 flex-wrap">
           <div>
-            <DialogTitle className="text-primary font-bold">
+            <DialogTitle className="text-[#110e3d] font-extrabold text-base">
               #{ticket.id} - {ticket.reason}
             </DialogTitle>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Dibuat pada: {format(new Date(ticket.createdAt), "dd MMM yyyy, HH:mm")}
+            <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+              Created: {format(new Date(ticket.createdAt), "dd MMM yyyy, HH:mm")}
             </p>
           </div>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+          <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${
             ticket.status === "open"
-              ? "bg-yellow-900/40 text-yellow-300 border-yellow-800/40"
+              ? "bg-amber-50 text-amber-600 border-amber-100"
               : ticket.status === "in_progress"
-              ? "bg-blue-900/40 text-blue-300 border-blue-800/40"
+              ? "bg-blue-50 text-blue-600 border-blue-100"
               : ticket.status === "resolved"
-              ? "bg-green-900/40 text-green-300 border-green-800/40"
-              : "bg-gray-700/40 text-gray-400 border-gray-600/40"
+              ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+              : "bg-slate-50 text-slate-500 border-slate-100"
           }`}>
-            {ticket.status === "open" && "Terbuka"}
-            {ticket.status === "in_progress" && "Diproses"}
-            {ticket.status === "resolved" && "Selesai"}
-            {ticket.status === "closed" && "Ditutup"}
+            {ticket.status === "open" && "Open"}
+            {ticket.status === "in_progress" && "In Progress"}
+            {ticket.status === "resolved" && "Resolved"}
+            {ticket.status === "closed" && "Closed"}
           </span>
         </div>
       </DialogHeader>
 
-      <ScrollArea className="flex-1 p-4 bg-muted/20">
+      <ScrollArea className="flex-1 p-4 bg-slate-50/50">
         <div className="space-y-4">
           {/* Main Description */}
-          <div className="bg-card border border-border p-3.5 rounded-xl">
-            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-1">Deskripsi Awal</p>
-            <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
+          <div className="bg-white border border-[#eae8f5] p-3.5 rounded-xl shadow-sm">
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">Original Description</p>
+            <p className="text-xs text-slate-600 font-semibold whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
           </div>
 
-          <div className="border-t border-border/40 my-4" />
+          <div className="border-t border-slate-100 my-4" />
 
           {isLoading ? (
             <div className="space-y-3">
@@ -981,8 +1720,8 @@ function TicketChatContent({ ticket, onClose }: TicketChatContentProps) {
               <Skeleton className="h-10 w-1/2 rounded-2xl" />
             </div>
           ) : messages.length === 0 ? (
-            <div className="text-center py-8 text-xs text-muted-foreground bg-card/10 border border-dashed border-border rounded-lg">
-              Belum ada percakapan. Hubungi moderator dengan mengirim pesan di bawah.
+            <div className="text-center py-8 text-[11px] text-slate-400 font-bold bg-white/50 border border-dashed border-[#eae8f5] rounded-xl">
+              No chat history. Message the moderator below.
             </div>
           ) : (
             <div className="space-y-3">
@@ -991,19 +1730,19 @@ function TicketChatContent({ ticket, onClose }: TicketChatContentProps) {
 
                 return (
                   <div key={msg.id} className={`flex gap-2.5 ${isCreator ? "flex-row-reverse" : ""}`}>
-                    <Avatar className="w-6 h-6 shrink-0 mt-0.5">
+                    <Avatar className="w-6 h-6 shrink-0 mt-0.5 border border-slate-100">
                       <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
-                      <AvatarFallback className="text-[9px] bg-muted">{getInitials(msg.senderDisplayName || msg.senderUsername)}</AvatarFallback>
+                      <AvatarFallback className="text-[9px] bg-slate-100 font-bold text-[#6366f1]">{getInitials(msg.senderDisplayName || msg.senderUsername)}</AvatarFallback>
                     </Avatar>
                     <div className={`max-w-[75%] flex flex-col gap-0.5 ${isCreator ? "items-end" : "items-start"}`}>
-                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                        <span className="font-semibold text-foreground/80">{msg.senderDisplayName || msg.senderUsername}</span>
+                      <div className="flex items-center gap-1.5 text-[9px] text-slate-400 font-bold">
+                        <span className="text-slate-600">{msg.senderDisplayName || msg.senderUsername}</span>
                         <span>{format(new Date(msg.createdAt), "HH:mm")}</span>
                       </div>
-                      <div className={`rounded-xl px-3 py-2 text-xs leading-relaxed ${
+                      <div className={`rounded-xl px-3 py-2 text-xs leading-relaxed font-semibold shadow-sm ${
                         isCreator
-                          ? "bg-primary text-primary-foreground rounded-tr-none"
-                          : "bg-card border border-border rounded-tl-none"
+                          ? "bg-[#6366f1] text-white rounded-tr-none"
+                          : "bg-white border border-[#eae8f5] text-slate-700 rounded-tl-none"
                       }`}>
                         {msg.content}
                       </div>
@@ -1017,10 +1756,10 @@ function TicketChatContent({ ticket, onClose }: TicketChatContentProps) {
         </div>
       </ScrollArea>
 
-      <div className="p-3 border-t border-border bg-card/70 backdrop-blur-md">
+      <div className="p-3 border-t border-slate-100 bg-white">
         <div className="flex gap-2">
           <Input
-            placeholder={ticket.status === "closed" || ticket.status === "resolved" ? "Tiket sudah ditutup..." : "Ketik pesan balasan..."}
+            placeholder={ticket.status === "closed" || ticket.status === "resolved" ? "Ticket closed..." : "Type a message..."}
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             disabled={ticket.status === "closed" || ticket.status === "resolved"}
@@ -1030,14 +1769,14 @@ function TicketChatContent({ ticket, onClose }: TicketChatContentProps) {
                 handleSendReply();
               }
             }}
-            className="bg-background"
+            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
           />
           <Button
             onClick={handleSendReply}
             disabled={!replyText.trim() || ticket.status === "closed" || ticket.status === "resolved" || sendMessage.isPending}
-            className="bg-primary text-primary-foreground font-semibold px-4"
+            className="bg-[#6366f1] text-white hover:bg-indigo-700 font-extrabold text-xs px-4 rounded-xl shadow-md shadow-violet-500/5 h-9"
           >
-            Kirim
+            Send
           </Button>
         </div>
       </div>
@@ -1045,8 +1784,6 @@ function TicketChatContent({ ticket, onClose }: TicketChatContentProps) {
   );
 }
 
-
-// â”€â”€ FormsTab: Voting & Formulir for Members â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function FormsTab() {
   const { data: forms = [], isLoading } = useListForms();
   const [selectedForm, setSelectedForm] = useState<any | null>(null);
@@ -1054,17 +1791,17 @@ function FormsTab() {
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <div className="h-28 bg-card border border-border rounded-xl animate-pulse" />
-        <div className="h-28 bg-card border border-border rounded-xl animate-pulse" />
+        <Skeleton className="h-28 bg-white border border-[#eae8f5] rounded-2xl animate-pulse" />
+        <Skeleton className="h-28 bg-white border border-[#eae8f5] rounded-2xl animate-pulse" />
       </div>
     );
   }
 
   if (forms.length === 0) {
     return (
-      <div className="text-center py-16 text-muted-foreground">
+      <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
         <div className="text-4xl mb-3">🗳️</div>
-        <p className="text-sm">Belum ada voting atau formulir aktif saat ini.</p>
+        <p>No active voting options or forms at this time.</p>
       </div>
     );
   }
@@ -1075,33 +1812,33 @@ function FormsTab() {
         {forms.map((form: any) => (
           <div
             key={form.id}
-            className="bg-card border border-border rounded-xl p-4 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group"
+            className="bg-white border border-[#eae8f5] rounded-2xl p-5 hover:border-violet-300 hover:shadow-md transition-all cursor-pointer group"
             onClick={() => setSelectedForm(form)}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${form.type === "poll" ? "bg-violet-900/40 text-violet-300 border-violet-800/40" : "bg-blue-900/40 text-blue-300 border-blue-800/40"}`}>
-                    {form.type === "poll" ? "🗳️ VOTING" : "📋 FORMULIR"}
+                <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                  <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${form.type === "poll" ? "bg-violet-50 text-[#6366f1] border-violet-100" : "bg-blue-50 text-blue-600 border-blue-100"}`}>
+                    {form.type === "poll" ? "🗳️ Voting" : "📋 Form"}
                   </span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${form.status === "open" ? "bg-green-900/40 text-green-300 border-green-800/40" : "bg-gray-700/40 text-gray-400 border-gray-600/40"}`}>
-                    {form.status === "open" ? "Buka" : "Tutup"}
+                  <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${form.status === "open" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-slate-50 text-slate-500 border-slate-100"}`}>
+                    {form.status === "open" ? "Open" : "Closed"}
                   </span>
                 </div>
-                <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">{form.title}</h3>
-                {form.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{form.description}</p>}
-                <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
-                  <span>👥 {form.responseCount} respons</span>
-                  {form.deadline && <span>⏰ Tutup: {format(new Date(form.deadline), "d MMM yyyy")}</span>}
+                <h3 className="font-extrabold text-sm text-[#110e3d] group-hover:text-[#6366f1] transition-colors truncate">{form.title}</h3>
+                {form.description && <p className="text-[11px] text-slate-400 font-semibold mt-1 line-clamp-2 leading-relaxed">{form.description}</p>}
+                <div className="flex items-center gap-3 mt-3 text-[10px] text-slate-400 font-bold">
+                  <span>👥 {form.responseCount} responses</span>
+                  {form.deadline && <span>⏰ Deadline: {format(new Date(form.deadline), "d MMM yyyy")}</span>}
                 </div>
               </div>
-              <div className="text-primary opacity-0 group-hover:opacity-100 transition-opacity shrink-0">→</div>
+              <div className="text-[#6366f1] opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0 shrink-0 font-bold">→</div>
             </div>
           </div>
         ))}
       </div>
       <Dialog open={selectedForm !== null} onOpenChange={(open) => { if (!open) setSelectedForm(null); }}>
-        <DialogContent className="bg-card border-border max-w-lg flex flex-col max-h-[85vh] p-0 overflow-hidden">
+        <DialogContent className="bg-white border-[#eae8f5] max-w-lg flex flex-col max-h-[85vh] p-0 overflow-hidden rounded-2xl">
           {selectedForm && <FormDetailContent form={selectedForm} onClose={() => setSelectedForm(null)} />}
         </DialogContent>
       </Dialog>
@@ -1129,9 +1866,9 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
       await submitVote.mutateAsync({ id: form.id, data: { optionId: selectedOption } });
       await queryClient.invalidateQueries({ queryKey: [`/api/forms/${form.id}/my-response`] });
       await queryClient.invalidateQueries({ queryKey: ["/api/forms"] });
-      toast({ title: "Vote berhasil!", description: "Suara kamu sudah dicatat." });
+      toast({ title: "Vote success!", description: "Your vote has been recorded." });
     } catch (err: unknown) {
-      toast({ title: "Error", description: err instanceof Error ? err.message : "Gagal vote.", variant: "destructive" });
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to vote.", variant: "destructive" });
     } finally { setSubmitting(false); }
   };
 
@@ -1139,7 +1876,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
     if (!detail) return;
     for (const f of (detail.fields ?? []).filter((f: any) => f.required)) {
       if (!formAnswers[f.id]?.trim()) {
-        toast({ title: "Lengkapi form", description: `Field "${f.label}" wajib diisi.`, variant: "destructive" });
+        toast({ title: "Validation Error", description: `Field "${f.label}" is required.`, variant: "destructive" });
         return;
       }
     }
@@ -1149,9 +1886,9 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
       await submitForm.mutateAsync({ id: form.id, data: { answers } });
       await queryClient.invalidateQueries({ queryKey: [`/api/forms/${form.id}/my-response`] });
       await queryClient.invalidateQueries({ queryKey: ["/api/forms"] });
-      toast({ title: "Formulir terkirim!", description: "Jawaban kamu sudah dicatat." });
+      toast({ title: "Form submitted!", description: "Your answers have been saved." });
     } catch (err: unknown) {
-      toast({ title: "Error", description: err instanceof Error ? err.message : "Gagal submit.", variant: "destructive" });
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to submit.", variant: "destructive" });
     } finally { setSubmitting(false); }
   };
 
@@ -1159,40 +1896,40 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
 
   return (
     <>
-      <DialogHeader className="px-5 pt-5 pb-3 border-b border-border shrink-0">
-        <div className="flex items-center gap-2 flex-wrap mb-1">
-          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${form.type === "poll" ? "bg-violet-900/40 text-violet-300 border-violet-800/40" : "bg-blue-900/40 text-blue-300 border-blue-800/40"}`}>
-            {form.type === "poll" ? "🗳️ VOTING" : "📋 FORMULIR"}
+      <DialogHeader className="px-5 pt-5 pb-3 border-b border-slate-100 bg-white shrink-0">
+        <div className="flex items-center gap-2 flex-wrap mb-1.5">
+          <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black border ${form.type === "poll" ? "bg-violet-50 text-[#6366f1] border-violet-100" : "bg-blue-50 text-blue-600 border-blue-100"}`}>
+            {form.type === "poll" ? "🗳️ Voting" : "📋 Form"}
           </span>
           {hasResponded && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold border bg-green-900/40 text-green-300 border-green-800/40">✓ Sudah Diisi</span>
+            <span className="text-[9px] px-2 py-0.5 rounded-lg font-black border bg-emerald-50 text-emerald-600 border-emerald-100">✓ Submitted</span>
           )}
         </div>
-        <DialogTitle className="text-primary font-bold text-base">{form.title}</DialogTitle>
-        {form.description && <p className="text-xs text-muted-foreground mt-1">{form.description}</p>}
+        <DialogTitle className="text-[#110e3d] font-extrabold text-base">{form.title}</DialogTitle>
+        {form.description && <p className="text-[11px] text-slate-400 font-semibold mt-1">{form.description}</p>}
       </DialogHeader>
-      <ScrollArea className="flex-1 p-5">
+      <ScrollArea className="flex-1 p-5 bg-slate-50/20">
         {isLoading ? (
           <div className="space-y-3">
-            <div className="h-10 bg-muted rounded-lg animate-pulse" />
-            <div className="h-10 bg-muted rounded-lg animate-pulse" />
+            <Skeleton className="h-10 w-full rounded-xl" />
+            <Skeleton className="h-10 w-full rounded-xl" />
           </div>
         ) : form.type === "poll" ? (
           <div className="space-y-3">
             {hasResponded ? (
               <div className="space-y-3">
-                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-3">Hasil Voting ({totalVotes} suara)</p>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider mb-2">Voting Results ({totalVotes} votes)</p>
                 {(detail?.options ?? []).map((opt: any) => {
                   const pct = totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 100) : 0;
                   const isMyVote = myResponse?.selectedOptionId === opt.id;
                   return (
                     <div key={opt.id} className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className={`font-medium ${isMyVote ? "text-primary" : "text-foreground"}`}>{isMyVote ? "✓ " : ""}{opt.label}</span>
-                        <span className="text-muted-foreground">{opt.voteCount} ({pct}%)</span>
+                      <div className="flex justify-between text-xs font-bold">
+                        <span className={`${isMyVote ? "text-[#6366f1]" : "text-slate-700"}`}>{isMyVote ? "✓ " : ""}{opt.label}</span>
+                        <span className="text-slate-400">{opt.voteCount} ({pct}%)</span>
                       </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full transition-all ${isMyVote ? "bg-primary" : "bg-muted-foreground/40"}`} style={{ width: `${pct}%` }} />
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${isMyVote ? "bg-[#6366f1]" : "bg-slate-300"}`} style={{ width: `${pct}%` }} />
                       </div>
                     </div>
                   );
@@ -1200,11 +1937,11 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
               </div>
             ) : (
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground mb-3">Pilih satu opsi:</p>
+                <p className="text-xs text-slate-400 font-bold mb-3">Select one option:</p>
                 {(detail?.options ?? []).map((opt: any) => (
                   <button key={opt.id} type="button" onClick={() => setSelectedOption(opt.id)}
-                    className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${selectedOption === opt.id ? "border-primary bg-primary/10 text-primary font-semibold" : "border-border bg-background hover:border-primary/50"}`}>
-                    <span className={`inline-block w-4 h-4 rounded-full border-2 mr-2 align-middle transition-all ${selectedOption === opt.id ? "border-primary bg-primary" : "border-muted-foreground"}`} />
+                    className={`w-full text-left px-4 py-3 rounded-xl border text-xs font-bold transition-all ${selectedOption === opt.id ? "border-[#6366f1] bg-violet-50/50 text-[#6366f1]" : "border-[#eae8f5] bg-white hover:border-[#6366f1]/50 text-slate-600"}`}>
+                    <span className={`inline-block w-4.5 h-4.5 rounded-full border-2 mr-2.5 align-middle transition-all ${selectedOption === opt.id ? "border-[#6366f1] bg-[#6366f1]" : "border-slate-300"}`} />
                     {opt.label}
                   </button>
                 ))}
@@ -1216,15 +1953,15 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
             {hasResponded ? (
               <div className="text-center py-8">
                 <div className="text-4xl mb-2">✅</div>
-                <p className="text-sm font-semibold text-foreground">Formulir sudah diisi!</p>
-                <p className="text-xs text-muted-foreground mt-1">Terima kasih sudah mengisi formulir ini.</p>
+                <p className="text-sm font-extrabold text-[#110e3d]">Form submitted successfully!</p>
+                <p className="text-xs text-slate-400 font-bold mt-1">Thank you for filling this form.</p>
                 {(myResponse?.answers ?? []).length > 0 && (
                   <div className="mt-4 space-y-2 text-left">
-                    <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Jawaban kamu:</p>
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Your responses:</p>
                     {(myResponse?.answers ?? []).map((ans: any, i: number) => (
-                      <div key={i} className="bg-muted/30 rounded-lg p-2.5 text-xs">
-                        <p className="text-muted-foreground font-medium mb-0.5">{ans.fieldLabel}</p>
-                        <p className="text-foreground">{ans.value || "(kosong)"}</p>
+                      <div key={i} className="bg-white border border-[#eae8f5] rounded-xl p-3 text-xs font-semibold shadow-sm">
+                        <p className="text-slate-400 font-bold mb-1">{ans.fieldLabel}</p>
+                        <p className="text-slate-700">{ans.value || "(blank)"}</p>
                       </div>
                     ))}
                   </div>
@@ -1233,9 +1970,9 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
             ) : (
               (detail?.fields ?? []).map((field: any) => (
                 <div key={field.id} className="space-y-1.5">
-                  <Label className="text-sm font-medium">{field.label}{field.required && <span className="text-destructive ml-1">*</span>}</Label>
+                  <Label className="text-xs font-bold text-slate-600">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</Label>
                   {field.fieldType === "textarea" ? (
-                    <Textarea placeholder="Jawaban kamu..." value={formAnswers[field.id] ?? ""} onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))} className="bg-background border-border resize-none" rows={3} />
+                    <Textarea placeholder="Your answer..." value={formAnswers[field.id] ?? ""} onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs min-h-[85px] resize-none" />
                   ) : field.fieldType === "radio" || field.fieldType === "select" ? (
                     <div className="space-y-1.5">
                       {(() => {
@@ -1243,14 +1980,14 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
                         try { opts = JSON.parse(field.options ?? "[]"); } catch { /* empty */ }
                         return opts.map((opt: string) => (
                           <button key={opt} type="button" onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: opt }))}
-                            className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-all ${formAnswers[field.id] === opt ? "border-primary bg-primary/10 text-primary font-semibold" : "border-border hover:border-primary/50"}`}>
+                            className={`w-full text-left px-3 py-2 rounded-xl border text-xs font-bold transition-all ${formAnswers[field.id] === opt ? "border-[#6366f1] bg-violet-50/50 text-[#6366f1]" : "border-[#eae8f5] bg-white hover:border-[#6366f1]/50 text-slate-550"}`}>
                             {opt}
                           </button>
                         ));
                       })()}
                     </div>
                   ) : (
-                    <Input placeholder="Jawaban kamu..." value={formAnswers[field.id] ?? ""} onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))} className="bg-background border-border" />
+                    <Input placeholder="Your answer..." value={formAnswers[field.id] ?? ""} onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
                   )}
                 </div>
               ))
@@ -1259,21 +1996,21 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
         )}
       </ScrollArea>
       {!hasResponded && form.status === "open" && (
-        <div className="p-4 border-t border-border shrink-0">
+        <div className="p-4 border-t border-slate-100 bg-white shrink-0">
           {form.type === "poll" ? (
-            <Button className="w-full bg-primary text-primary-foreground font-semibold" disabled={!selectedOption || submitting} onClick={handleVote}>
-              {submitting ? "Mengirim..." : "🗳️ Vote Sekarang"}
+            <Button className="w-full bg-[#6366f1] text-white hover:bg-indigo-700 font-extrabold text-xs h-9 rounded-xl shadow-md shadow-violet-500/5" disabled={!selectedOption || submitting} onClick={handleVote}>
+              {submitting ? "Submitting..." : "🗳️ Cast Vote"}
             </Button>
           ) : (
-            <Button className="w-full bg-primary text-primary-foreground font-semibold" disabled={submitting} onClick={handleSubmitForm}>
-              {submitting ? "Mengirim..." : "📋 Kirim Jawaban"}
+            <Button className="w-full bg-[#6366f1] text-white hover:bg-indigo-700 font-extrabold text-xs h-9 rounded-xl shadow-md shadow-violet-500/5" disabled={submitting} onClick={handleSubmitForm}>
+              {submitting ? "Submitting..." : "📋 Submit Answers"}
             </Button>
           )}
         </div>
       )}
       {form.status === "closed" && (
-        <div className="p-3 border-t border-border text-center text-xs text-muted-foreground shrink-0">
-          {form.type === "poll" ? "Voting sudah ditutup." : "Formulir sudah ditutup."}
+        <div className="p-3 border-t border-slate-100 text-center text-[10px] text-slate-400 font-bold bg-white shrink-0">
+          {form.type === "poll" ? "Voting is closed." : "Form is closed."}
         </div>
       )}
     </>
@@ -1286,18 +2023,18 @@ function CreditsTab() {
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 pt-4">
-        <Skeleton className="h-[280px] rounded-xl" />
-        <Skeleton className="h-[280px] rounded-xl" />
-        <Skeleton className="h-[280px] rounded-xl" />
+        <Skeleton className="h-[280px] rounded-2xl" />
+        <Skeleton className="h-[280px] rounded-2xl" />
+        <Skeleton className="h-[280px] rounded-2xl" />
       </div>
     );
   }
 
   if (credits.length === 0) {
     return (
-      <div className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-xl bg-card/20">
+      <div className="text-center py-16 text-slate-400 font-bold border border-dashed border-[#eae8f5] rounded-2xl bg-white">
         <div className="text-4xl mb-3">🛡️</div>
-        <p className="text-sm">Belum ada tim atau kontributor yang terdaftar di Arcadia Credits.</p>
+        <p className="text-xs">No team contributors registered in Arcadia Credits.</p>
       </div>
     );
   }
@@ -1332,14 +2069,14 @@ function CreditsTab() {
               </Avatar>
               
               <div className="space-y-1">
-                <h3 className="font-bold text-lg text-foreground leading-snug tracking-tight line-clamp-1">{credit.name}</h3>
-                <span className="text-xs bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full font-bold tracking-wider uppercase">
+                <h3 className="font-bold text-lg text-white leading-snug tracking-tight line-clamp-1">{credit.name}</h3>
+                <span className="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-0.5 rounded-full font-bold tracking-wider uppercase">
                   {credit.role}
                 </span>
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground/90 line-clamp-3 leading-relaxed px-4 mb-2">
+            <p className="text-xs text-slate-300/95 line-clamp-3 leading-relaxed px-4 mb-2">
               {credit.description || "Tidak ada deskripsi."}
             </p>
 
@@ -1350,4 +2087,3 @@ function CreditsTab() {
     </div>
   );
 }
-

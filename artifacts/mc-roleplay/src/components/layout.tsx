@@ -3,7 +3,8 @@ import { useClerk, Show } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { useGetMe, useUpdateMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { User, LogOut, Settings, MessageSquare, Users, Home, ChevronDown, Gamepad2, ShieldAlert } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [mcName, setMcName] = useState("");
   const [savingMc, setSavingMc] = useState(false);
   const [errorMc, setErrorMc] = useState("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -27,30 +42,94 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-xl text-primary tracking-wider">Arcadia Studio</span>
           </Link>
           
-          <nav className="flex items-center gap-4">
+          <div className="relative" ref={dropdownRef}>
             <Show when="signed-out">
-              <Link href="/sign-in" className="text-sm font-medium hover:text-primary transition-colors">
-                Sign In
-              </Link>
-              <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90">
-                <Link href="/sign-up">Play Now</Link>
-              </Button>
+              <button 
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
+                className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground focus:outline-none cursor-pointer"
+                aria-label="Profile menu"
+              >
+                <User className="w-5 h-5" />
+              </button>
+              {isDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-48 rounded-xl border border-border bg-card/95 backdrop-blur-md p-2 shadow-xl animate-in fade-in slide-in-from-top-2 duration-200 z-50 flex flex-col gap-1">
+                  <Link href="/sign-in" className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium rounded-lg hover:bg-muted hover:text-primary transition-all text-left cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                    Sign In
+                  </Link>
+                  <Link href="/sign-up" className="flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-all text-center cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                    Play Now
+                  </Link>
+                </div>
+              )}
             </Show>
             <Show when="signed-in">
-              <Link href="/member" className="text-sm font-medium hover:text-primary transition-colors">
-                Player Hub
-              </Link>
-              <Link href="/friends" className="text-sm font-medium hover:text-primary transition-colors">
-                Guild
-              </Link>
-              <Link href="/messages" className="text-sm font-medium hover:text-primary transition-colors">
-                Messages
-              </Link>
-              <Button variant="ghost" onClick={() => signOut({ redirectUrl: basePath || "/" })}>
-                Disconnect
-              </Button>
+              <button 
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
+                className="flex items-center gap-1.5 focus:outline-none group cursor-pointer"
+                aria-label="User menu"
+              >
+                <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary/50 group-hover:border-primary transition-colors flex items-center justify-center bg-muted">
+                  {me?.avatarUrl ? (
+                    <img src={me.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-sm font-bold text-primary">{getInitials(me?.displayName || me?.username)}</span>
+                  )}
+                </div>
+                <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              </button>
+              {isDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-64 rounded-xl border border-border bg-card/95 backdrop-blur-md p-2 shadow-xl animate-in fade-in slide-in-from-top-2 duration-200 z-50 divide-y divide-border/50 flex flex-col">
+                  {/* User Info Header */}
+                  <div className="px-3 py-2.5 pb-3">
+                    <p className="text-sm font-bold text-foreground truncate">{me?.displayName || me?.username}</p>
+                    <p className="text-xs text-muted-foreground truncate">{me?.userTag || (me?.username ? `@${me.username}` : "")}</p>
+                    {me?.mcUsername && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400">
+                        <Gamepad2 className="w-3.5 h-3.5" /> {me.mcUsername}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Portal Navigation Options */}
+                  <div className="py-1.5 flex flex-col">
+                    <Link href="/" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                      <Home className="w-4.5 h-4.5" /> Home Page
+                    </Link>
+                    <Link href="/member" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                      <User className="w-4.5 h-4.5" /> Player Hub
+                    </Link>
+                    <Link href="/friends" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                      <Users className="w-4.5 h-4.5" /> Guilds
+                    </Link>
+                    <Link href="/messages" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                      <MessageSquare className="w-4.5 h-4.5" /> Messages
+                    </Link>
+                    <Link href="/member?tab=settings" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                      <Settings className="w-4.5 h-4.5" /> Account Settings
+                    </Link>
+                    {me?.role && ["admin", "staff", "dev", "dev_website"].includes(me.role) && (
+                      <Link href="/admin" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                        <ShieldAlert className="w-4.5 h-4.5 text-amber-500" /> Admin Portal
+                      </Link>
+                    )}
+                  </div>
+
+                  {/* Log out option */}
+                  <div className="pt-1.5">
+                    <button 
+                      onClick={() => {
+                        setIsDropdownOpen(false);
+                        signOut({ redirectUrl: basePath || "/" });
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 rounded-lg transition-all text-left cursor-pointer"
+                    >
+                      <LogOut className="w-4.5 h-4.5" /> Disconnect
+                    </button>
+                  </div>
+                </div>
+              )}
             </Show>
-          </nav>
+          </div>
         </div>
       </header>
       
@@ -136,4 +215,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </Dialog>
     </div>
   );
+}
+
+function getInitials(name: string | null | undefined): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  return parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : name.slice(0, 2).toUpperCase();
 }
