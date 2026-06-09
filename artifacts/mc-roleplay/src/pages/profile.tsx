@@ -55,6 +55,8 @@ import {
   Users,
   Wrench,
   Ticket,
+  ShieldAlert,
+  Settings,
 } from "lucide-react";
 
 function getInitials(name: string | null | undefined) {
@@ -280,100 +282,156 @@ function ProfileSidebar() {
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const realmName = realmSettings.realmName || "Arcadia Guild";
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
-  const sections = [
-    {
-      title: "General",
-      items: [
-        { href: "/member?tab=dashboard", label: "Dashboard", icon: LayoutGrid },
-        { href: "/member?tab=announcements", label: "Town Crier", icon: Megaphone },
-        { href: "/member?tab=developments", label: "The Forge", icon: Hammer },
-        { href: "/member?tab=tickets", label: "Support Tickets", icon: Ticket },
-        { href: "/member?tab=forms", label: "Voting & Forms", icon: ClipboardList },
-      ],
-    },
-    {
-      title: "Social",
-      items: [
-        { href: "/", label: "Home Page", icon: Home },
-        { href: "/messages", label: "Messages", icon: MessageSquare },
-        { href: "/friends", label: "Guilds", icon: Users, active: true },
-      ],
-    },
-    {
-      title: "Account",
-      items: [
-        { href: "/member?tab=profile", label: "My Profile", icon: User },
-        { href: "/member?tab=credits", label: "Arcadia Credits", icon: ShieldCheck },
-      ],
-    },
-  ];
+  const role = me?.role;
+  const showAdminPortal = role && ["admin", "staff", "dev", "dev_website"].includes(role);
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col justify-between border-r border-[#eae8f5] bg-white shadow-sm">
       <div className="flex min-h-0 flex-col">
-      <Link href="/" className="flex items-center gap-3 border-b border-[#eae8f5] p-6 transition-opacity hover:opacity-85">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 text-white font-black shadow-lg shadow-violet-500/20">
-          {realmLogoUrl ? (
-            <img src={realmLogoUrl} alt={realmName} className="h-full w-full rounded-xl object-cover" />
-          ) : (
-            realmName.slice(0, 1).toUpperCase()
+        {/* Logo Branding */}
+        <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20 overflow-hidden">
+            {realmLogoUrl ? (
+              <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+            ) : (
+              realmName.slice(0, 1).toUpperCase()
+            )}
+          </div>
+          <div>
+            <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Player Hub</span>
+          </div>
+        </Link>
+
+        {/* Sidebar Links */}
+        <div className="p-4 space-y-6 overflow-y-auto">
+          <div className="space-y-1.5">
+            <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">General</span>
+            <nav className="space-y-1">
+              <Link
+                href="/member?tab=dashboard"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <LayoutGrid className="w-4.5 h-4.5" /> Dashboard
+              </Link>
+              <Link
+                href="/member?tab=announcements"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <Megaphone className="w-4.5 h-4.5" /> Town Crier
+              </Link>
+              <Link
+                href="/member?tab=developments"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <Hammer className="w-4.5 h-4.5" /> The Forge
+              </Link>
+              <Link
+                href="/member?tab=tickets"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <Ticket className="w-4.5 h-4.5" /> Support Tickets
+              </Link>
+              <Link
+                href="/member?tab=forms"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <ClipboardList className="w-4.5 h-4.5" /> Voting & Forms
+              </Link>
+            </nav>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">Social & Portal</span>
+            <nav className="space-y-1">
+              <Link
+                href="/member"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <User className="w-4.5 h-4.5" /> Member Area
+              </Link>
+              <Link
+                href="/"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <Home className="w-4.5 h-4.5" /> Home Page
+              </Link>
+              <Link
+                href="/messages"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <MessageSquare className="w-4.5 h-4.5" /> Messages
+              </Link>
+              <Link
+                href="/friends"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <Users className="w-4.5 h-4.5" /> Guilds
+              </Link>
+            </nav>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">Account</span>
+            <nav className="space-y-1">
+              <Link
+                href="/member?tab=profile"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <User className="w-4.5 h-4.5" /> My Profile
+              </Link>
+              <Link
+                href="/member?tab=settings"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <Settings className="w-4.5 h-4.5" /> Account Settings
+              </Link>
+              <Link
+                href="/member?tab=credits"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <ShieldAlert className="w-4.5 h-4.5" /> Arcadia Credits
+              </Link>
+            </nav>
+          </div>
+
+          {showAdminPortal && (
+            <div className="space-y-1.5">
+              <span className="px-3 text-[10px] font-black text-amber-600 uppercase tracking-widest block">Management</span>
+              <nav className="space-y-1">
+                <Link
+                  href="/admin"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-amber-600 hover:bg-amber-50 hover:text-amber-700 border border-amber-200/30 bg-amber-50/10"
+                >
+                  <ShieldAlert className="w-4.5 h-4.5 text-amber-500" /> Admin Portal
+                </Link>
+              </nav>
+            </div>
           )}
         </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-extrabold leading-none text-[#110e3d]">{realmName}</p>
-          <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Player Hub</p>
-        </div>
-      </Link>
-
-      <nav className="flex-1 overflow-y-auto p-4">
-        {sections.map((section) => (
-          <div key={section.title} className="mb-6 space-y-1.5 last:mb-0">
-            <p className="block px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-              {section.title}
-            </p>
-            <div className="space-y-1">
-              {section.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold transition-all ${
-                      item.active
-                        ? "bg-violet-50 text-[#6366f1]"
-                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                    }`}
-                  >
-                    <Icon className="h-4.5 w-4.5 shrink-0" />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
       </div>
 
-      <div className="space-y-3 border-t border-[#eae8f5] p-4">
+      {/* User Account Details Bottom Sidebar */}
+      <div className="p-4 border-t border-[#eae8f5] space-y-3 shrink-0 bg-white">
         <div className="flex items-center gap-3 px-2 py-1">
           <Avatar className="h-9 w-9 border border-[#eae8f5]">
-            <AvatarImage src={me?.avatarUrl ?? undefined} />
-            <AvatarFallback className="bg-slate-100 text-xs font-extrabold text-[#6366f1]">{getInitials(me?.displayName || me?.username)}</AvatarFallback>
+            <AvatarImage src={me?.avatarUrl || undefined} />
+            <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
+              {getInitials(me?.displayName || me?.username)}
+            </AvatarFallback>
           </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-xs font-bold text-[#110e3d]">{me?.displayName || me?.username || "Player"}</p>
-            <p className="truncate text-[10px] font-bold capitalize text-slate-400">{me?.role?.replace("_", " ") || "Member"}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-[#110e3d] truncate">{me?.displayName || me?.username}</p>
+            <p className="text-[10px] text-slate-400 font-bold capitalize">{me?.role?.replace('_', ' ') || "Member"}</p>
           </div>
         </div>
-        <button
+        <Button
+          variant="ghost"
           onClick={() => signOut({ redirectUrl: basePath || "/" })}
-          className="flex h-9 w-full items-center gap-3 rounded-xl px-3 py-2 text-xs font-bold text-slate-500 transition-all hover:bg-red-50 hover:text-[#ef4444]"
-          title="Log out"
+          className="w-full justify-start gap-3 text-slate-500 hover:text-[#ef4444] hover:bg-red-50 rounded-xl py-2 px-3 text-xs font-bold h-9"
         >
-          <LogOut className="h-4.5 w-4.5 shrink-0 text-[#ef4444]" />
-          <span>Log out</span>
-        </button>
+          <LogOut className="w-4.5 h-4.5 text-[#ef4444]" /> Log out
+        </Button>
       </div>
     </aside>
   );
