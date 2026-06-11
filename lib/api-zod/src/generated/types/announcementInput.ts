@@ -13,4 +13,5 @@ export interface AnnouncementInput {
   content: string;
   type: AnnouncementInputType;
   pinned?: boolean;
+  imageUrl?: string;
 }

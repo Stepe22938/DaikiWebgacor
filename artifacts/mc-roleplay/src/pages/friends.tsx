@@ -50,6 +50,9 @@ type PublicUser = {
   isFollowing: boolean;
   followerCount: number;
   followingCount: number;
+  equippedBorder?: string | null;
+  equippedBadge?: string | null;
+  equippedBackground?: string | null;
 };
 
 function getInitials(name: string | null | undefined): string {
@@ -60,21 +63,46 @@ function getInitials(name: string | null | undefined): string {
     : name.slice(0, 2).toUpperCase();
 }
 
+function getCosmeticBadgeName(value: string | null | undefined) {
+  if (!value) return "";
+  if (value.includes("bg-gradient-to-r from-red-500")) return "Gacha God 👑";
+  if (value.includes("from-indigo-605") || value.includes("from-indigo-600")) return "Arcadia Emperor 🏰";
+  if (value.includes("bg-sky-500")) return "Rich Citizen 💎";
+  if (value.includes("bg-teal-700")) return "Server Helper 🛠️";
+  if (value.includes("bg-indigo-500")) return "Guild Veteran ⚔️";
+  if (value.includes("bg-amber-700")) return "Bounty Hunter 🏹";
+  if (value.includes("bg-emerald-500")) return "Active Player 🏃";
+  if (value.includes("bg-cyan-500")) return "Chatterbox 💬";
+  if (value.includes("bg-slate-450") || value.includes("bg-slate-400")) return "Rookie Player 🥚";
+  if (value.includes("bg-slate-300")) return "Newbie 🍃";
+  return "Custom Tag";
+}
+
 function UserCard({ user, onFollowToggle }: { user: PublicUser; onFollowToggle: (user: PublicUser) => void }) {
   return (
     <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden hover:border-violet-200 transition-all">
       <CardContent className="p-4 flex items-center gap-4">
-        <Link href={`/profile/${user.id}`} className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center text-xl font-bold text-[#6366f1] shrink-0 overflow-hidden hover:ring-2 hover:ring-violet-500/25 transition">
+        <Link 
+          href={`/profile/${user.id}`} 
+          className={`w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center text-xl font-bold text-[#6366f1] shrink-0 overflow-hidden hover:ring-2 hover:ring-violet-500/25 transition ${user.equippedBorder || ""}`}
+        >
           {user.avatarUrl ? (
-            <img src={user.avatarUrl} alt={user.username} className="w-full h-full object-cover" />
+            <img src={user.avatarUrl} alt={user.username} className="w-full h-full object-cover rounded-full" />
           ) : (
             getInitials(user.displayName || user.username)
           )}
         </Link>
         <div className="flex-1 min-w-0">
-          <Link href={`/profile/${user.id}`} className="block font-extrabold text-sm text-[#110e3d] truncate hover:text-[#6366f1] transition-colors">
-            {user.displayName || user.username}
-          </Link>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Link href={`/profile/${user.id}`} className="font-extrabold text-sm text-[#110e3d] truncate hover:text-[#6366f1] transition-colors">
+              {user.displayName || user.username}
+            </Link>
+            {user.equippedBadge && (
+              <span className={`rounded px-1.5 py-0.2 text-[9px] font-black uppercase border tracking-wider shrink-0 ${user.equippedBadge}`}>
+                {getCosmeticBadgeName(user.equippedBadge)}
+              </span>
+            )}
+          </div>
           <Link href={`/profile/${user.id}`} className="block text-xs text-slate-400 font-bold hover:text-[#6366f1] transition-colors">
             @{user.username} <span className="text-[#6366f1] font-semibold">{user.userTag}</span>
           </Link>

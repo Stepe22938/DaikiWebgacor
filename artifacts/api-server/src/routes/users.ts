@@ -1,9 +1,52 @@
 import { Router, type IRouter } from "express";
 import { clerkClient } from "@clerk/express";
-import { asc, eq, sql } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { asc, eq, sql, and, inArray } from "drizzle-orm";
+import { db, usersTable, userCosmeticsTable, cosmeticsTable } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
+
+async function attachEquippedCosmetics<T extends { id: number }>(users: T[]): Promise<(T & { equippedBorder: string | null; equippedBadge: string | null; equippedBackground: string | null })[]> {
+  if (users.length === 0) return [];
+  const userIds = users.map(u => u.id);
+  const equipped = await db
+    .select({
+      userId: userCosmeticsTable.userId,
+      type: cosmeticsTable.type,
+      value: cosmeticsTable.value,
+    })
+    .from(userCosmeticsTable)
+    .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+    .where(
+      and(
+        inArray(userCosmeticsTable.userId, userIds),
+        eq(userCosmeticsTable.isEquipped, true)
+      )
+    );
+  const cosmeticsMap = new Map<number, { border: string | null; badge: string | null; background: string | null }>();
+  for (const item of equipped) {
+    if (!cosmeticsMap.has(item.userId)) {
+      cosmeticsMap.set(item.userId, { border: null, badge: null, background: null });
+    }
+    const userCos = cosmeticsMap.get(item.userId)!;
+    if (item.type === "border") userCos.border = item.value;
+    else if (item.type === "badge") userCos.badge = item.value;
+    else if (item.type === "background") userCos.background = item.value;
+  }
+  return users.map(u => {
+    const cos = cosmeticsMap.get(u.id) || { border: null, badge: null, background: null };
+    return {
+      ...u,
+      equippedBorder: cos.border,
+      equippedBadge: cos.badge,
+      equippedBackground: cos.background,
+    };
+  });
+}
+
+async function attachEquippedCosmeticsToSingle<T extends { id: number }>(user: T) {
+  const [withCosmetics] = await attachEquippedCosmetics([user]);
+  return withCosmetics;
+}
 import {
   GetMeResponse,
   UpdateMeBody,
@@ -213,7 +256,8 @@ router.get("/me", async (req, res): Promise<void> => {
   const username = profile.username ?? auth.userId;
 
   const user = await getOrCreateUser(auth.userId, username, profile.avatarUrl, profile.displayName);
-  res.json(GetMeResponse.parse(serializeDates(user)));
+  const userWithCosmetics = await attachEquippedCosmeticsToSingle(user);
+  res.json(GetMeResponse.parse(serializeDates(userWithCosmetics)));
 });
 
 router.patch("/me", async (req, res): Promise<void> => {
@@ -242,7 +286,8 @@ router.patch("/me", async (req, res): Promise<void> => {
     .where(eq(usersTable.clerkId, auth.userId))
     .returning();
 
-  res.json(UpdateMeResponse.parse(serializeDates(updated)));
+  const updatedWithCosmetics = await attachEquippedCosmeticsToSingle(updated);
+  res.json(UpdateMeResponse.parse(serializeDates(updatedWithCosmetics)));
 });
 
 router.get("/users/switchable", async (req, res): Promise<void> => {
@@ -259,7 +304,8 @@ router.get("/users/switchable", async (req, res): Promise<void> => {
   }
 
   const users = await db.select().from(usersTable).orderBy(usersTable.createdAt);
-  res.json(ListUsersResponse.parse(serializeDates(users)));
+  const usersWithCosmetics = await attachEquippedCosmetics(users);
+  res.json(ListUsersResponse.parse(serializeDates(usersWithCosmetics)));
 });
 
 router.get("/users", async (req, res): Promise<void> => {
@@ -276,7 +322,8 @@ router.get("/users", async (req, res): Promise<void> => {
   }
 
   const users = await db.select().from(usersTable).orderBy(usersTable.createdAt);
-  res.json(ListUsersResponse.parse(serializeDates(users)));
+  const usersWithCosmetics = await attachEquippedCosmetics(users);
+  res.json(ListUsersResponse.parse(serializeDates(usersWithCosmetics)));
 });
 
 router.patch("/users/:id/role", async (req, res): Promise<void> => {
@@ -321,7 +368,8 @@ router.patch("/users/:id/role", async (req, res): Promise<void> => {
     .where(eq(usersTable.id, params.data.id))
     .returning();
 
-  res.json(UpdateUserRoleResponse.parse(serializeDates(updated)));
+  const updatedWithCosmetics = await attachEquippedCosmeticsToSingle(updated);
+  res.json(UpdateUserRoleResponse.parse(serializeDates(updatedWithCosmetics)));
 });
 
 router.patch("/admin/users/:id", async (req, res): Promise<void> => {
@@ -358,7 +406,8 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
     .where(eq(usersTable.id, params.data.id))
     .returning();
 
-  res.json(AdminUpdateUserResponse.parse(serializeDates(updated)));
+  const updatedWithCosmetics = await attachEquippedCosmeticsToSingle(updated);
+  res.json(AdminUpdateUserResponse.parse(serializeDates(updatedWithCosmetics)));
 });
 
 router.delete("/admin/users/:id", async (req, res): Promise<void> => {

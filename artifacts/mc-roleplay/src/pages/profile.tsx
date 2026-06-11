@@ -109,6 +109,21 @@ function getYouTubeThumbnailUrl(url: string | null | undefined) {
   return videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null;
 }
 
+function getCosmeticBadgeName(value: string | null | undefined) {
+  if (!value) return "";
+  if (value.includes("bg-gradient-to-r from-red-500")) return "Gacha God 👑";
+  if (value.includes("from-indigo-605") || value.includes("from-indigo-600")) return "Arcadia Emperor 🏰";
+  if (value.includes("bg-sky-500")) return "Rich Citizen 💎";
+  if (value.includes("bg-teal-700")) return "Server Helper 🛠️";
+  if (value.includes("bg-indigo-500")) return "Guild Veteran ⚔️";
+  if (value.includes("bg-amber-700")) return "Bounty Hunter 🏹";
+  if (value.includes("bg-emerald-500")) return "Active Player 🏃";
+  if (value.includes("bg-cyan-500")) return "Chatterbox 💬";
+  if (value.includes("bg-slate-450") || value.includes("bg-slate-400")) return "Rookie Player 🥚";
+  if (value.includes("bg-slate-300")) return "Newbie 🍃";
+  return "Custom Tag";
+}
+
 function YouTubeVideoBanner({ embedUrl, thumbnailUrl }: { embedUrl: string; thumbnailUrl: string | null }) {
   const [isVideoVisible, setIsVideoVisible] = useState(false);
 
@@ -576,6 +591,10 @@ export default function Profile() {
                     Open YouTube Live
                   </span>
                 </a>
+              ) : user.equippedBackground ? (
+                <div className="aspect-[16/5] min-h-64 relative bg-black">
+                  <img src={user.equippedBackground} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                </div>
               ) : (
                 <div className="aspect-[16/5] min-h-64 bg-[linear-gradient(135deg,_#1f2937,_#6d5dfc_52%,_#00a884)]" />
               )}
@@ -583,16 +602,23 @@ export default function Profile() {
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent p-5 sm:p-7">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
                   <div className="flex min-w-0 items-end gap-4 rounded-xl bg-white/95 p-3 pr-5 shadow-xl shadow-black/15 backdrop-blur sm:max-w-[62%]">
-                    <Avatar className="h-24 w-24 border-4 border-white bg-white shadow-lg">
-                      <AvatarImage src={user.avatarUrl ?? undefined} />
-                      <AvatarFallback className="text-2xl font-black text-[#6d5dfc]">{getInitials(user.displayName || user.username)}</AvatarFallback>
-                    </Avatar>
+                    <div className={`rounded-full shrink-0 flex items-center justify-center bg-white p-1 overflow-visible ${user.equippedBorder || ""}`}>
+                      <Avatar className="h-24 w-24 border-4 border-white bg-white shadow-lg">
+                        <AvatarImage src={user.avatarUrl ?? undefined} />
+                        <AvatarFallback className="text-2xl font-black text-[#6d5dfc]">{getInitials(user.displayName || user.username)}</AvatarFallback>
+                      </Avatar>
+                    </div>
                     <div className="min-w-0 pb-1 text-[#101828]">
                       <div className="flex flex-wrap items-center gap-2">
                         <h1 className="max-w-full break-words text-3xl font-black leading-tight sm:text-4xl">{user.displayName || user.username}</h1>
                         <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-black uppercase text-[#6d5dfc]">
                           {ROLE_LABELS[user.role]}
                         </span>
+                        {user.equippedBadge && (
+                          <span className={`rounded-lg px-2.5 py-1 text-[11px] font-black uppercase border tracking-wider ${user.equippedBadge}`}>
+                            {getCosmeticBadgeName(user.equippedBadge)}
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1 text-sm font-bold text-slate-500">
                         @{user.username} <span className="font-black text-[#6d5dfc]">{user.userTag}</span>

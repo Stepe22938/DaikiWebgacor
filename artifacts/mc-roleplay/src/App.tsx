@@ -277,6 +277,9 @@ function HomeRedirect() {
 
 
 function MemberProtected() {
+  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
+    return <Member />;
+  }
   return (
     <>
       <Show when="signed-in">
@@ -290,6 +293,9 @@ function MemberProtected() {
 }
 
 function AdminProtected() {
+  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
+    return <Admin />;
+  }
   return (
     <>
       <Show when="signed-in">
@@ -303,6 +309,9 @@ function AdminProtected() {
 }
 
 function FriendsProtected() {
+  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
+    return <Friends />;
+  }
   return (
     <>
       <Show when="signed-in">
@@ -316,6 +325,9 @@ function FriendsProtected() {
 }
 
 function ProfileProtected() {
+  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
+    return <Profile />;
+  }
   return (
     <>
       <Show when="signed-in">
@@ -329,6 +341,9 @@ function ProfileProtected() {
 }
 
 function MessagesProtected() {
+  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
+    return <Messages />;
+  }
   return (
     <>
       <Show when="signed-in">

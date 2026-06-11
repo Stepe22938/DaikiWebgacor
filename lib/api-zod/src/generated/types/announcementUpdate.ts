@@ -13,4 +13,5 @@ export interface AnnouncementUpdate {
   content?: string;
   type?: AnnouncementUpdateType;
   pinned?: boolean;
+  imageUrl?: string;
 }

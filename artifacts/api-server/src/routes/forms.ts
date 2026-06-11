@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, desc, asc, count, sql } from "drizzle-orm";
+import { eq, and, desc, asc, count, sql, inArray } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -201,9 +201,22 @@ router.get("/forms/:id", async (req, res): Promise<void> => {
 // --- UPDATE FORM ---
 const UpdateFormSchema = zod.object({
   title: zod.string().min(1).max(255).optional(),
-  description: zod.string().optional(),
+  description: zod.string().nullable().optional(),
   status: zod.enum(["open", "closed"]).optional(),
   deadline: zod.string().nullable().optional(),
+  fields: zod.array(zod.object({
+    id: zod.number().int().optional(),
+    label: zod.string(),
+    fieldType: zod.enum(["text", "textarea", "radio", "checkbox", "select"]),
+    options: zod.string().optional(),
+    required: zod.boolean().optional(),
+    order: zod.number().optional(),
+  })).optional(),
+  options: zod.array(zod.object({
+    id: zod.number().int().optional(),
+    label: zod.string(),
+    order: zod.number().optional(),
+  })).optional(),
 });
 
 router.patch("/forms/:id", async (req, res): Promise<void> => {
@@ -226,6 +239,89 @@ router.patch("/forms/:id", async (req, res): Promise<void> => {
   if (parsed.data.deadline !== undefined) updateData.deadline = parsed.data.deadline ? new Date(parsed.data.deadline) : null;
 
   await db.update(formsTable).set(updateData).where(eq(formsTable.id, formId));
+
+  // Update fields if provided (only for 'form' type)
+  if (form.type === "form" && parsed.data.fields !== undefined) {
+    const fields = parsed.data.fields;
+    const existingFields = await db
+      .select()
+      .from(formFieldsTable)
+      .where(eq(formFieldsTable.formId, formId));
+
+    const requestIds = fields.map((f) => f.id).filter((id): id is number => id !== undefined);
+
+    // 1. Delete fields that are no longer in the request
+    const existingIds = existingFields.map((f) => f.id);
+    const idsToDelete = existingIds.filter((id) => !requestIds.includes(id));
+    if (idsToDelete.length > 0) {
+      await db.delete(formFieldsTable).where(inArray(formFieldsTable.id, idsToDelete));
+    }
+
+    // 2. Update existing fields / insert new fields
+    for (let i = 0; i < fields.length; i++) {
+      const f = fields[i];
+      if (f.id !== undefined && existingIds.includes(f.id)) {
+        await db
+          .update(formFieldsTable)
+          .set({
+            label: f.label,
+            fieldType: f.fieldType,
+            options: f.options ?? null,
+            required: f.required ?? false,
+            order: f.order ?? i,
+          })
+          .where(eq(formFieldsTable.id, f.id));
+      } else {
+        await db.insert(formFieldsTable).values({
+          formId,
+          label: f.label,
+          fieldType: f.fieldType,
+          options: f.options ?? null,
+          required: f.required ?? false,
+          order: f.order ?? i,
+        });
+      }
+    }
+  }
+
+  // Update options if provided (only for 'poll' type)
+  if (form.type === "poll" && parsed.data.options !== undefined) {
+    const options = parsed.data.options;
+    const existingOptions = await db
+      .select()
+      .from(pollOptionsTable)
+      .where(eq(pollOptionsTable.formId, formId));
+
+    const requestIds = options.map((o) => o.id).filter((id): id is number => id !== undefined);
+
+    // 1. Delete options that are no longer in the request
+    const existingIds = existingOptions.map((o) => o.id);
+    const idsToDelete = existingIds.filter((id) => !requestIds.includes(id));
+    if (idsToDelete.length > 0) {
+      await db.delete(pollOptionsTable).where(inArray(pollOptionsTable.id, idsToDelete));
+    }
+
+    // 2. Update existing options / insert new options
+    for (let i = 0; i < options.length; i++) {
+      const o = options[i];
+      if (o.id !== undefined && existingIds.includes(o.id)) {
+        await db
+          .update(pollOptionsTable)
+          .set({
+            label: o.label,
+            order: o.order ?? i,
+          })
+          .where(eq(pollOptionsTable.id, o.id));
+      } else {
+        await db.insert(pollOptionsTable).values({
+          formId,
+          label: o.label,
+          order: o.order ?? i,
+        });
+      }
+    }
+  }
+
   const detail = await buildFormDetail(formId);
   res.json(detail);
 });

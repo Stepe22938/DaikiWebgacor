@@ -114,7 +114,7 @@ type UserRole = "member" | "admin" | "staff" | "dev" | "dev_website";
 type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 
 interface DevForm { title: string; description: string; category: string; status: DevStatus; progress: string; order: string; }
-interface AnnForm { title: string; content: string; type: AnnType; pinned: boolean; }
+interface AnnForm { title: string; content: string; type: AnnType; pinned: boolean; imageUrl: string; }
 interface UserEditForm { username: string; displayName: string; bio: string; role: UserRole; }
 interface CreditForm {
   name: string;
@@ -133,7 +133,7 @@ interface TicketReasonForm {
 }
 
 const emptyDev: DevForm = { title: "", description: "", category: "", status: "planned", progress: "", order: "" };
-const emptyAnn: AnnForm = { title: "", content: "", type: "general", pinned: false };
+const emptyAnn: AnnForm = { title: "", content: "", type: "general", pinned: false, imageUrl: "" };
 const emptyCredit: CreditForm = {
   name: "",
   avatarUrl: "",
@@ -156,6 +156,18 @@ function getInitials(name: string | null | undefined): string {
   return parts.length >= 2
     ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
     : name.slice(0, 2).toUpperCase();
+}
+
+function getFieldChoices(optionsStr: string | null | undefined): string[] {
+  if (!optionsStr) return [""];
+  try {
+    const parsed = JSON.parse(optionsStr);
+    if (Array.isArray(parsed)) return parsed.length > 0 ? parsed : [""];
+    return [String(parsed)];
+  } catch {
+    const split = optionsStr.split(",").map(o => o.trim());
+    return split.length > 0 ? split : [""];
+  }
 }
 
 const STATUS_COLORS: Record<DevStatus, string> = {
@@ -248,6 +260,8 @@ export default function Admin() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const [savingUser, setSavingUser] = useState(false);
+  const [uploadingAnnImage, setUploadingAnnImage] = useState(false);
+  const annImageInputRef = useRef<HTMLInputElement>(null);
 
   // Bot follow state
   const [botFollowerId, setBotFollowerId] = useState("");
@@ -276,18 +290,47 @@ export default function Admin() {
   const [formsDialogOpen, setFormsDialogOpen] = useState(false);
   const [deletingFormId, setDeletingFormId] = useState<number | null>(null);
   const [selectedFormResponses, setSelectedFormResponses] = useState<any | null>(null);
+  const [editingFormId, setEditingFormId] = useState<number | null>(null);
 
   // Form creation input fields state
   const [formTitle, setFormTitle] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formType, setFormType] = useState<"poll" | "form">("poll");
   const [formDeadline, setFormDeadline] = useState("");
-  const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
-  const [formFields, setFormFields] = useState<Array<{ label: string; fieldType: "text" | "textarea" | "radio" | "select"; options: string; required: boolean }>>([
+  const [pollOptions, setPollOptions] = useState<Array<{ id?: number; label: string }>>([
+    { label: "" },
+    { label: "" }
+  ]);
+  const [formFields, setFormFields] = useState<Array<{ id?: number; label: string; fieldType: "text" | "textarea" | "radio" | "select"; options: string; required: boolean }>>([
     { label: "", fieldType: "text", options: "", required: false }
   ]);
 
-  const handleCreateNewForm = async () => {
+  const handleOpenEditForm = async (form: any) => {
+    try {
+      const detail = await customFetch<any>(`/api/forms/${form.id}`);
+      setEditingFormId(form.id);
+      setFormTitle(detail.title);
+      setFormDescription(detail.description || "");
+      setFormType(detail.type);
+      setFormDeadline(detail.deadline ? detail.deadline.split("T")[0] : "");
+      if (detail.type === "poll") {
+        setPollOptions(detail.options.map((o: any) => ({ id: o.id, label: o.label })));
+      } else {
+        setFormFields(detail.fields.map((f: any) => ({
+          id: f.id,
+          label: f.label,
+          fieldType: f.fieldType,
+          options: f.options || "",
+          required: f.required
+        })));
+      }
+      setFormsDialogOpen(true);
+    } catch (err: any) {
+      toast({ title: "Error", description: "Failed to fetch form details.", variant: "destructive" });
+    }
+  };
+
+  const handleSaveForm = async () => {
     if (!formTitle.trim()) {
       toast({ title: "Error", description: "Title is required.", variant: "destructive" });
       return;
@@ -296,18 +339,17 @@ export default function Admin() {
     try {
       const payload: any = {
         title: formTitle.trim(),
-        description: formDescription.trim() || undefined,
-        type: formType,
-        deadline: formDeadline ? new Date(formDeadline).toISOString() : undefined,
+        description: formDescription.trim() || null,
+        deadline: formDeadline ? new Date(formDeadline).toISOString() : null,
       };
 
       if (formType === "poll") {
-        const filteredOptions = pollOptions.map(o => o.trim()).filter(o => o.length > 0);
+        const filteredOptions = pollOptions.map(o => ({ id: o.id, label: o.label.trim() })).filter(o => o.label.length > 0);
         if (filteredOptions.length < 2) {
           toast({ title: "Error", description: "At least 2 non-empty options are required for a poll.", variant: "destructive" });
           return;
         }
-        payload.options = filteredOptions.map((label, idx) => ({ label, order: idx }));
+        payload.options = filteredOptions.map((o, idx) => ({ id: o.id, label: o.label, order: idx }));
       } else {
         const filteredFields = formFields.filter(f => f.label.trim().length > 0);
         if (filteredFields.length < 1) {
@@ -315,20 +357,34 @@ export default function Admin() {
           return;
         }
         payload.fields = filteredFields.map((f, idx) => ({
+          id: f.id,
           label: f.label.trim(),
           fieldType: f.fieldType,
-          options: f.options.trim() || undefined,
+          options: (f.options || "")
+            .split(",")
+            .map(o => o.trim())
+            .filter(Boolean)
+            .join(", ") || undefined,
           required: f.required,
           order: idx
         }));
       }
 
-      await createFormMutation.mutateAsync({ data: payload });
-      toast({ title: "Form created", description: "New poll or form successfully launched!" });
+      if (editingFormId) {
+        await updateFormMutation.mutateAsync({ id: editingFormId, data: payload });
+        toast({ title: "Form updated", description: "Poll or form successfully updated!" });
+      } else {
+        payload.type = formType;
+        await createFormMutation.mutateAsync({ data: payload });
+        toast({ title: "Form created", description: "New poll or form successfully launched!" });
+      }
       setFormsDialogOpen(false);
       invalidate("/api/forms");
+      if (editingFormId) {
+        invalidate(`/api/forms/${editingFormId}`);
+      }
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to create form.", variant: "destructive" });
+      toast({ title: "Error", description: err.message || "Failed to save form.", variant: "destructive" });
     }
   };
 
@@ -456,13 +512,15 @@ export default function Admin() {
   // ── Announcements ─────────────────────────────────────────────────────────────
   const openNewAnn = () => { setAnnForm(emptyAnn); setEditingAnnId(null); setAnnDialogOpen(true); };
   const openEditAnn = (ann: NonNullable<typeof anns>[number]) => {
-    setAnnForm({ title: ann.title, content: ann.content, type: ann.type as AnnType, pinned: ann.pinned });
+    setAnnForm({ title: ann.title, content: ann.content, type: ann.type as AnnType, pinned: ann.pinned, imageUrl: (ann as any).imageUrl ?? "" });
     setEditingAnnId(ann.id); setAnnDialogOpen(true);
   };
   const handleSaveAnn = async () => {
     if (!annForm.title.trim()) { toast({ title: "Error", description: "Title is required.", variant: "destructive" }); return; }
     try {
-      const payload = { title: annForm.title.trim(), content: annForm.content.trim(), type: annForm.type, pinned: annForm.pinned };
+      const payload: any = { title: annForm.title.trim(), content: annForm.content.trim(), type: annForm.type, pinned: annForm.pinned };
+      if (annForm.imageUrl) payload.imageUrl = annForm.imageUrl;
+      else payload.imageUrl = null;
       if (editingAnnId !== null) { await updateAnn.mutateAsync({ id: editingAnnId, data: payload }); toast({ title: "Updated" }); }
       else { await createAnn.mutateAsync({ data: payload }); toast({ title: "Posted" }); }
       setAnnDialogOpen(false); invalidate("/api/announcements");
@@ -684,6 +742,32 @@ export default function Admin() {
       toast({ title: "Error", description: "Failed to upload background.", variant: "destructive" });
     } finally {
       setUploadingBackground(false);
+    }
+  };
+
+  const handleAnnImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Error", description: "Only image files are allowed.", variant: "destructive" });
+      return;
+    }
+    setUploadingAnnImage(true);
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": file.type, "x-file-name": file.name },
+        body: file,
+      });
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setAnnForm((prev) => ({ ...prev, imageUrl: data.url }));
+      toast({ title: "Success", description: "Image uploaded." });
+    } catch {
+      toast({ title: "Error", description: "Failed to upload image.", variant: "destructive" });
+    } finally {
+      setUploadingAnnImage(false);
+      if (annImageInputRef.current) annImageInputRef.current.value = "";
     }
   };
 
@@ -1578,7 +1662,7 @@ export default function Admin() {
                     <div className="space-y-1.5 relative">
                       <Label className="text-xs font-bold text-slate-600">Follower Account</Label>
                       <div className="relative">
-                        <Input value={showSingleFollower ? singleSearch : (users?.find(u => String(u.id) === botFollowerId)?.displayName || users?.find(u => String(u.id) === botFollowerId)?.username || "")} onFocus={() => { setShowSingleFollower(true); setSingleSearch(""); }} readOnly={!showSingleFollower} onChange={(e) => { setSingleSearch(e.target.value); setShowSingleFollower(true); }} placeholder={botFollowerId ? "Click to change…" : "Type to search…"} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
+                        <Input value={showSingleFollower ? singleSearch : (users?.find(u => String(u.id) === botFollowerId)?.displayName || users?.find(u => String(u.id) === botFollowerId)?.username || "")} onFocus={() => { setShowSingleFollower(true); setSingleSearch(""); }} readOnly={!showSingleFollower} onChange={(e) => { setSingleSearch(e.target.value); setShowSingleFollower(true); }} placeholder={botFollowerId ? "Click to change…" : "Type to search…"} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
                         {showSingleFollower && (
                           <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-[#eae8f5] rounded-xl shadow-xl overflow-hidden">
                             <ScrollArea className="h-44">
@@ -1603,7 +1687,7 @@ export default function Admin() {
                     <div className="space-y-1.5 relative">
                       <Label className="text-xs font-bold text-slate-600">Target (gets followed)</Label>
                       <div className="relative">
-                        <Input value={showSingleTarget ? (users?.find(u => String(u.id) === botFollowingId)?.displayName || users?.find(u => String(u.id) === botFollowingId)?.username || "") : singleSearch} onFocus={() => { setShowSingleTarget(true); setSingleSearch(""); }} readOnly={!showSingleTarget} onChange={(e) => { setSingleSearch(e.target.value); setShowSingleTarget(true); }} placeholder={botFollowingId ? "Click to change…" : "Type to search…"} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
+                        <Input value={showSingleTarget ? (users?.find(u => String(u.id) === botFollowingId)?.displayName || users?.find(u => String(u.id) === botFollowingId)?.username || "") : singleSearch} onFocus={() => { setShowSingleTarget(true); setSingleSearch(""); }} readOnly={!showSingleTarget} onChange={(e) => { setSingleSearch(e.target.value); setShowSingleTarget(true); }} placeholder={botFollowingId ? "Click to change…" : "Type to search…"} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
                         {showSingleTarget && (
                           <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-[#eae8f5] rounded-xl shadow-xl overflow-hidden">
                             <ScrollArea className="h-44">
@@ -1638,7 +1722,7 @@ export default function Admin() {
                     <div className="space-y-1.5 relative">
                       <Label className="text-xs font-bold text-slate-600">Target User (receives followers)</Label>
                       <div className="relative">
-                        <Input value={showBulkTarget ? bulkSearch : (users?.find(u => String(u.id) === bulkTargetId)?.displayName || users?.find(u => String(u.id) === bulkTargetId)?.username || "")} onFocus={() => { setShowBulkTarget(true); setBulkSearch(""); }} readOnly={!showBulkTarget} onChange={(e) => { setBulkSearch(e.target.value); setShowBulkTarget(true); }} placeholder={bulkTargetId ? "Click to change…" : "Type to search…"} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
+                        <Input value={showBulkTarget ? bulkSearch : (users?.find(u => String(u.id) === bulkTargetId)?.displayName || users?.find(u => String(u.id) === bulkTargetId)?.username || "")} onFocus={() => { setShowBulkTarget(true); setBulkSearch(""); }} readOnly={!showBulkTarget} onChange={(e) => { setBulkSearch(e.target.value); setShowBulkTarget(true); }} placeholder={bulkTargetId ? "Click to change…" : "Type to search…"} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
                         {showBulkTarget && (
                           <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-[#eae8f5] rounded-xl shadow-xl overflow-hidden">
                             <ScrollArea className="h-44">
@@ -1662,7 +1746,7 @@ export default function Admin() {
 
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-slate-600">Number of Followers (Max 10k)</Label>
-                      <Input type="number" min={1} max={10000} value={bulkCount} onChange={(e) => setBulkCount(e.target.value)} placeholder="e.g. 500" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
+                      <Input type="number" min={1} max={10000} value={bulkCount} onChange={(e) => setBulkCount(e.target.value)} placeholder="e.g. 500" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
                     </div>
                   </div>
                   <Button onClick={handleBulkFollow} disabled={bulkLoading || !bulkTargetId} className="w-full bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs shadow-md shadow-violet-500/5 h-10 mt-2">
@@ -1687,8 +1771,9 @@ export default function Admin() {
                     setFormDescription("");
                     setFormType("poll");
                     setFormDeadline("");
-                    setPollOptions(["", ""]);
+                    setPollOptions([{ label: "" }, { label: "" }]);
                     setFormFields([{ label: "", fieldType: "text", options: "", required: false }]);
+                    setEditingFormId(null);
                     setFormsDialogOpen(true);
                   }}
                   className="bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs shadow-md shadow-violet-500/10 px-5 py-2.5 h-10"
@@ -1733,6 +1818,14 @@ export default function Admin() {
                               onClick={() => setSelectedFormResponses(f)}
                             >
                               View Responses ({f.responseCount})
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 rounded-lg border-slate-200 text-[#1e1b4b] hover:bg-slate-50 text-[10px] font-extrabold px-3.5"
+                              onClick={() => handleOpenEditForm(f)}
+                            >
+                              Edit
                             </Button>
                             <Button
                               size="sm"
@@ -1864,7 +1957,7 @@ export default function Admin() {
                           value={settingsForm.realmName}
                           onChange={(e) => setSettingsForm({ ...settingsForm, realmName: e.target.value })}
                           placeholder="Arcadia Guild"
-                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -1873,7 +1966,7 @@ export default function Admin() {
                           value={settingsForm.realmLogoUrl}
                           onChange={(e) => setSettingsForm({ ...settingsForm, realmLogoUrl: e.target.value })}
                           placeholder="/logo.svg or https://..."
-                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
                         />
                       </div>
                     </div>
@@ -1884,7 +1977,7 @@ export default function Admin() {
                         value={settingsForm.heroTitle}
                         onChange={(e) => setSettingsForm({ ...settingsForm, heroTitle: e.target.value })}
                         placeholder="Forge Your Legend in Arcadia"
-                        className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                        className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
                       />
                     </div>
                     
@@ -1894,7 +1987,7 @@ export default function Admin() {
                         value={settingsForm.heroSubtitle}
                         onChange={(e) => setSettingsForm({ ...settingsForm, heroSubtitle: e.target.value })}
                         placeholder="Lore introduction details..."
-                        className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none"
+                        className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800"
                         rows={3}
                       />
                     </div>
@@ -1906,7 +1999,7 @@ export default function Admin() {
                           value={settingsForm.serverIP}
                           onChange={(e) => setSettingsForm({ ...settingsForm, serverIP: e.target.value })}
                           placeholder="play.arcadiamc.net"
-                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -1915,7 +2008,7 @@ export default function Admin() {
                           value={settingsForm.mcVersion}
                           onChange={(e) => setSettingsForm({ ...settingsForm, mcVersion: e.target.value })}
                           placeholder="1.20.x - 1.21.x"
-                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                          className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
                         />
                       </div>
                     </div>
@@ -1929,7 +2022,7 @@ export default function Admin() {
                             value={settingsForm.specsCpu}
                             onChange={(e) => setSettingsForm({ ...settingsForm, specsCpu: e.target.value })}
                             placeholder="Intel Xeon E-2388G"
-                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -1938,7 +2031,7 @@ export default function Admin() {
                             value={settingsForm.specsMemory}
                             onChange={(e) => setSettingsForm({ ...settingsForm, specsMemory: e.target.value })}
                             placeholder="32 GB DDR4 ECC"
-                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -1947,7 +2040,7 @@ export default function Admin() {
                             value={settingsForm.specsStorage}
                             onChange={(e) => setSettingsForm({ ...settingsForm, specsStorage: e.target.value })}
                             placeholder="NVMe PCIe Gen 4 SSD"
-                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -1956,7 +2049,7 @@ export default function Admin() {
                             value={settingsForm.specsLocation}
                             onChange={(e) => setSettingsForm({ ...settingsForm, specsLocation: e.target.value })}
                             placeholder="Debian VPS Port 5433"
-                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
                           />
                         </div>
                       </div>
@@ -1983,9 +2076,9 @@ export default function Admin() {
         <DialogContent className="bg-white border-[#eae8f5] max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl p-6">
           <DialogHeader><DialogTitle className="text-[#110e3d] font-extrabold text-base">{editingDevId ? "Edit Forge Project" : "New Forge Project"}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Project Title *</Label><Input value={devForm.title} onChange={(e) => setDevForm({ ...devForm, title: e.target.value })} placeholder="Project name" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" /></div>
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Description</Label><Textarea value={devForm.description} onChange={(e) => setDevForm({ ...devForm, description: e.target.value })} placeholder="What is this about?" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none" rows={3} /></div>
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Category</Label><Input value={devForm.category} onChange={(e) => setDevForm({ ...devForm, category: e.target.value })} placeholder="e.g. Gameplay, Economy" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Project Title *</Label><Input value={devForm.title} onChange={(e) => setDevForm({ ...devForm, title: e.target.value })} placeholder="Project name" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Description</Label><Textarea value={devForm.description} onChange={(e) => setDevForm({ ...devForm, description: e.target.value })} placeholder="What is this about?" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800" rows={3} /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Category</Label><Input value={devForm.category} onChange={(e) => setDevForm({ ...devForm, category: e.target.value })} placeholder="e.g. Gameplay, Economy" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-600">Status</Label>
@@ -1994,9 +2087,9 @@ export default function Admin() {
                   <SelectContent className="bg-white border border-[#eae8f5] text-slate-700"><SelectItem value="planned">Planned</SelectItem><SelectItem value="in_progress">In Progress</SelectItem><SelectItem value="completed">Completed</SelectItem><SelectItem value="paused">Paused</SelectItem></SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Progress % (0–100)</Label><Input type="number" min={0} max={100} value={devForm.progress} onChange={(e) => setDevForm({ ...devForm, progress: e.target.value })} placeholder="e.g. 75" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" /></div>
+              <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Progress % (0–100)</Label><Input type="number" min={0} max={100} value={devForm.progress} onChange={(e) => setDevForm({ ...devForm, progress: e.target.value })} placeholder="e.g. 75" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" /></div>
             </div>
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Sort Order</Label><Input type="number" value={devForm.order} onChange={(e) => setDevForm({ ...devForm, order: e.target.value })} placeholder="e.g. 1" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Sort Order</Label><Input type="number" value={devForm.order} onChange={(e) => setDevForm({ ...devForm, order: e.target.value })} placeholder="e.g. 1" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" /></div>
           </div>
           <DialogFooter className="gap-2 pt-4 border-t border-slate-50">
             <Button variant="outline" className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-xs font-bold rounded-xl h-9 px-5" onClick={() => setDevDialogOpen(false)}>Cancel</Button>
@@ -2010,8 +2103,48 @@ export default function Admin() {
         <DialogContent className="bg-white border-[#eae8f5] max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl p-6">
           <DialogHeader><DialogTitle className="text-[#110e3d] font-extrabold text-base">{editingAnnId ? "Edit Announcement" : "New Announcement"}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Title *</Label><Input value={annForm.title} onChange={(e) => setAnnForm({ ...annForm, title: e.target.value })} placeholder="Announcement title" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" /></div>
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Content Body</Label><Textarea value={annForm.content} onChange={(e) => setAnnForm({ ...annForm, content: e.target.value })} placeholder="Announcement body…" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none" rows={5} /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Title *</Label><Input value={annForm.title} onChange={(e) => setAnnForm({ ...annForm, title: e.target.value })} placeholder="Announcement title" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Content Body</Label><Textarea value={annForm.content} onChange={(e) => setAnnForm({ ...annForm, content: e.target.value })} placeholder="Announcement body…" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800" rows={5} /></div>
+            {/* Image Upload */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-slate-600">Gambar (opsional)</Label>
+              <input
+                ref={annImageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAnnImageUpload}
+              />
+              {annForm.imageUrl ? (
+                <div className="relative rounded-xl overflow-hidden border border-[#eae8f5] bg-slate-50">
+                  <img
+                    src={annForm.imageUrl}
+                    alt="Preview"
+                    className="w-full max-h-40 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAnnForm((prev) => ({ ...prev, imageUrl: "" }))}
+                    className="absolute top-2 right-2 bg-white/80 hover:bg-white text-slate-600 hover:text-red-500 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow transition-all"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={uploadingAnnImage}
+                  onClick={() => annImageInputRef.current?.click()}
+                  className="w-full h-24 rounded-xl border-2 border-dashed border-[#eae8f5] bg-slate-50 hover:bg-violet-50 hover:border-violet-300 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer text-slate-400 hover:text-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploadingAnnImage ? (
+                    <><div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /><span className="text-xs font-medium">Uploading...</span></>
+                  ) : (
+                    <><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><span className="text-xs font-medium">Klik untuk upload gambar</span></>
+                  )}
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-600">Type</Label>
@@ -2043,11 +2176,11 @@ export default function Admin() {
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600">Reason Label *</Label>
-              <Input value={ticketReasonForm.label} onChange={(e) => setTicketReasonForm({ ...ticketReasonForm, label: e.target.value })} placeholder="Minecraft Account / Player Report" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
+              <Input value={ticketReasonForm.label} onChange={(e) => setTicketReasonForm({ ...ticketReasonForm, label: e.target.value })} placeholder="Minecraft Account / Player Report" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600">Description</Label>
-              <Textarea value={ticketReasonForm.description} onChange={(e) => setTicketReasonForm({ ...ticketReasonForm, description: e.target.value })} placeholder="Short prompt shown to user..." className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none" rows={3} />
+              <Textarea value={ticketReasonForm.description} onChange={(e) => setTicketReasonForm({ ...ticketReasonForm, description: e.target.value })} placeholder="Short prompt shown to user..." className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800" rows={3} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -2062,7 +2195,7 @@ export default function Admin() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-600">Sort Order</Label>
-                <Input type="number" value={ticketReasonForm.order} onChange={(e) => setTicketReasonForm({ ...ticketReasonForm, order: e.target.value })} placeholder="0" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
+                <Input type="number" value={ticketReasonForm.order} onChange={(e) => setTicketReasonForm({ ...ticketReasonForm, order: e.target.value })} placeholder="0" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
               </div>
             </div>
           </div>
@@ -2078,9 +2211,9 @@ export default function Admin() {
         <DialogContent className="bg-white border-[#eae8f5] max-w-md rounded-2xl p-6">
           <DialogHeader><DialogTitle className="text-[#110e3d] font-extrabold text-base">Edit Server User</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Username</Label><Input value={userEditForm.username} onChange={(e) => setUserEditForm({ ...userEditForm, username: e.target.value })} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" /></div>
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Display Name</Label><Input value={userEditForm.displayName} onChange={(e) => setUserEditForm({ ...userEditForm, displayName: e.target.value })} placeholder="Optional name" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" /></div>
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">User Bio</Label><Textarea value={userEditForm.bio} onChange={(e) => setUserEditForm({ ...userEditForm, bio: e.target.value })} placeholder="Tell us who they are..." className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none" rows={3} /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Username</Label><Input value={userEditForm.username} onChange={(e) => setUserEditForm({ ...userEditForm, username: e.target.value })} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Display Name</Label><Input value={userEditForm.displayName} onChange={(e) => setUserEditForm({ ...userEditForm, displayName: e.target.value })} placeholder="Optional name" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">User Bio</Label><Textarea value={userEditForm.bio} onChange={(e) => setUserEditForm({ ...userEditForm, bio: e.target.value })} placeholder="Tell us who they are..." className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800" rows={3} /></div>
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600">System Role</Label>
               <Select value={userEditForm.role} onValueChange={(v) => setUserEditForm({ ...userEditForm, role: v as UserRole })}>
@@ -2109,11 +2242,11 @@ export default function Admin() {
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600">Name *</Label>
-              <Input value={creditForm.name} onChange={(e) => setCreditForm({ ...creditForm, name: e.target.value })} placeholder="Person/Team name" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
+              <Input value={creditForm.name} onChange={(e) => setCreditForm({ ...creditForm, name: e.target.value })} placeholder="Person/Team name" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600">Role Title *</Label>
-              <Input value={creditForm.role} onChange={(e) => setCreditForm({ ...creditForm, role: e.target.value })} placeholder="e.g. Founder, Architect" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
+              <Input value={creditForm.role} onChange={(e) => setCreditForm({ ...creditForm, role: e.target.value })} placeholder="e.g. Founder, Architect" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
             </div>
             
             <div className="space-y-1.5">
@@ -2140,7 +2273,7 @@ export default function Admin() {
 
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600">Biography / Description</Label>
-              <Textarea value={creditForm.description} onChange={(e) => setCreditForm({ ...creditForm, description: e.target.value })} placeholder="Biography details..." className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none" rows={3} />
+              <Textarea value={creditForm.description} onChange={(e) => setCreditForm({ ...creditForm, description: e.target.value })} placeholder="Biography details..." className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800" rows={3} />
             </div>
 
             <div className="space-y-1.5">
@@ -2181,7 +2314,7 @@ export default function Admin() {
               </div>
             </div>
 
-            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Sort Order</Label><Input type="number" value={creditForm.order} onChange={(e) => setCreditForm({ ...creditForm, order: e.target.value })} placeholder="e.g. 1" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-bold text-slate-600">Sort Order</Label><Input type="number" value={creditForm.order} onChange={(e) => setCreditForm({ ...creditForm, order: e.target.value })} placeholder="e.g. 1" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" /></div>
           </div>
           <DialogFooter className="gap-2 pt-4 border-t border-slate-50">
             <Button variant="outline" className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-xs font-bold rounded-xl h-9 px-5" onClick={() => setCreditDialogOpen(false)}>Cancel</Button>
@@ -2251,7 +2384,7 @@ export default function Admin() {
       <Dialog open={formsDialogOpen} onOpenChange={setFormsDialogOpen}>
         <DialogContent className="bg-white border-[#eae8f5] max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="text-[#110e3d] font-extrabold text-base">Create Poll or Form</DialogTitle>
+            <DialogTitle className="text-[#110e3d] font-extrabold text-base">{editingFormId ? "Edit Poll or Form" : "Create Poll or Form"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -2260,7 +2393,7 @@ export default function Admin() {
                 value={formTitle}
                 onChange={(e) => setFormTitle(e.target.value)}
                 placeholder="e.g. Choose Next Season Theme / Developer Application"
-                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
               />
             </div>
             <div className="space-y-1.5">
@@ -2269,14 +2402,14 @@ export default function Admin() {
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
                 placeholder="Details or rules of the vote/form..."
-                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none"
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800"
                 rows={3}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-600">Type</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as "poll" | "form")}>
+                <Select value={formType} onValueChange={(v) => setFormType(v as "poll" | "form")} disabled={!!editingFormId}>
                   <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
                     <SelectItem value="poll">🗳️ Voting/Poll</SelectItem>
@@ -2304,7 +2437,7 @@ export default function Admin() {
                     size="sm"
                     variant="ghost"
                     className="text-violet-600 hover:text-indigo-800 text-[10px] font-bold h-7"
-                    onClick={() => setPollOptions([...pollOptions, ""])}
+                    onClick={() => setPollOptions([...pollOptions, { label: "" }])}
                   >
                     + Add Choice
                   </Button>
@@ -2313,14 +2446,14 @@ export default function Admin() {
                   {pollOptions.map((opt, idx) => (
                     <div key={idx} className="flex gap-2 items-center">
                       <Input
-                        value={opt}
+                        value={opt.label}
                         onChange={(e) => {
                           const copy = [...pollOptions];
-                          copy[idx] = e.target.value;
+                          copy[idx] = { ...copy[idx], label: e.target.value };
                           setPollOptions(copy);
                         }}
                         placeholder={`Choice #${idx + 1}`}
-                        className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 flex-1"
+                        className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 flex-1 text-slate-800"
                       />
                       {pollOptions.length > 2 && (
                         <Button
@@ -2384,7 +2517,7 @@ export default function Admin() {
                             setFormFields(copy);
                           }}
                           placeholder="e.g. Why do you want to join staff?"
-                          className="bg-white border-[#eae8f5] rounded-xl text-xs h-8"
+                          className="bg-white border-[#eae8f5] rounded-xl text-xs h-8 text-slate-800"
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
@@ -2423,18 +2556,60 @@ export default function Admin() {
                         </div>
                       </div>
                       {(field.fieldType === "radio" || field.fieldType === "select") && (
-                        <div className="space-y-1">
-                          <Label className="text-[10px] font-bold text-slate-500">Choices (Comma Separated) *</Label>
-                          <Input
-                            value={field.options}
-                            onChange={(e) => {
-                              const copy = [...formFields];
-                              copy[idx].options = e.target.value;
-                              setFormFields(copy);
-                            }}
-                            placeholder="e.g. Red, Blue, Green"
-                            className="bg-white border-[#eae8f5] rounded-xl text-xs h-8"
-                          />
+                        <div className="space-y-2.5">
+                          <div className="flex justify-between items-center">
+                            <Label className="text-[10px] font-bold text-slate-500">Choices / Options *</Label>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              type="button"
+                              className="text-violet-600 hover:text-indigo-800 text-[10px] font-bold h-7 px-1"
+                              onClick={() => {
+                                const choices = getFieldChoices(field.options);
+                                const updatedChoices = [...choices, ""];
+                                const copy = [...formFields];
+                                copy[idx].options = updatedChoices.join(", ");
+                                setFormFields(copy);
+                              }}
+                            >
+                              + Add Option
+                            </Button>
+                          </div>
+                          <div className="space-y-2">
+                            {getFieldChoices(field.options).map((choiceVal, choiceIdx, arr) => (
+                              <div key={choiceIdx} className="flex gap-2 items-center">
+                                <Input
+                                  value={choiceVal}
+                                  onChange={(e) => {
+                                    const choices = [...arr];
+                                    choices[choiceIdx] = e.target.value;
+                                    const copy = [...formFields];
+                                    copy[idx].options = choices.join(", ");
+                                    setFormFields(copy);
+                                  }}
+                                  placeholder={`Option #${choiceIdx + 1}`}
+                                  className="bg-white border-[#eae8f5] rounded-xl text-xs h-8 flex-1 text-slate-800"
+                                />
+                                {arr.length > 1 && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    type="button"
+                                    className="text-red-500 hover:bg-red-50 hover:text-red-700 text-xs shrink-0 rounded-lg w-7 h-7 p-0"
+                                    onClick={() => {
+                                      const choices = [...arr];
+                                      choices.splice(choiceIdx, 1);
+                                      const copy = [...formFields];
+                                      copy[idx].options = choices.join(", ");
+                                      setFormFields(copy);
+                                    }}
+                                  >
+                                    ✕
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2445,7 +2620,7 @@ export default function Admin() {
           </div>
           <DialogFooter className="gap-2 pt-4 border-t border-slate-50">
             <Button variant="outline" className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-xs font-bold rounded-xl h-9 px-5" onClick={() => setFormsDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateNewForm} className="bg-[#6366f1] text-white hover:bg-violet-600 text-xs font-bold rounded-xl h-9 px-5 shadow-md shadow-violet-500/5">Launch Form</Button>
+            <Button onClick={handleSaveForm} className="bg-[#6366f1] text-white hover:bg-violet-600 text-xs font-bold rounded-xl h-9 px-5 shadow-md shadow-violet-500/5">{editingFormId ? "Save Changes" : "Launch Form"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

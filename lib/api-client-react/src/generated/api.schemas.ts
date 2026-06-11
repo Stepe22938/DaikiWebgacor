@@ -37,6 +37,13 @@ export interface User {
   youtubeLiveUrl?: string | null;
   /** @nullable */
   mcUsername?: string | null;
+  diamonds: number;
+  /** @nullable */
+  equippedBorder?: string | null;
+  /** @nullable */
+  equippedBadge?: string | null;
+  /** @nullable */
+  equippedBackground?: string | null;
   createdAt: string;
 }
 
@@ -63,12 +70,23 @@ export interface UserRoleUpdate {
   role: UserRoleUpdateRole;
 }
 
+export type PublicUserRole = typeof PublicUserRole[keyof typeof PublicUserRole];
+
+
+export const PublicUserRole = {
+  member: 'member',
+  admin: 'admin',
+  staff: 'staff',
+  dev: 'dev',
+  dev_website: 'dev_website',
+} as const;
+
 export interface PublicUser {
   id: number;
   username: string;
   /** @pattern ^#[0-9]{3,}$ */
   userTag: string;
-  role: 'member' | 'admin' | 'staff' | 'dev' | 'dev_website';
+  role: PublicUserRole;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
@@ -81,6 +99,12 @@ export interface PublicUser {
   isFollowing: boolean;
   followerCount: number;
   followingCount: number;
+  /** @nullable */
+  equippedBorder?: string | null;
+  /** @nullable */
+  equippedBadge?: string | null;
+  /** @nullable */
+  equippedBackground?: string | null;
 }
 
 export interface FollowInput {
@@ -220,6 +244,8 @@ export interface Announcement {
   authorName?: string | null;
   createdAt: string;
   updatedAt?: string;
+  /** @nullable */
+  imageUrl?: string | null;
 }
 
 export type AnnouncementInputType = typeof AnnouncementInputType[keyof typeof AnnouncementInputType];
@@ -238,6 +264,7 @@ export interface AnnouncementInput {
   content: string;
   type: AnnouncementInputType;
   pinned?: boolean;
+  imageUrl?: string;
 }
 
 export type AnnouncementUpdateType = typeof AnnouncementUpdateType[keyof typeof AnnouncementUpdateType];
@@ -256,6 +283,7 @@ export interface AnnouncementUpdate {
   content?: string;
   type?: AnnouncementUpdateType;
   pinned?: boolean;
+  imageUrl?: string;
 }
 
 export interface ServerStats {
@@ -658,15 +686,44 @@ export const UpdateFormInputStatus = {
   closed: 'closed',
 } as const;
 
+export type UpdateFormInputFieldsItemFieldType = typeof UpdateFormInputFieldsItemFieldType[keyof typeof UpdateFormInputFieldsItemFieldType];
+
+
+export const UpdateFormInputFieldsItemFieldType = {
+  text: 'text',
+  textarea: 'textarea',
+  radio: 'radio',
+  checkbox: 'checkbox',
+  select: 'select',
+} as const;
+
+export type UpdateFormInputFieldsItem = {
+  id?: number;
+  label: string;
+  fieldType: UpdateFormInputFieldsItemFieldType;
+  options?: string;
+  required?: boolean;
+  order?: number;
+};
+
+export type UpdateFormInputOptionsItem = {
+  id?: number;
+  label: string;
+  order?: number;
+};
+
 export interface UpdateFormInput {
   /**
      * @minLength 1
      * @maxLength 255
      */
   title?: string;
-  description?: string;
+  /** @nullable */
+  description?: string | null;
   status?: UpdateFormInputStatus;
   deadline?: string;
+  fields?: UpdateFormInputFieldsItem[];
+  options?: UpdateFormInputOptionsItem[];
 }
 
 export interface SubmitVoteInput {
@@ -805,3 +862,113 @@ export interface UpdateCreditInput {
   borderType?: string;
   order?: number;
 }
+
+export type CosmeticType = typeof CosmeticType[keyof typeof CosmeticType];
+
+
+export const CosmeticType = {
+  badge: 'badge',
+  border: 'border',
+  background: 'background',
+} as const;
+
+export type CosmeticRarity = typeof CosmeticRarity[keyof typeof CosmeticRarity];
+
+
+export const CosmeticRarity = {
+  S: 'S',
+  A: 'A',
+  B: 'B',
+  C: 'C',
+  D: 'D',
+} as const;
+
+export interface Cosmetic {
+  id: number;
+  name: string;
+  type: CosmeticType;
+  rarity: CosmeticRarity;
+  value: string;
+  /** @nullable */
+  description?: string | null;
+  createdAt: string;
+}
+
+export type OwnedCosmeticType = typeof OwnedCosmeticType[keyof typeof OwnedCosmeticType];
+
+
+export const OwnedCosmeticType = {
+  badge: 'badge',
+  border: 'border',
+  background: 'background',
+} as const;
+
+export type OwnedCosmeticRarity = typeof OwnedCosmeticRarity[keyof typeof OwnedCosmeticRarity];
+
+
+export const OwnedCosmeticRarity = {
+  S: 'S',
+  A: 'A',
+  B: 'B',
+  C: 'C',
+  D: 'D',
+} as const;
+
+export interface OwnedCosmetic {
+  id: number;
+  name: string;
+  type: OwnedCosmeticType;
+  rarity: OwnedCosmeticRarity;
+  value: string;
+  /** @nullable */
+  description?: string | null;
+  isEquipped: boolean;
+}
+
+export interface GachaBoardResult {
+  diamonds: number;
+  cosmetics: Cosmetic[];
+  ownedCosmeticIds: number[];
+}
+
+export interface GachaClaimResult {
+  diamonds: number;
+}
+
+export type SpinGachaInputCount = typeof SpinGachaInputCount[keyof typeof SpinGachaInputCount];
+
+
+export const SpinGachaInputCount = {
+  NUMBER_1: 1,
+  NUMBER_5: 5,
+  NUMBER_25: 25,
+  NUMBER_50: 50,
+} as const;
+
+export interface SpinGachaInput {
+  count: SpinGachaInputCount;
+}
+
+export interface SpinGachaResultItem {
+  cosmetic: Cosmetic;
+  isDuplicate: boolean;
+  refundAmount?: number;
+}
+
+export interface SpinGachaResult {
+  results: SpinGachaResultItem[];
+  diamonds: number;
+  cost: number;
+  refunded: number;
+}
+
+export interface EquipCosmeticInput {
+  equip?: boolean;
+}
+
+export interface EquipCosmeticResult {
+  success: boolean;
+  cosmeticId: number;
+  isEquipped: boolean;
+}
+

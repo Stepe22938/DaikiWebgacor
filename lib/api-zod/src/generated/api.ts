@@ -17,6 +17,92 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Get gacha board metadata and user state
+ */
+export const GetGachaBoardResponse = zod.object({
+  "diamonds": zod.number(),
+  "cosmetics": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "type": zod.enum(['badge', 'border', 'background']),
+  "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
+  "value": zod.string(),
+  "description": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "ownedCosmeticIds": zod.array(zod.number())
+})
+
+
+/**
+ * @summary Claim free daily test diamonds
+ */
+export const ClaimDiamondsResponse = zod.object({
+  "diamonds": zod.number()
+})
+
+
+/**
+ * @summary Spin the gacha wheel
+ */
+export const SpinGachaBody = zod.object({
+  "count": zod.union([zod.literal(1),zod.literal(5),zod.literal(25),zod.literal(50)])
+})
+
+export const SpinGachaResponse = zod.object({
+  "results": zod.array(zod.object({
+  "cosmetic": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "type": zod.enum(['badge', 'border', 'background']),
+  "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
+  "value": zod.string(),
+  "description": zod.string().nullish(),
+  "createdAt": zod.string()
+}),
+  "isDuplicate": zod.boolean(),
+  "refundAmount": zod.number().optional()
+})),
+  "diamonds": zod.number(),
+  "cost": zod.number(),
+  "refunded": zod.number()
+})
+
+
+/**
+ * @summary Get owned cosmetics
+ */
+export const ListOwnedCosmeticsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "type": zod.enum(['badge', 'border', 'background']),
+  "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
+  "value": zod.string(),
+  "description": zod.string().nullish(),
+  "isEquipped": zod.boolean()
+})
+export const ListOwnedCosmeticsResponse = zod.array(ListOwnedCosmeticsResponseItem)
+
+
+/**
+ * @summary Equip or unequip a cosmetic
+ */
+export const EquipCosmeticParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const EquipCosmeticBody = zod.object({
+  "equip": zod.boolean().optional()
+})
+
+export const EquipCosmeticResponse = zod.object({
+  "success": zod.boolean(),
+  "cosmeticId": zod.number(),
+  "isEquipped": zod.boolean()
+})
+
+
+/**
  * @summary Get current user profile
  */
 export const getMeResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
@@ -33,6 +119,10 @@ export const GetMeResponse = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "diamonds": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -62,6 +152,10 @@ export const UpdateMeResponse = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "diamonds": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -83,6 +177,10 @@ export const ListUsersResponseItem = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "diamonds": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -105,6 +203,10 @@ export const ListSwitchableUsersResponseItem = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "diamonds": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListSwitchableUsersResponse = zod.array(ListSwitchableUsersResponseItem)
@@ -135,6 +237,10 @@ export const UpdateUserRoleResponse = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "diamonds": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -157,7 +263,10 @@ export const ListMembersResponseItem = zod.object({
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
-  "followingCount": zod.number()
+  "followingCount": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish()
 })
 export const ListMembersResponse = zod.array(ListMembersResponseItem)
 
@@ -184,7 +293,10 @@ export const GetPublicProfileResponse = zod.object({
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
-  "followingCount": zod.number()
+  "followingCount": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish()
 })
 
 
@@ -210,7 +322,10 @@ export const GetPublicProfileFollowersResponseItem = zod.object({
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
-  "followingCount": zod.number()
+  "followingCount": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish()
 })
 export const GetPublicProfileFollowersResponse = zod.array(GetPublicProfileFollowersResponseItem)
 
@@ -237,7 +352,10 @@ export const GetPublicProfileFollowingResponseItem = zod.object({
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
-  "followingCount": zod.number()
+  "followingCount": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish()
 })
 export const GetPublicProfileFollowingResponse = zod.array(GetPublicProfileFollowingResponseItem)
 
@@ -287,6 +405,7 @@ export const GetMyFollowingResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "userTag": zod.string().regex(getMyFollowingResponseUserTagRegExp),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
@@ -294,7 +413,10 @@ export const GetMyFollowingResponseItem = zod.object({
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
-  "followingCount": zod.number()
+  "followingCount": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish()
 })
 export const GetMyFollowingResponse = zod.array(GetMyFollowingResponseItem)
 
@@ -309,6 +431,7 @@ export const GetMyFollowersResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "userTag": zod.string().regex(getMyFollowersResponseUserTagRegExp),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
@@ -316,7 +439,10 @@ export const GetMyFollowersResponseItem = zod.object({
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
-  "followingCount": zod.number()
+  "followingCount": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish()
 })
 export const GetMyFollowersResponse = zod.array(GetMyFollowersResponseItem)
 
@@ -431,7 +557,8 @@ export const ListAnnouncementsResponseItem = zod.object({
   "authorId": zod.number().nullish(),
   "authorName": zod.string().nullish(),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "imageUrl": zod.string().nullish()
 })
 export const ListAnnouncementsResponse = zod.array(ListAnnouncementsResponseItem)
 
@@ -446,7 +573,8 @@ export const CreateAnnouncementBody = zod.object({
   "title": zod.string().min(1),
   "content": zod.string(),
   "type": zod.enum(['update', 'event', 'maintenance', 'general']),
-  "pinned": zod.boolean().optional()
+  "pinned": zod.boolean().optional(),
+  "imageUrl": zod.string().optional()
 })
 
 
@@ -466,7 +594,8 @@ export const GetAnnouncementResponse = zod.object({
   "authorId": zod.number().nullish(),
   "authorName": zod.string().nullish(),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "imageUrl": zod.string().nullish()
 })
 
 
@@ -484,7 +613,8 @@ export const UpdateAnnouncementBody = zod.object({
   "title": zod.string().min(1).optional(),
   "content": zod.string().optional(),
   "type": zod.enum(['update', 'event', 'maintenance', 'general']).optional(),
-  "pinned": zod.boolean().optional()
+  "pinned": zod.boolean().optional(),
+  "imageUrl": zod.string().optional()
 })
 
 export const UpdateAnnouncementResponse = zod.object({
@@ -496,7 +626,8 @@ export const UpdateAnnouncementResponse = zod.object({
   "authorId": zod.number().nullish(),
   "authorName": zod.string().nullish(),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "imageUrl": zod.string().nullish()
 })
 
 
@@ -560,6 +691,10 @@ export const AdminUpdateUserResponse = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "diamonds": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -831,6 +966,7 @@ export const GetMyFriendsResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "userTag": zod.string().regex(getMyFriendsResponseUserTagRegExp),
+  "role": zod.enum(['member', 'admin', 'staff', 'dev', 'dev_website']),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "bio": zod.string().nullish(),
@@ -838,7 +974,10 @@ export const GetMyFriendsResponseItem = zod.object({
   "createdAt": zod.string(),
   "isFollowing": zod.boolean(),
   "followerCount": zod.number(),
-  "followingCount": zod.number()
+  "followingCount": zod.number(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish()
 })
 export const GetMyFriendsResponse = zod.array(GetMyFriendsResponseItem)
 
@@ -1242,9 +1381,22 @@ export const updateFormBodyTitleMax = 255;
 
 export const UpdateFormBody = zod.object({
   "title": zod.string().min(1).max(updateFormBodyTitleMax).optional(),
-  "description": zod.string().optional(),
+  "description": zod.string().nullish(),
   "status": zod.enum(['open', 'closed']).optional(),
-  "deadline": zod.string().optional()
+  "deadline": zod.string().optional(),
+  "fields": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "label": zod.string(),
+  "fieldType": zod.enum(['text', 'textarea', 'radio', 'checkbox', 'select']),
+  "options": zod.string().optional(),
+  "required": zod.boolean().optional(),
+  "order": zod.number().optional()
+})).optional(),
+  "options": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "label": zod.string(),
+  "order": zod.number().optional()
+})).optional()
 })
 
 export const UpdateFormResponse = zod.object({
@@ -1371,4 +1523,5 @@ export const GetMyFormResponseResponse = zod.object({
 })).optional()
 }).optional()
 })
+
 

@@ -5,6 +5,8 @@
  * MC Roleplay Server API
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateFormInputFieldsItem } from './updateFormInputFieldsItem';
+import type { UpdateFormInputOptionsItem } from './updateFormInputOptionsItem';
 import type { UpdateFormInputStatus } from './updateFormInputStatus';
 
 export interface UpdateFormInput {
@@ -13,7 +15,10 @@ export interface UpdateFormInput {
      * @maxLength 255
      */
   title?: string;
-  description?: string;
+  /** @nullable */
+  description?: string | null;
   status?: UpdateFormInputStatus;
   deadline?: string;
+  fields?: UpdateFormInputFieldsItem[];
+  options?: UpdateFormInputOptionsItem[];
 }

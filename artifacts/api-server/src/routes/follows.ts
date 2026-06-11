@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, sql } from "drizzle-orm";
-import { db, usersTable, followsTable } from "@workspace/db";
+import { eq, and, sql, inArray } from "drizzle-orm";
+import { db, usersTable, followsTable, userCosmeticsTable, cosmeticsTable } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 import {
   ListMembersResponse,
@@ -20,6 +20,49 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+
+async function attachEquippedCosmetics<T extends { id: number }>(users: T[]): Promise<(T & { equippedBorder: string | null; equippedBadge: string | null; equippedBackground: string | null })[]> {
+  if (users.length === 0) return [];
+  const userIds = users.map(u => u.id);
+  const equipped = await db
+    .select({
+      userId: userCosmeticsTable.userId,
+      type: cosmeticsTable.type,
+      value: cosmeticsTable.value,
+    })
+    .from(userCosmeticsTable)
+    .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+    .where(
+      and(
+        inArray(userCosmeticsTable.userId, userIds),
+        eq(userCosmeticsTable.isEquipped, true)
+      )
+    );
+  const cosmeticsMap = new Map<number, { border: string | null; badge: string | null; background: string | null }>();
+  for (const item of equipped) {
+    if (!cosmeticsMap.has(item.userId)) {
+      cosmeticsMap.set(item.userId, { border: null, badge: null, background: null });
+    }
+    const userCos = cosmeticsMap.get(item.userId)!;
+    if (item.type === "border") userCos.border = item.value;
+    else if (item.type === "badge") userCos.badge = item.value;
+    else if (item.type === "background") userCos.background = item.value;
+  }
+  return users.map(u => {
+    const cos = cosmeticsMap.get(u.id) || { border: null, badge: null, background: null };
+    return {
+      ...u,
+      equippedBorder: cos.border,
+      equippedBadge: cos.badge,
+      equippedBackground: cos.background,
+    };
+  });
+}
+
+async function attachEquippedCosmeticsToSingle<T extends { id: number }>(user: T) {
+  const [withCosmetics] = await attachEquippedCosmetics([user]);
+  return withCosmetics;
+}
 
 async function buildPublicUsers(currentUserId: number, targetUserIds?: number[], includeCurrentUser = false) {
   const allUsers = targetUserIds
@@ -47,7 +90,7 @@ async function buildPublicUsers(currentUserId: number, targetUserIds?: number[],
   const followerMap = new Map(followerCounts.map((r) => [r.followingId, r.count]));
   const followingMap = new Map(followingCounts.map((r) => [r.followerId, r.count]));
 
-  return allUsers
+  const serializedList = allUsers
     .filter((u) => includeCurrentUser || u.id !== currentUserId)
     .map((u) => ({
       ...serializeDates(u),
@@ -55,6 +98,8 @@ async function buildPublicUsers(currentUserId: number, targetUserIds?: number[],
       followerCount: followerMap.get(u.id) ?? 0,
       followingCount: followingMap.get(u.id) ?? 0,
     }));
+
+  return attachEquippedCosmetics(serializedList);
 }
 
 async function buildPublicUser(currentUserId: number, targetUserId: number) {
@@ -108,8 +153,9 @@ router.get("/members/:id", async (req, res): Promise<void> => {
       .from(followsTable)
       .where(eq(followsTable.followerId, me.id));
 
+    const meWithCosmetics = await attachEquippedCosmeticsToSingle(me);
     res.json(GetPublicProfileResponse.parse({
-      ...serializeDates(me),
+      ...serializeDates(meWithCosmetics),
       isFollowing: false,
       followerCount: followerCount[0]?.count ?? 0,
       followingCount: followingCount[0]?.count ?? 0,

@@ -5,13 +5,14 @@
  * MC Roleplay Server API
  * OpenAPI spec version: 0.1.0
  */
+import type { PublicUserRole } from './publicUserRole';
 
 export interface PublicUser {
   id: number;
   username: string;
   /** @pattern ^#[0-9]{3,}$ */
   userTag: string;
-  role: 'member' | 'admin' | 'staff' | 'dev' | 'dev_website';
+  role: PublicUserRole;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
@@ -24,4 +25,10 @@ export interface PublicUser {
   isFollowing: boolean;
   followerCount: number;
   followingCount: number;
+  /** @nullable */
+  equippedBorder?: string | null;
+  /** @nullable */
+  equippedBadge?: string | null;
+  /** @nullable */
+  equippedBackground?: string | null;
 }

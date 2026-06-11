@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers, useGetGachaBoard, useClaimDiamonds, useSpinGacha, useListOwnedCosmetics, useEquipCosmetic } from "@workspace/api-client-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -84,7 +84,7 @@ export default function Member() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings"].includes(tab)) {
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha"].includes(tab)) {
       setActiveTab(tab);
     } else if (!tab) {
       setActiveTab("dashboard");
@@ -349,6 +349,16 @@ export default function Member() {
                 >
                   <ClipboardList className="w-4.5 h-4.5" /> Voting & Forms
                 </button>
+                <button
+                  onClick={() => handleTabChange("gacha")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "gacha"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Sparkles className="w-4.5 h-4.5 text-amber-500" /> Gacha Royale
+                </button>
               </nav>
             </div>
 
@@ -515,6 +525,14 @@ export default function Member() {
                 >
                   <ClipboardList className="w-4.5 h-4.5" /> Voting & Forms
                 </button>
+                <button
+                  onClick={() => handleTabChangeMobile("gacha")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "gacha" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Sparkles className="w-4.5 h-4.5 text-amber-500" /> Gacha Royale
+                </button>
 
                 <div className="py-2 border-t border-[#eae8f5] my-2">
                   <span className="px-3 text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Social</span>
@@ -615,7 +633,7 @@ export default function Member() {
               <span>Guild Portal</span>
               <span>/</span>
               <span className="text-[#110e3d] capitalize">
-                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : "Arcadia Credits"}
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : "Arcadia Credits"}
               </span>
             </div>
           </div>
@@ -843,6 +861,15 @@ export default function Member() {
                         </div>
                       </CardHeader>
                       <CardContent>
+                        {ann.imageUrl && (
+                          <div className="mb-3 rounded-xl overflow-hidden border border-[#eae8f5]">
+                            <img
+                              src={ann.imageUrl}
+                              alt={ann.title}
+                              className="w-full max-h-48 object-cover"
+                            />
+                          </div>
+                        )}
                         <p className="text-xs text-slate-500 font-semibold line-clamp-3 leading-relaxed whitespace-pre-wrap">
                           {ann.content}
                         </p>
@@ -1161,6 +1188,9 @@ export default function Member() {
                   </Button>
                 </CardContent>
               </Card>
+
+              {/* Cosmetics Equipment Card */}
+              <ProfileCosmeticsInventory />
             </div>
           )}
 
@@ -1254,6 +1284,13 @@ export default function Member() {
               <CreditsTab />
             </div>
           )}
+
+          {/* Gacha Royale Tab */}
+          {activeTab === "gacha" && (
+            <div className="space-y-4">
+              <GachaTab />
+            </div>
+          )}
         </div>
       </main>
 
@@ -1280,7 +1317,16 @@ export default function Member() {
                   By <span className="text-slate-700">{selectedAnnouncement.authorName}</span>
                 </div>
               </DialogHeader>
-              <div className="border-t border-slate-50 my-4 pt-4">
+              <div className="border-t border-slate-50 my-4 pt-4 space-y-4">
+                {selectedAnnouncement.imageUrl && (
+                  <div className="rounded-xl overflow-hidden border border-[#eae8f5]">
+                    <img
+                      src={selectedAnnouncement.imageUrl}
+                      alt={selectedAnnouncement.title}
+                      className="w-full max-h-72 object-cover"
+                    />
+                  </div>
+                )}
                 <p className="text-xs text-slate-500 font-semibold whitespace-pre-wrap leading-relaxed">
                   {selectedAnnouncement.content}
                 </p>
@@ -1861,7 +1907,13 @@ function FormsTab() {
 }
 
 function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }) {
-  const { data: detail, isLoading } = useGetForm(form.id);
+  const { data: detail, isLoading } = useGetForm(form.id, {
+    query: {
+      queryKey: [`/api/forms/${form.id}`] as const,
+      staleTime: 0,
+      refetchOnMount: "always",
+    }
+  });
   const { data: myResp } = useGetMyFormResponse(form.id);
   const submitVote = useSubmitVote();
   const submitForm = useSubmitForm();
@@ -1982,29 +2034,39 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
                 )}
               </div>
             ) : (
-              (detail?.fields ?? []).map((field: any) => (
-                <div key={field.id} className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-600">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</Label>
-                  {field.fieldType === "textarea" ? (
-                    <Textarea placeholder="Your answer..." value={formAnswers[field.id] ?? ""} onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs min-h-[85px] resize-none" />
-                  ) : field.fieldType === "radio" || field.fieldType === "select" ? (
-                    <div className="space-y-1.5">
-                      {(() => {
-                        let opts: string[] = [];
-                        try { opts = JSON.parse(field.options ?? "[]"); } catch { /* empty */ }
-                        return opts.map((opt: string) => (
-                          <button key={opt} type="button" onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: opt }))}
-                            className={`w-full text-left px-3 py-2 rounded-xl border text-xs font-bold transition-all ${formAnswers[field.id] === opt ? "border-[#6366f1] bg-violet-50/50 text-[#6366f1]" : "border-[#eae8f5] bg-white hover:border-[#6366f1]/50 text-slate-550"}`}>
-                            {opt}
-                          </button>
-                        ));
-                      })()}
-                    </div>
-                  ) : (
-                    <Input placeholder="Your answer..." value={formAnswers[field.id] ?? ""} onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
-                  )}
-                </div>
-              ))
+              (detail?.fields ?? []).map((field: any) => {
+                const type = field.fieldType || field.field_type;
+                return (
+                  <div key={field.id} className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-600">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</Label>
+                    {type === "textarea" ? (
+                      <Textarea placeholder="Your answer..." value={formAnswers[field.id] ?? ""} onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs min-h-[85px] resize-none" />
+                    ) : type === "radio" || type === "select" ? (
+                      <div className="space-y-1.5">
+                        {(() => {
+                          let opts: string[] = [];
+                          if (field.options) {
+                            try {
+                              const parsed = JSON.parse(field.options);
+                              opts = Array.isArray(parsed) ? parsed : [String(parsed)];
+                            } catch {
+                              opts = field.options.split(",").map((o: string) => o.trim()).filter(Boolean);
+                            }
+                          }
+                          return opts.map((opt: string) => (
+                            <button key={opt} type="button" onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: opt }))}
+                              className={`w-full text-left px-3 py-2 rounded-xl border text-xs font-bold transition-all ${formAnswers[field.id] === opt ? "border-[#6366f1] bg-violet-50/50 text-[#6366f1]" : "border-[#eae8f5] bg-white hover:border-[#6366f1]/50 text-slate-550"}`}>
+                              {opt}
+                            </button>
+                          ));
+                        })()}
+                      </div>
+                    ) : (
+                      <Input placeholder="Your answer..." value={formAnswers[field.id] ?? ""} onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))} className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9" />
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         )}
@@ -2098,6 +2160,511 @@ function CreditsTab() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ProfileCosmeticsInventory() {
+  const { data: ownedCosmetics = [], isLoading, refetch } = useListOwnedCosmetics();
+  const { data: user, refetch: refetchMe } = useGetMe();
+  const equipCosmetic = useEquipCosmetic();
+  const { toast } = useToast();
+  const [activeSubTab, setActiveSubTab] = useState<"badge" | "border" | "background">("badge");
+  const queryClient = useQueryClient();
+
+  if (isLoading) {
+    return (
+      <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl p-6">
+        <Skeleton className="h-32 w-full rounded-xl" />
+      </Card>
+    );
+  }
+
+  const items = ownedCosmetics.filter(c => c.type === activeSubTab);
+
+  const handleEquip = async (id: number, currentStatus: boolean) => {
+    try {
+      await equipCosmetic.mutateAsync({
+        id,
+        data: { equip: !currentStatus }
+      });
+      toast({
+        title: currentStatus ? "Cosmetic unequipped" : "Cosmetic equipped!",
+        description: currentStatus ? "Item has been unequipped." : "Your profile style has been updated."
+      });
+      await refetch();
+      await refetchMe();
+      await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+    } catch (err: any) {
+      toast({
+        title: "Action failed",
+        description: err.message || "Failed to update cosmetic state.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const getRarityColor = (rarity: string) => {
+    switch (rarity) {
+      case "S": return "bg-red-500 text-white border-red-300";
+      case "A": return "bg-pink-500 text-white border-pink-300";
+      case "B": return "bg-purple-500 text-white border-purple-300";
+      case "C": return "bg-blue-500 text-white border-blue-300";
+      default: return "bg-slate-400 text-white border-slate-300";
+    }
+  };
+
+  return (
+    <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+      <CardHeader>
+        <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-violet-500" /> Cosmetics Inventory
+        </CardTitle>
+        <p className="text-[11px] text-slate-400 font-semibold mt-1">
+          Equip custom borders, badges, or backgrounds won from Gacha Royale
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Tabs value={activeSubTab} onValueChange={(val) => setActiveSubTab(val as any)} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 bg-slate-50 border border-[#eae8f5] h-9 p-0.5 rounded-xl">
+            <TabsTrigger value="badge" className="text-[11px] py-1 font-bold rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-800">Badges</TabsTrigger>
+            <TabsTrigger value="border" className="text-[11px] py-1 font-bold rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-800">Borders</TabsTrigger>
+            <TabsTrigger value="background" className="text-[11px] py-1 font-bold rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-800">Backgrounds</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value={activeSubTab} className="mt-4">
+            {items.length === 0 ? (
+              <div className="text-center py-8 text-xs text-slate-400 font-semibold border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                You don't own any {activeSubTab} cosmetics yet.
+                <button
+                  type="button"
+                  onClick={() => {
+                    const params = new URLSearchParams(window.location.search);
+                    params.set("tab", "gacha");
+                    window.location.search = params.toString();
+                  }}
+                  className="block mx-auto mt-2 text-xs font-bold text-violet-600 hover:text-violet-700"
+                >
+                  Spin Gacha Royale to get some!
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {items.map((item) => (
+                  <div key={item.id} className={`p-3 border rounded-xl flex items-center justify-between transition-all ${item.isEquipped ? "border-violet-300 bg-violet-50/10 shadow-sm" : "border-slate-100 bg-white"}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded border ${getRarityColor(item.rarity)}`}>
+                          Tier {item.rarity}
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-800 truncate">{item.name}</h4>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-semibold mt-1 truncate">{item.description}</p>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => handleEquip(item.id, item.isEquipped)}
+                      disabled={equipCosmetic.isPending}
+                      className={`h-7 px-3 text-[10px] font-bold rounded-lg shrink-0 ml-3 ${
+                        item.isEquipped
+                          ? "bg-slate-200 hover:bg-slate-300 text-slate-700"
+                          : "bg-violet-600 hover:bg-violet-700 text-white"
+                      }`}
+                    >
+                      {item.isEquipped ? "Unequip" : "Equip"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
+
+function GachaTab() {
+  const { data: board, isLoading, refetch } = useGetGachaBoard();
+  const { data: user, refetch: refetchMe } = useGetMe();
+  const claimDiamonds = useClaimDiamonds();
+  const spinGacha = useSpinGacha();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const [spinResults, setSpinResults] = useState<any[] | null>(null);
+  const [resultsModalOpen, setResultsModalOpen] = useState(false);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [spinCount, setSpinCount] = useState<1 | 5 | 25 | 50>(1);
+
+  if (isLoading || !board) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-[350px] w-full rounded-2xl animate-pulse" />
+      </div>
+    );
+  }
+
+  const handleClaimDiamonds = async () => {
+    try {
+      await claimDiamonds.mutateAsync();
+      toast({
+        title: "Diamonds claimed! 💎",
+        description: "You've received +1,000 Diamonds for testing."
+      });
+      await refetch();
+      await refetchMe();
+      await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+    } catch (err: any) {
+      toast({
+        title: "Claim failed",
+        description: err.message || "Failed to claim test diamonds.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleSpin = async (count: 1 | 5 | 25 | 50) => {
+    let cost = 9;
+    if (count === 5) cost = 39;
+    else if (count === 25) cost = 195;
+    else if (count === 50) cost = 390;
+
+    if ((board.diamonds ?? 0) < cost) {
+      toast({
+        title: "Insufficient Diamonds",
+        description: `Spinning ${count}x costs ${cost} 💎, but you only have ${board.diamonds} 💎. Claim free diamonds first!`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSpinCount(count);
+    setIsSpinning(true);
+
+    setTimeout(async () => {
+      try {
+        const res = await spinGacha.mutateAsync({
+          data: { count }
+        });
+        setSpinResults(res.results ?? []);
+        setResultsModalOpen(true);
+        await refetch();
+        await refetchMe();
+        await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+        await queryClient.invalidateQueries({ queryKey: ["/api/cosmetics"] });
+      } catch (err: any) {
+        toast({
+          title: "Spin failed",
+          description: err.message || "Failed to roll gacha.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsSpinning(false);
+      }
+    }, 1800);
+  };
+
+  const tiers = {
+    S: board.cosmetics.filter(c => c.rarity === "S"),
+    A: board.cosmetics.filter(c => c.rarity === "A"),
+    B: board.cosmetics.filter(c => c.rarity === "B"),
+    C: board.cosmetics.filter(c => c.rarity === "C"),
+    D: board.cosmetics.filter(c => c.rarity === "D"),
+  };
+
+  const ownedIds = new Set(board.ownedCosmeticIds || []);
+
+  const getTierBadgeStyle = (tier: string) => {
+    switch (tier) {
+      case "S": return "bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 text-white font-extrabold shadow-sm animate-pulse";
+      case "A": return "bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold";
+      case "B": return "bg-purple-500 text-white font-bold";
+      case "C": return "bg-blue-500 text-white font-semibold";
+      default: return "bg-slate-400 text-white font-medium";
+    }
+  };
+
+  const getRarityLabel = (tier: string) => {
+    switch (tier) {
+      case "S": return "S-Tier (1.5%)";
+      case "A": return "A-Tier (6.5%)";
+      case "B": return "B-Tier (17%)";
+      case "C": return "C-Tier (35%)";
+      default: return "D-Tier (40%)";
+    }
+  };
+
+  const getAvatarBorder = () => {
+    if (user?.equippedBorder) return user.equippedBorder;
+    return "";
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="relative rounded-2xl bg-gradient-to-br from-indigo-905 via-purple-900 to-indigo-950 p-6 md:p-8 text-white overflow-hidden shadow-xl border border-indigo-500/20">
+        <div className="absolute right-0 top-0 w-1/3 h-full opacity-5 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white to-transparent" />
+        
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative z-10">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black tracking-widest uppercase border border-amber-500/30">
+              💎 GACHA ROYALE
+            </div>
+            <h1 className="text-xl md:text-2xl font-black tracking-tight flex items-center gap-2">
+              Spin for Exclusive Cosmetics <Sparkles className="w-5 h-5 text-amber-400 animate-spin" />
+            </h1>
+            <p className="text-xs text-indigo-200 font-semibold max-w-xl">
+              Unlock rare borders, badges, and profile banners. Duplicate cosmetics automatically convert into a <strong className="text-amber-300">100 💎 refund</strong>!
+            </p>
+          </div>
+
+          <div className="shrink-0 flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-sm self-start md:self-auto min-w-[200px] justify-between">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest leading-none">Your Balance</span>
+              <span className="text-2xl font-black text-amber-300 mt-1 flex items-center gap-1.5">
+                {board.diamonds ?? 0} <span className="text-lg">💎</span>
+              </span>
+            </div>
+
+            <Button
+              onClick={handleClaimDiamonds}
+              disabled={claimDiamonds.isPending}
+              className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-extrabold text-xs px-3.5 py-2.5 rounded-xl h-auto shadow-lg shadow-amber-500/25 border-t border-white/20"
+            >
+              {claimDiamonds.isPending ? "Claiming..." : "+ 1,000 💎"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="lg:col-span-7 space-y-4">
+          <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+            <CardHeader className="pb-3 border-b border-slate-50">
+              <CardTitle className="text-sm font-extrabold text-[#110e3d]">Rewards Board & Odds</CardTitle>
+              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Collect all cosmetics. Owned cosmetics display a checkmark.</p>
+            </CardHeader>
+            <CardContent className="p-0 divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+              {(Object.keys(tiers) as Array<keyof typeof tiers>).map((tierKey) => {
+                const tierList = tiers[tierKey];
+                const ownedInTier = tierList.filter(c => ownedIds.has(c.id)).length;
+                return (
+                  <div key={tierKey} className="p-4 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[10px] px-2.5 py-0.5 rounded-lg border ${getTierBadgeStyle(tierKey)}`}>
+                        {getRarityLabel(tierKey)}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-bold">
+                        {ownedInTier} / {tierList.length} Owned
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {tierList.map((item) => {
+                        const isOwned = ownedIds.has(item.id);
+                        return (
+                          <div key={item.id} className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
+                            isOwned 
+                              ? "border-violet-100 bg-violet-50/5 text-slate-800" 
+                              : "border-slate-50 bg-slate-50/40 text-slate-450"
+                          }`}>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-extrabold truncate">{item.name}</p>
+                              <span className="text-[8px] font-bold text-slate-400 uppercase">{item.type}</span>
+                            </div>
+                            {isOwned ? (
+                              <span className="text-emerald-500 font-bold shrink-0 ml-2">✓</span>
+                            ) : (
+                              <span className="text-slate-400 shrink-0 ml-2">🔒</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-5 space-y-6">
+          <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden relative">
+            <div className="h-28 bg-slate-105 relative">
+              {user?.equippedBackground ? (
+                <img src={user.equippedBackground} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-r from-slate-200 to-slate-300" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-white via-white/10 to-transparent" />
+            </div>
+
+            <CardContent className="relative -mt-10 flex flex-col items-center p-5 pt-0 text-center">
+              <div className="relative mb-3.5">
+                <div className={`w-20 h-20 rounded-full flex items-center justify-center bg-white p-1 shadow-md overflow-visible ${getAvatarBorder()}`}>
+                  <Avatar className="w-full h-full rounded-full">
+                    <AvatarImage src={user?.avatarUrl || undefined} />
+                    <AvatarFallback className="text-xl bg-slate-100 font-bold text-slate-650">
+                      {getInitials(user?.displayName || user?.username)}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="font-extrabold text-sm text-[#110e3d] flex items-center gap-1 justify-center">
+                  <span>{user?.displayName || user?.username}</span>
+                  {user?.userTag && <span className="text-[10px] text-slate-400 font-bold">{user.userTag}</span>}
+                </h3>
+                
+                {user?.equippedBadge ? (
+                  <span className={`inline-block text-[9px] px-2.5 py-0.5 rounded-lg border font-black uppercase tracking-wider ${user.equippedBadge}`}>
+                    {(() => {
+                      // Find badge name if possible
+                      const allBoardCos = board?.cosmetics || [];
+                      const match = allBoardCos.find(c => c.value === user.equippedBadge);
+                      return match ? match.name : "Equipped Badge";
+                    })()}
+                  </span>
+                ) : (
+                  <span className="inline-block text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded border border-slate-200 font-bold uppercase tracking-wider">
+                    No Badge Equipped
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-extrabold text-[#110e3d]">Play Board</CardTitle>
+              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Pick a gacha spin count. Bulk packages offer progressive discounts!</p>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-1">
+              {isSpinning ? (
+                <div className="py-10 text-center space-y-4">
+                  <div className="w-12 h-12 border-4 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs font-black text-violet-600 animate-pulse">
+                    Summoning items from the cosmic void...
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => handleSpin(1)}
+                    className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-violet-300 hover:bg-violet-50/10 hover:shadow-sm transition-all text-center flex flex-col items-center justify-center cursor-pointer group"
+                  >
+                    <span className="text-xs font-black text-slate-700 leading-none">1 Spin</span>
+                    <span className="text-xs font-black text-amber-500 mt-2 flex items-center gap-1">
+                      9 <span className="text-[10px]">💎</span>
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => handleSpin(5)}
+                    className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-violet-300 hover:bg-violet-50/10 hover:shadow-sm transition-all text-center flex flex-col items-center justify-center cursor-pointer group relative overflow-hidden"
+                  >
+                    <div className="absolute right-0 top-0 bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-bl-lg">DISCOUNT</div>
+                    <span className="text-xs font-black text-slate-700 leading-none">5 Spins</span>
+                    <span className="text-xs font-black text-amber-500 mt-2 flex items-center gap-1">
+                      39 <span className="text-[10px]">💎</span>
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => handleSpin(25)}
+                    className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-violet-300 hover:bg-violet-50/10 hover:shadow-sm transition-all text-center flex flex-col items-center justify-center cursor-pointer group"
+                  >
+                    <span className="text-xs font-black text-slate-700 leading-none">25 Spins</span>
+                    <span className="text-xs font-black text-amber-500 mt-2 flex items-center gap-1">
+                      195 <span className="text-[10px]">💎</span>
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => handleSpin(50)}
+                    className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-violet-300 hover:bg-violet-50/10 hover:shadow-sm transition-all text-center flex flex-col items-center justify-center cursor-pointer group"
+                  >
+                    <span className="text-xs font-black text-slate-700 leading-none">50 Spins</span>
+                    <span className="text-xs font-black text-amber-500 mt-2 flex items-center gap-1">
+                      390 <span className="text-[10px]">💎</span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <Dialog open={resultsModalOpen} onOpenChange={(open) => { if (!open) setResultsModalOpen(false); }}>
+        <DialogContent className="bg-[#0b0f19] border-indigo-500/30 text-white max-w-2xl flex flex-col max-h-[85vh] p-0 overflow-hidden rounded-2xl">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-indigo-900/30 bg-[#0d1222]">
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-lg font-black text-white flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" /> Spin Results ({spinCount}x)
+              </DialogTitle>
+              <span className="text-xs bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-lg font-bold">
+                Balance: {board.diamonds} 💎
+              </span>
+            </div>
+          </DialogHeader>
+
+          <ScrollArea className="flex-1 p-6 bg-[#090d16]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {spinResults?.map((res, i) => {
+                const item = res.cosmetic;
+                const isDup = res.isDuplicate;
+                const rarityColor = getTierBadgeStyle(item.rarity);
+                return (
+                  <div key={i} className={`p-4 rounded-xl border flex flex-col justify-between items-center text-center relative overflow-hidden ${
+                    isDup ? "border-indigo-950 bg-indigo-950/20" : "border-indigo-500/20 bg-indigo-900/10"
+                  }`}>
+                    {item.rarity === "S" && (
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(251,191,36,0.15)_0%,_transparent_100%)] animate-pulse" />
+                    )}
+
+                    <div className="space-y-2 w-full relative z-10">
+                      <span className={`text-[8px] px-2 py-0.5 rounded border ${rarityColor}`}>
+                        Tier {item.rarity}
+                      </span>
+                      
+                      <h4 className="text-xs font-black text-slate-100 truncate w-full">{item.name}</h4>
+                      <p className="text-[9px] text-indigo-300 font-bold uppercase">{item.type}</p>
+                    </div>
+
+                    <div className="mt-4 w-full relative z-10">
+                      {isDup ? (
+                        <div className="flex flex-col items-center justify-center p-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                          <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest leading-none">Duplicate</span>
+                          <span className="text-[10px] font-black text-amber-300 mt-1 flex items-center gap-0.5 justify-center">
+                            +100 💎
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-[9px] font-extrabold uppercase tracking-wide">
+                          🎉 UNLOCKED!
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+
+          <DialogFooter className="px-6 py-4 border-t border-indigo-900/30 bg-[#0d1222] gap-3">
+            <Button
+              onClick={() => setResultsModalOpen(false)}
+              className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-extrabold text-xs px-6 py-2.5 rounded-xl border-t border-white/10"
+            >
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

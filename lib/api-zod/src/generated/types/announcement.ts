@@ -19,4 +19,6 @@ export interface Announcement {
   authorName?: string | null;
   createdAt: string;
   updatedAt?: string;
+  /** @nullable */
+  imageUrl?: string | null;
 }

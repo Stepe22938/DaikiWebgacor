@@ -30,6 +30,8 @@ tags:
     description: Profile badge system
   - name: forms
     description: Forms and Voting system
+  - name: gacha
+    description: Gacha and Cosmetics system
 
 paths:
   /healthz:
@@ -44,6 +46,90 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /gacha/board:
+    get:
+      operationId: getGachaBoard
+      tags: [gacha]
+      summary: Get gacha board metadata and user state
+      responses:
+        "200":
+          description: Gacha board details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GachaBoardResult"
+
+  /gacha/claim-diamonds:
+    post:
+      operationId: claimDiamonds
+      tags: [gacha]
+      summary: Claim free daily test diamonds
+      responses:
+        "200":
+          description: Claim success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GachaClaimResult"
+
+  /gacha/spin:
+    post:
+      operationId: spinGacha
+      tags: [gacha]
+      summary: Spin the gacha wheel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpinGachaInput"
+      responses:
+        "200":
+          description: Spin results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpinGachaResult"
+
+  /cosmetics:
+    get:
+      operationId: listOwnedCosmetics
+      tags: [gacha]
+      summary: Get owned cosmetics
+      responses:
+        "200":
+          description: List of owned cosmetics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OwnedCosmetic"
+
+  /cosmetics/{id}/equip:
+    post:
+      operationId: equipCosmetic
+      tags: [gacha]
+      summary: Equip or unequip a cosmetic
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipCosmeticInput"
+      responses:
+        "200":
+          description: Equip status update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipCosmeticResult"
 
   /me:
     get:
@@ -1334,7 +1420,7 @@ components:
 
     User:
       type: object
-      required: [id, clerkId, username, userTag, role, createdAt]
+      required: [id, clerkId, username, userTag, role, createdAt, diamonds]
       properties:
         id:
           type: integer
@@ -1357,6 +1443,14 @@ components:
         youtubeLiveUrl:
           type: ["string", "null"]
         mcUsername:
+          type: ["string", "null"]
+        diamonds:
+          type: integer
+        equippedBorder:
+          type: ["string", "null"]
+        equippedBadge:
+          type: ["string", "null"]
+        equippedBackground:
           type: ["string", "null"]
         createdAt:
           type: string
@@ -1413,6 +1507,12 @@ components:
           type: integer
         followingCount:
           type: integer
+        equippedBorder:
+          type: ["string", "null"]
+        equippedBadge:
+          type: ["string", "null"]
+        equippedBackground:
+          type: ["string", "null"]
 
     FollowInput:
       type: object
@@ -1566,6 +1666,8 @@ components:
           type: string
         updatedAt:
           type: string
+        imageUrl:
+          type: ["string", "null"]
 
     AnnouncementInput:
       type: object
@@ -1581,6 +1683,8 @@ components:
           enum: [update, event, maintenance, general]
         pinned:
           type: boolean
+        imageUrl:
+          type: string
 
     AnnouncementUpdate:
       type: object
@@ -1595,6 +1699,8 @@ components:
           enum: [update, event, maintenance, general]
         pinned:
           type: boolean
+        imageUrl:
+          type: string
 
     ServerStats:
       type: object
@@ -2032,12 +2138,43 @@ components:
           minLength: 1
           maxLength: 255
         description:
-          type: string
+          type: ["string", "null"]
         status:
           type: string
           enum: [open, closed]
         deadline:
           type: string
+        fields:
+          type: array
+          items:
+            type: object
+            required: [label, fieldType]
+            properties:
+              id:
+                type: integer
+              label:
+                type: string
+              fieldType:
+                type: string
+                enum: [text, textarea, radio, checkbox, select]
+              options:
+                type: string
+              required:
+                type: boolean
+              order:
+                type: integer
+        options:
+          type: array
+          items:
+            type: object
+            required: [label]
+            properties:
+              id:
+                type: integer
+              label:
+                type: string
+              order:
+                type: integer
 
     SubmitVoteInput:
       type: object
@@ -2239,3 +2376,118 @@ components:
           type: string
         order:
           type: integer
+
+    Cosmetic:
+      type: object
+      required: [id, name, type, rarity, value, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [badge, border, background]
+        rarity:
+          type: string
+          enum: [S, A, B, C, D]
+        value:
+          type: string
+        description:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    OwnedCosmetic:
+      type: object
+      required: [id, name, type, rarity, value, isEquipped]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [badge, border, background]
+        rarity:
+          type: string
+          enum: [S, A, B, C, D]
+        value:
+          type: string
+        description:
+          type: ["string", "null"]
+        isEquipped:
+          type: boolean
+
+    GachaBoardResult:
+      type: object
+      required: [diamonds, cosmetics, ownedCosmeticIds]
+      properties:
+        diamonds:
+          type: integer
+        cosmetics:
+          type: array
+          items:
+            $ref: "#/components/schemas/Cosmetic"
+        ownedCosmeticIds:
+          type: array
+          items:
+            type: integer
+
+    GachaClaimResult:
+      type: object
+      required: [diamonds]
+      properties:
+        diamonds:
+          type: integer
+
+    SpinGachaInput:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+          enum: [1, 5, 25, 50]
+
+    SpinGachaResultItem:
+      type: object
+      required: [cosmetic, isDuplicate]
+      properties:
+        cosmetic:
+          $ref: "#/components/schemas/Cosmetic"
+        isDuplicate:
+          type: boolean
+        refundAmount:
+          type: integer
+
+    SpinGachaResult:
+      type: object
+      required: [results, diamonds, cost, refunded]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpinGachaResultItem"
+        diamonds:
+          type: integer
+        cost:
+          type: integer
+        refunded:
+          type: integer
+
+    EquipCosmeticInput:
+      type: object
+      properties:
+        equip:
+          type: boolean
+
+    EquipCosmeticResult:
+      type: object
+      required: [success, cosmeticId, isEquipped]
+      properties:
+        success:
+          type: boolean
+        cosmeticId:
+          type: integer
+        isEquipped:
+          type: boolean

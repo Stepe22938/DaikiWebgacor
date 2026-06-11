@@ -8,6 +8,7 @@ export const announcementsTable = pgTable("announcements", {
   content: text("content").notNull(),
   type: varchar("type", { length: 30 }).notNull().default("general"),
   pinned: boolean("pinned").notNull().default(false),
+  imageUrl: text("image_url"),
   authorId: integer("author_id"),
   authorName: varchar("author_name", { length: 100 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),

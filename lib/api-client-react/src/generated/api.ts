@@ -41,19 +41,26 @@ import type {
   Development,
   DevelopmentInput,
   DevelopmentUpdate,
+  EquipCosmeticInput,
+  EquipCosmeticResult,
   FollowInput,
   FollowResult,
   FormDetail,
   FormResponse,
   FormResponsesResult,
   FormSummary,
+  GachaBoardResult,
+  GachaClaimResult,
   HealthStatus,
   Message,
   MyFormResponse,
+  OwnedCosmetic,
   PublicUser,
   SendMessageInput,
   SendTicketMessageInput,
   ServerStats,
+  SpinGachaInput,
+  SpinGachaResult,
   SubmitFormInput,
   SubmitVoteInput,
   Ticket,
@@ -160,6 +167,373 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getGetGachaBoardUrl = () => {
+
+
+
+
+  return `/api/gacha/board`
+}
+
+/**
+ * @summary Get gacha board metadata and user state
+ */
+export const getGachaBoard = async ( options?: RequestInit): Promise<GachaBoardResult> => {
+
+  return customFetch<GachaBoardResult>(getGetGachaBoardUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGachaBoardQueryKey = () => {
+    return [
+    `/api/gacha/board`
+    ] as const;
+    }
+
+
+export const getGetGachaBoardQueryOptions = <TData = Awaited<ReturnType<typeof getGachaBoard>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGachaBoard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGachaBoardQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGachaBoard>>> = ({ signal }) => getGachaBoard({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGachaBoard>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGachaBoardQueryResult = NonNullable<Awaited<ReturnType<typeof getGachaBoard>>>
+export type GetGachaBoardQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get gacha board metadata and user state
+ */
+
+export function useGetGachaBoard<TData = Awaited<ReturnType<typeof getGachaBoard>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGachaBoard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGachaBoardQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getClaimDiamondsUrl = () => {
+
+
+
+
+  return `/api/gacha/claim-diamonds`
+}
+
+/**
+ * @summary Claim free daily test diamonds
+ */
+export const claimDiamonds = async ( options?: RequestInit): Promise<GachaClaimResult> => {
+
+  return customFetch<GachaClaimResult>(getClaimDiamondsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getClaimDiamondsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimDiamonds>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof claimDiamonds>>, TError,void, TContext> => {
+
+const mutationKey = ['claimDiamonds'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof claimDiamonds>>, void> = () => {
+
+
+          return  claimDiamonds(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClaimDiamondsMutationResult = NonNullable<Awaited<ReturnType<typeof claimDiamonds>>>
+
+    export type ClaimDiamondsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Claim free daily test diamonds
+ */
+export const useClaimDiamonds = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimDiamonds>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof claimDiamonds>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClaimDiamondsMutationOptions(options));
+    }
+
+export const getSpinGachaUrl = () => {
+
+
+
+
+  return `/api/gacha/spin`
+}
+
+/**
+ * @summary Spin the gacha wheel
+ */
+export const spinGacha = async (spinGachaInput: SpinGachaInput, options?: RequestInit): Promise<SpinGachaResult> => {
+
+  return customFetch<SpinGachaResult>(getSpinGachaUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      spinGachaInput,)
+  }
+);}
+
+
+
+
+export const getSpinGachaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof spinGacha>>, TError,{data: BodyType<SpinGachaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof spinGacha>>, TError,{data: BodyType<SpinGachaInput>}, TContext> => {
+
+const mutationKey = ['spinGacha'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof spinGacha>>, {data: BodyType<SpinGachaInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  spinGacha(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SpinGachaMutationResult = NonNullable<Awaited<ReturnType<typeof spinGacha>>>
+    export type SpinGachaMutationBody = BodyType<SpinGachaInput>
+    export type SpinGachaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Spin the gacha wheel
+ */
+export const useSpinGacha = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof spinGacha>>, TError,{data: BodyType<SpinGachaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof spinGacha>>,
+        TError,
+        {data: BodyType<SpinGachaInput>},
+        TContext
+      > => {
+      return useMutation(getSpinGachaMutationOptions(options));
+    }
+
+export const getListOwnedCosmeticsUrl = () => {
+
+
+
+
+  return `/api/cosmetics`
+}
+
+/**
+ * @summary Get owned cosmetics
+ */
+export const listOwnedCosmetics = async ( options?: RequestInit): Promise<OwnedCosmetic[]> => {
+
+  return customFetch<OwnedCosmetic[]>(getListOwnedCosmeticsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOwnedCosmeticsQueryKey = () => {
+    return [
+    `/api/cosmetics`
+    ] as const;
+    }
+
+
+export const getListOwnedCosmeticsQueryOptions = <TData = Awaited<ReturnType<typeof listOwnedCosmetics>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOwnedCosmetics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOwnedCosmeticsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOwnedCosmetics>>> = ({ signal }) => listOwnedCosmetics({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOwnedCosmetics>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOwnedCosmeticsQueryResult = NonNullable<Awaited<ReturnType<typeof listOwnedCosmetics>>>
+export type ListOwnedCosmeticsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get owned cosmetics
+ */
+
+export function useListOwnedCosmetics<TData = Awaited<ReturnType<typeof listOwnedCosmetics>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOwnedCosmetics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOwnedCosmeticsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getEquipCosmeticUrl = (id: number,) => {
+
+
+
+
+  return `/api/cosmetics/${id}/equip`
+}
+
+/**
+ * @summary Equip or unequip a cosmetic
+ */
+export const equipCosmetic = async (id: number,
+    equipCosmeticInput?: EquipCosmeticInput, options?: RequestInit): Promise<EquipCosmeticResult> => {
+
+  return customFetch<EquipCosmeticResult>(getEquipCosmeticUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      equipCosmeticInput,)
+  }
+);}
+
+
+
+
+export const getEquipCosmeticMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof equipCosmetic>>, TError,{id: number;data?: BodyType<EquipCosmeticInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof equipCosmetic>>, TError,{id: number;data?: BodyType<EquipCosmeticInput>}, TContext> => {
+
+const mutationKey = ['equipCosmetic'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof equipCosmetic>>, {id: number;data?: BodyType<EquipCosmeticInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  equipCosmetic(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EquipCosmeticMutationResult = NonNullable<Awaited<ReturnType<typeof equipCosmetic>>>
+    export type EquipCosmeticMutationBody = BodyType<EquipCosmeticInput> | undefined
+    export type EquipCosmeticMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Equip or unequip a cosmetic
+ */
+export const useEquipCosmetic = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof equipCosmetic>>, TError,{id: number;data?: BodyType<EquipCosmeticInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof equipCosmetic>>,
+        TError,
+        {id: number;data?: BodyType<EquipCosmeticInput>},
+        TContext
+      > => {
+      return useMutation(getEquipCosmeticMutationOptions(options));
+    }
 
 export const getGetMeUrl = () => {
 

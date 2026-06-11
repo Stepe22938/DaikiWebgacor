@@ -24,5 +24,12 @@ export interface User {
   youtubeLiveUrl?: string | null;
   /** @nullable */
   mcUsername?: string | null;
+  diamonds: number;
+  /** @nullable */
+  equippedBorder?: string | null;
+  /** @nullable */
+  equippedBadge?: string | null;
+  /** @nullable */
+  equippedBackground?: string | null;
   createdAt: string;
 }

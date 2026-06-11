@@ -12,6 +12,7 @@ import ticketsRouter from "./tickets";
 import formsRouter from "./forms";
 import creditsRouter from "./credits";
 import badgesRouter from "./badges";
+import gachaRouter from "./gacha";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(ticketsRouter);
 router.use(formsRouter);
 router.use(creditsRouter);
 router.use(badgesRouter);
+router.use(gachaRouter);
 
 export default router;

@@ -9,3 +9,4 @@ export * from "./tickets";
 export * from "./forms";
 export * from "./credits";
 export * from "./badges";
+export * from "./cosmetics";

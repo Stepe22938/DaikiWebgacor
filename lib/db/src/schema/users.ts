@@ -1,4 +1,4 @@
-import { pgTable, serial, text, varchar, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, varchar, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -14,6 +14,7 @@ export const usersTable = pgTable("users", {
   youtubeLiveUrl: text("youtube_live_url"),
   messagePrivacy: varchar("message_privacy", { length: 20 }).notNull().default("friends_only"),
   mcUsername: varchar("mc_username", { length: 100 }),
+  diamonds: integer("diamonds").notNull().default(1000),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
