@@ -29,7 +29,7 @@ const HomepageSettingsSchema = z.object({
 });
 
 const DEFAULT_SETTINGS = {
-  realmName: "Arcadia Guild",
+  realmName: "Arcadia Studio",
   realmLogoUrl: "",
   heroTitle: "Forge Your Legend in Arcadia",
   heroSubtitle: "Step into an immersive, highly customized Minecraft roleplay and RPG experience. Build nations, command economies, and fight dungeons alongside fellow adventurers.",

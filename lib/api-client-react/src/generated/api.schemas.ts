@@ -351,6 +351,8 @@ export interface ConversationSummary {
   /** @nullable */
   otherUserRole?: string | null;
   /** @nullable */
+  otherUserEquippedBorder?: string | null;
+  /** @nullable */
   lastMessageContent?: string | null;
   /** @nullable */
   lastMessageAt?: string | null;
@@ -378,6 +380,8 @@ export interface Message {
   senderAvatarUrl?: string | null;
   /** @nullable */
   senderRole?: string | null;
+  /** @nullable */
+  senderEquippedBorder?: string | null;
 }
 
 export interface ConversationMemberInfo {
@@ -940,7 +944,7 @@ export type SpinGachaInputCount = typeof SpinGachaInputCount[keyof typeof SpinGa
 
 export const SpinGachaInputCount = {
   NUMBER_1: 1,
-  NUMBER_5: 5,
+  NUMBER_10: 10,
   NUMBER_25: 25,
   NUMBER_50: 50,
 } as const;
@@ -970,5 +974,94 @@ export interface EquipCosmeticResult {
   success: boolean;
   cosmeticId: number;
   isEquipped: boolean;
+}
+
+export interface WalletTransaction {
+  id: number;
+  userId: number;
+  amount: number;
+  type: string;
+  /** @nullable */
+  description?: string | null;
+  createdAt: string;
+}
+
+export interface AdminAdjustWalletInput {
+  amount: number;
+  reason?: string;
+}
+
+export interface AdminAdjustWalletResult {
+  diamonds: number;
+}
+
+export interface GachaSettings {
+  spinCost1: number;
+  spinCost10: number;
+  spinCost25: number;
+  spinCost50: number;
+  duplicateRefund: number;
+  rateS: number;
+  rateA: number;
+  rateB: number;
+  rateC: number;
+}
+
+export type AdminCreateCosmeticInputType = typeof AdminCreateCosmeticInputType[keyof typeof AdminCreateCosmeticInputType];
+
+
+export const AdminCreateCosmeticInputType = {
+  badge: 'badge',
+  border: 'border',
+  background: 'background',
+} as const;
+
+export type AdminCreateCosmeticInputRarity = typeof AdminCreateCosmeticInputRarity[keyof typeof AdminCreateCosmeticInputRarity];
+
+
+export const AdminCreateCosmeticInputRarity = {
+  S: 'S',
+  A: 'A',
+  B: 'B',
+  C: 'C',
+  D: 'D',
+} as const;
+
+export interface AdminCreateCosmeticInput {
+  /** @minLength 1 */
+  name: string;
+  type: AdminCreateCosmeticInputType;
+  rarity: AdminCreateCosmeticInputRarity;
+  /** @minLength 1 */
+  value: string;
+  description?: string;
+}
+
+export type AdminUpdateCosmeticInputType = typeof AdminUpdateCosmeticInputType[keyof typeof AdminUpdateCosmeticInputType];
+
+
+export const AdminUpdateCosmeticInputType = {
+  badge: 'badge',
+  border: 'border',
+  background: 'background',
+} as const;
+
+export type AdminUpdateCosmeticInputRarity = typeof AdminUpdateCosmeticInputRarity[keyof typeof AdminUpdateCosmeticInputRarity];
+
+
+export const AdminUpdateCosmeticInputRarity = {
+  S: 'S',
+  A: 'A',
+  B: 'B',
+  C: 'C',
+  D: 'D',
+} as const;
+
+export interface AdminUpdateCosmeticInput {
+  name?: string;
+  type?: AdminUpdateCosmeticInputType;
+  rarity?: AdminUpdateCosmeticInputRarity;
+  value?: string;
+  description?: string;
 }
 

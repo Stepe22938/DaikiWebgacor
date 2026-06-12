@@ -46,7 +46,7 @@ export const ClaimDiamondsResponse = zod.object({
  * @summary Spin the gacha wheel
  */
 export const SpinGachaBody = zod.object({
-  "count": zod.union([zod.literal(1),zod.literal(5),zod.literal(25),zod.literal(50)])
+  "count": zod.union([zod.literal(1),zod.literal(10),zod.literal(25),zod.literal(50)])
 })
 
 export const SpinGachaResponse = zod.object({
@@ -754,6 +754,7 @@ export const ListConversationsResponseItem = zod.object({
   "otherDisplayName": zod.string().nullish(),
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
+  "otherUserEquippedBorder": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -794,6 +795,7 @@ export const CreateOrGetDmResponse = zod.object({
   "otherDisplayName": zod.string().nullish(),
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
+  "otherUserEquippedBorder": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -820,6 +822,7 @@ export const GetConversationResponse = zod.object({
   "otherDisplayName": zod.string().nullish(),
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
+  "otherUserEquippedBorder": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -854,6 +857,7 @@ export const UpdateGroupResponse = zod.object({
   "otherDisplayName": zod.string().nullish(),
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
+  "otherUserEquippedBorder": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -887,7 +891,8 @@ export const ListMessagesResponseItem = zod.object({
   "senderUsername": zod.string().nullish(),
   "senderDisplayName": zod.string().nullish(),
   "senderAvatarUrl": zod.string().nullish(),
-  "senderRole": zod.string().nullish()
+  "senderRole": zod.string().nullish(),
+  "senderEquippedBorder": zod.string().nullish()
 })
 export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
 
@@ -1522,6 +1527,131 @@ export const GetMyFormResponseResponse = zod.object({
   "value": zod.string()
 })).optional()
 }).optional()
+})
+
+
+/**
+ * @summary Get current user wallet transactions
+ */
+export const ListWalletTransactionsResponseItem = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "amount": zod.number(),
+  "type": zod.string(),
+  "description": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListWalletTransactionsResponse = zod.array(ListWalletTransactionsResponseItem)
+
+
+/**
+ * @summary Adjust a user's wallet balance (admin only)
+ */
+export const AdminAdjustWalletParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminAdjustWalletBody = zod.object({
+  "amount": zod.number(),
+  "reason": zod.string().optional()
+})
+
+export const AdminAdjustWalletResponse = zod.object({
+  "diamonds": zod.number()
+})
+
+
+/**
+ * @summary Get gacha settings (admin only)
+ */
+export const GetAdminGachaSettingsResponse = zod.object({
+  "spinCost1": zod.number(),
+  "spinCost10": zod.number(),
+  "spinCost25": zod.number(),
+  "spinCost50": zod.number(),
+  "duplicateRefund": zod.number(),
+  "rateS": zod.number(),
+  "rateA": zod.number(),
+  "rateB": zod.number(),
+  "rateC": zod.number()
+})
+
+
+/**
+ * @summary Update gacha settings (admin only)
+ */
+export const UpdateAdminGachaSettingsBody = zod.object({
+  "spinCost1": zod.number(),
+  "spinCost10": zod.number(),
+  "spinCost25": zod.number(),
+  "spinCost50": zod.number(),
+  "duplicateRefund": zod.number(),
+  "rateS": zod.number(),
+  "rateA": zod.number(),
+  "rateB": zod.number(),
+  "rateC": zod.number()
+})
+
+export const UpdateAdminGachaSettingsResponse = zod.object({
+  "spinCost1": zod.number(),
+  "spinCost10": zod.number(),
+  "spinCost25": zod.number(),
+  "spinCost50": zod.number(),
+  "duplicateRefund": zod.number(),
+  "rateS": zod.number(),
+  "rateA": zod.number(),
+  "rateB": zod.number(),
+  "rateC": zod.number()
+})
+
+
+/**
+ * @summary Add a new cosmetic (admin only)
+ */
+
+
+
+
+export const AdminCreateCosmeticBody = zod.object({
+  "name": zod.string().min(1),
+  "type": zod.enum(['badge', 'border', 'background']),
+  "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
+  "value": zod.string().min(1),
+  "description": zod.string().optional()
+})
+
+
+/**
+ * @summary Update a cosmetic (admin only)
+ */
+export const AdminUpdateCosmeticParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminUpdateCosmeticBody = zod.object({
+  "name": zod.string().optional(),
+  "type": zod.enum(['badge', 'border', 'background']).optional(),
+  "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']).optional(),
+  "value": zod.string().optional(),
+  "description": zod.string().optional()
+})
+
+export const AdminUpdateCosmeticResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "type": zod.enum(['badge', 'border', 'background']),
+  "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
+  "value": zod.string(),
+  "description": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a cosmetic (admin only)
+ */
+export const AdminDeleteCosmeticParams = zod.object({
+  "id": zod.coerce.number()
 })
 
 

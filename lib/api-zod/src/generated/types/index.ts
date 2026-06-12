@@ -7,9 +7,17 @@
  */
 
 export * from './addMemberInput';
+export * from './adminAdjustWalletInput';
+export * from './adminAdjustWalletResult';
 export * from './adminBulkFollowInput';
 export * from './adminBulkFollowResult';
+export * from './adminCreateCosmeticInput';
+export * from './adminCreateCosmeticInputRarity';
+export * from './adminCreateCosmeticInputType';
 export * from './adminFollowInput';
+export * from './adminUpdateCosmeticInput';
+export * from './adminUpdateCosmeticInputRarity';
+export * from './adminUpdateCosmeticInputType';
 export * from './adminUserUpdate';
 export * from './adminUserUpdateRole';
 export * from './announcement';
@@ -62,6 +70,7 @@ export * from './formSummaryStatus';
 export * from './formSummaryType';
 export * from './gachaBoardResult';
 export * from './gachaClaimResult';
+export * from './gachaSettings';
 export * from './healthStatus';
 export * from './message';
 export * from './myFormResponse';
@@ -105,3 +114,4 @@ export * from './userSettingsMessagePrivacy';
 export * from './userSettingsUpdate';
 export * from './userSettingsUpdateMessagePrivacy';
 export * from './userUpdate';
+export * from './walletTransaction';

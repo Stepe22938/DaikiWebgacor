@@ -28,6 +28,8 @@ export interface ConversationSummary {
   /** @nullable */
   otherUserRole?: string | null;
   /** @nullable */
+  otherUserEquippedBorder?: string | null;
+  /** @nullable */
   lastMessageContent?: string | null;
   /** @nullable */
   lastMessageAt?: string | null;

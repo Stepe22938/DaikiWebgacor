@@ -1,12 +1,51 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, inArray } from "drizzle-orm";
-import { db, usersTable, cosmeticsTable, userCosmeticsTable } from "@workspace/db";
+import { eq, and, inArray, desc } from "drizzle-orm";
+import {
+  db,
+  usersTable,
+  cosmeticsTable,
+  userCosmeticsTable,
+  walletTransactionsTable,
+  systemSettingsTable,
+} from "@workspace/db";
+import { serializeDates } from "../lib/serialize";
+import {
+  AdminAdjustWalletBody,
+  UpdateAdminGachaSettingsBody,
+  AdminCreateCosmeticBody,
+  AdminUpdateCosmeticBody,
+} from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
 async function getDbUser(clerkId: string) {
   return db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, clerkId) });
+}
+
+function canManageAdminTools(role: string | null | undefined) {
+  return role === "admin" || role === "dev_website";
+}
+
+// --- DEFAULT CONFIGS ---
+const DEFAULT_GACHA_SETTINGS = {
+  spinCost1: 9,
+  spinCost10: 79,
+  spinCost25: 195,
+  spinCost50: 390,
+  duplicateRefund: 5,
+  rateS: 1.5,
+  rateA: 8.0,
+  rateB: 25.0,
+  rateC: 60.0,
+};
+
+async function getGachaSettings() {
+  const row = await db.query.systemSettingsTable.findFirst({
+    where: eq(systemSettingsTable.key, "gacha_settings"),
+  });
+  if (!row) return DEFAULT_GACHA_SETTINGS;
+  return { ...DEFAULT_GACHA_SETTINGS, ...(row.value as any) };
 }
 
 // --- GET GACHA BOARD ---
@@ -43,6 +82,13 @@ router.post("/gacha/claim-diamonds", async (req, res): Promise<void> => {
     .where(eq(usersTable.id, user.id))
     .returning();
 
+  await db.insert(walletTransactionsTable).values({
+    userId: user.id,
+    amount: 1000,
+    type: "claim_free",
+    description: "Claimed daily test diamonds",
+  });
+
   res.json({ diamonds: updatedUser[0].diamonds });
 });
 
@@ -53,11 +99,12 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
   const user = await getDbUser(auth.userId);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
+  const settings = await getGachaSettings();
   const count = Number(req.body.count || 1);
-  let cost = 9;
-  if (count === 5) cost = 39;
-  else if (count === 25) cost = 195;
-  else if (count === 50) cost = 390;
+  let cost = settings.spinCost1;
+  if (count === 10) cost = settings.spinCost10;
+  else if (count === 25) cost = settings.spinCost25;
+  else if (count === 50) cost = settings.spinCost50;
 
   if (user.diamonds < cost) {
     res.status(400).json({ error: "Insufficient diamonds" });
@@ -87,13 +134,17 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
   const results: any[] = [];
   let diamondsRefunded = 0;
 
+  // Cap refund per duplicate so it can NEVER exceed the per-spin cost (prevents diamond farming)
+  const maxRefundPerSpin = Math.floor(cost / count);
+  const effectiveRefund = Math.min(settings.duplicateRefund, maxRefundPerSpin);
+
   for (let i = 0; i < count; i++) {
     const roll = Math.random() * 100;
     let selectedRarity = "D";
-    if (roll < 1.5) selectedRarity = "S";
-    else if (roll < 8.0) selectedRarity = "A";
-    else if (roll < 25.0) selectedRarity = "B";
-    else if (roll < 60.0) selectedRarity = "C";
+    if (roll < settings.rateS) selectedRarity = "S";
+    else if (roll < settings.rateA) selectedRarity = "A";
+    else if (roll < settings.rateB) selectedRarity = "B";
+    else if (roll < settings.rateC) selectedRarity = "C";
 
     let pool = byRarity[selectedRarity as keyof typeof byRarity];
     if (!pool || pool.length === 0) pool = byRarity["D"]; // fallback to common
@@ -103,11 +154,11 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
     const isDuplicate = ownedIds.has(chosen.id);
 
     if (isDuplicate) {
-      diamondsRefunded += 100;
+      diamondsRefunded += effectiveRefund;
       results.push({
         cosmetic: chosen,
         isDuplicate: true,
-        refundAmount: 100,
+        refundAmount: effectiveRefund,
       });
     } else {
       ownedIds.add(chosen.id);
@@ -129,6 +180,23 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
     .update(usersTable)
     .set({ diamonds: finalDiamonds })
     .where(eq(usersTable.id, user.id));
+
+  // Log transaction
+  await db.insert(walletTransactionsTable).values({
+    userId: user.id,
+    amount: -cost,
+    type: "spin_cost",
+    description: `Spin ${count}x Gacha Royale`,
+  });
+
+  if (diamondsRefunded > 0) {
+    await db.insert(walletTransactionsTable).values({
+      userId: user.id,
+      amount: diamondsRefunded,
+      type: "duplicate_refund",
+      description: `Refund for duplicate cosmetic rewards`,
+    });
+  }
 
   res.json({
     results,
@@ -175,7 +243,7 @@ router.post("/cosmetics/:id/equip", async (req, res): Promise<void> => {
   });
 
   if (!record) {
-    res.status(404).json({ error: "Cosmetic not owned" });
+    res.status(454).json({ error: "Cosmetic not owned" });
     return;
   }
 
@@ -234,6 +302,163 @@ router.post("/cosmetics/:id/equip", async (req, res): Promise<void> => {
   }
 
   res.json({ success: true, cosmeticId, isEquipped: equip });
+});
+
+// --- WALLET TRANSACTIONS LOG ---
+router.get("/wallet/transactions", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const list = await db
+    .select()
+    .from(walletTransactionsTable)
+    .where(eq(walletTransactionsTable.userId, user.id))
+    .orderBy(desc(walletTransactionsTable.createdAt));
+
+  res.json(list.map(t => serializeDates(t)));
+});
+
+// --- ADMIN WALLET ADJUSTMENT ---
+router.post("/admin/users/:id/wallet", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const me = await getDbUser(auth.userId);
+  if (!me || !canManageAdminTools(me.role)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const targetUserId = parseInt(req.params.id, 10);
+  const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, targetUserId) });
+  if (!targetUser) { res.status(404).json({ error: "Target user not found" }); return; }
+
+  const parsed = AdminAdjustWalletBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const adjustment = parsed.data.amount;
+  const reason = parsed.data.reason || "Admin adjustment";
+  const newBalance = Math.max(0, targetUser.diamonds + adjustment);
+
+  await db
+    .update(usersTable)
+    .set({ diamonds: newBalance })
+    .where(eq(usersTable.id, targetUserId));
+
+  await db.insert(walletTransactionsTable).values({
+    userId: targetUserId,
+    amount: adjustment,
+    type: "admin_adjust",
+    description: reason,
+  });
+
+  res.json({ diamonds: newBalance });
+});
+
+// --- GET ADMIN GACHA SETTINGS ---
+router.get("/admin/gacha/settings", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const me = await getDbUser(auth.userId);
+  if (!me || !canManageAdminTools(me.role)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const settings = await getGachaSettings();
+  res.json(settings);
+});
+
+// --- POST ADMIN GACHA SETTINGS ---
+router.post("/admin/gacha/settings", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const me = await getDbUser(auth.userId);
+  if (!me || !canManageAdminTools(me.role)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const parsed = UpdateAdminGachaSettingsBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  await db
+    .insert(systemSettingsTable)
+    .values({
+      key: "gacha_settings",
+      value: parsed.data,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: systemSettingsTable.key,
+      set: {
+        value: parsed.data,
+        updatedAt: new Date(),
+      },
+    });
+
+  res.json(parsed.data);
+});
+
+// --- ADMIN CREATE COSMETIC ---
+router.post("/admin/cosmetics", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const me = await getDbUser(auth.userId);
+  if (!me || !canManageAdminTools(me.role)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const parsed = AdminCreateCosmeticBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const [inserted] = await db
+    .insert(cosmeticsTable)
+    .values({
+      name: parsed.data.name,
+      type: parsed.data.type,
+      rarity: parsed.data.rarity,
+      value: parsed.data.value,
+      description: parsed.data.description || null,
+    })
+    .returning();
+
+  res.status(201).json(serializeDates(inserted));
+});
+
+// --- ADMIN PATCH COSMETIC ---
+router.patch("/admin/cosmetics/:id", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const me = await getDbUser(auth.userId);
+  if (!me || !canManageAdminTools(me.role)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const cosmetic = await db.query.cosmeticsTable.findFirst({ where: eq(cosmeticsTable.id, id) });
+  if (!cosmetic) { res.status(404).json({ error: "Cosmetic not found" }); return; }
+
+  const parsed = AdminUpdateCosmeticBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const updateData: Record<string, any> = {};
+  if (parsed.data.name !== undefined) updateData.name = parsed.data.name;
+  if (parsed.data.type !== undefined) updateData.type = parsed.data.type;
+  if (parsed.data.rarity !== undefined) updateData.rarity = parsed.data.rarity;
+  if (parsed.data.value !== undefined) updateData.value = parsed.data.value;
+  if (parsed.data.description !== undefined) updateData.description = parsed.data.description || null;
+
+  const [updated] = await db
+    .update(cosmeticsTable)
+    .set(updateData)
+    .where(eq(cosmeticsTable.id, id))
+    .returning();
+
+  res.json(serializeDates(updated));
+});
+
+// --- ADMIN DELETE COSMETIC ---
+router.delete("/admin/cosmetics/:id", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const me = await getDbUser(auth.userId);
+  if (!me || !canManageAdminTools(me.role)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const cosmetic = await db.query.cosmeticsTable.findFirst({ where: eq(cosmeticsTable.id, id) });
+  if (!cosmetic) { res.status(404).json({ error: "Cosmetic not found" }); return; }
+
+  await db.delete(cosmeticsTable).where(eq(cosmeticsTable.id, id));
+  res.status(204).send();
 });
 
 export default router;

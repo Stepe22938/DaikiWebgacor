@@ -11,7 +11,7 @@ export type SpinGachaInputCount = typeof SpinGachaInputCount[keyof typeof SpinGa
 
 export const SpinGachaInputCount = {
   NUMBER_1: 1,
-  NUMBER_5: 5,
+  NUMBER_10: 10,
   NUMBER_25: 25,
   NUMBER_50: 50,
 } as const;

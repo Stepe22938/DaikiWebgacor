@@ -1408,6 +1408,133 @@ paths:
               schema:
                 $ref: "#/components/schemas/MyFormResponse"
 
+  /wallet/transactions:
+    get:
+      operationId: listWalletTransactions
+      tags: [gacha]
+      summary: Get current user wallet transactions
+      responses:
+        "200":
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WalletTransaction"
+
+  /admin/users/{id}/wallet:
+    post:
+      operationId: adminAdjustWallet
+      tags: [users]
+      summary: Adjust a user's wallet balance (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAdjustWalletInput"
+      responses:
+        "200":
+          description: Adjust success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAdjustWalletResult"
+
+  /admin/gacha/settings:
+    get:
+      operationId: getAdminGachaSettings
+      tags: [gacha]
+      summary: Get gacha settings (admin only)
+      responses:
+        "200":
+          description: Gacha settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GachaSettings"
+    post:
+      operationId: updateAdminGachaSettings
+      tags: [gacha]
+      summary: Update gacha settings (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GachaSettings"
+      responses:
+        "200":
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GachaSettings"
+
+  /admin/cosmetics:
+    post:
+      operationId: adminCreateCosmetic
+      tags: [gacha]
+      summary: Add a new cosmetic (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateCosmeticInput"
+      responses:
+        "201":
+          description: Cosmetic created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cosmetic"
+
+  /admin/cosmetics/{id}:
+    patch:
+      operationId: adminUpdateCosmetic
+      tags: [gacha]
+      summary: Update a cosmetic (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateCosmeticInput"
+      responses:
+        "200":
+          description: Cosmetic updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cosmetic"
+    delete:
+      operationId: adminDeleteCosmetic
+      tags: [gacha]
+      summary: Delete a cosmetic (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Cosmetic deleted
+
 components:
   schemas:
     HealthStatus:
@@ -1759,6 +1886,8 @@ components:
           type: ["string", "null"]
         otherUserRole:
           type: ["string", "null"]
+        otherUserEquippedBorder:
+          type: ["string", "null"]
         lastMessageContent:
           type: ["string", "null"]
         lastMessageAt:
@@ -1794,6 +1923,8 @@ components:
         senderAvatarUrl:
           type: ["string", "null"]
         senderRole:
+          type: ["string", "null"]
+        senderEquippedBorder:
           type: ["string", "null"]
 
     ConversationMemberInfo:
@@ -2447,7 +2578,7 @@ components:
       properties:
         count:
           type: integer
-          enum: [1, 5, 25, 50]
+          enum: [1, 10, 25, 50]
 
     SpinGachaResultItem:
       type: object
@@ -2491,3 +2622,94 @@ components:
           type: integer
         isEquipped:
           type: boolean
+
+    WalletTransaction:
+      type: object
+      required: [id, userId, amount, type, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        amount:
+          type: integer
+        type:
+          type: string
+        description:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    AdminAdjustWalletInput:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: integer
+        reason:
+          type: string
+
+    AdminAdjustWalletResult:
+      type: object
+      required: [diamonds]
+      properties:
+        diamonds:
+          type: integer
+
+    GachaSettings:
+      type: object
+      required: [spinCost1, spinCost10, spinCost25, spinCost50, duplicateRefund, rateS, rateA, rateB, rateC]
+      properties:
+        spinCost1:
+          type: integer
+        spinCost10:
+          type: integer
+        spinCost25:
+          type: integer
+        spinCost50:
+          type: integer
+        duplicateRefund:
+          type: integer
+        rateS:
+          type: number
+        rateA:
+          type: number
+        rateB:
+          type: number
+        rateC:
+          type: number
+
+    AdminCreateCosmeticInput:
+      type: object
+      required: [name, type, rarity, value]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [badge, border, background]
+        rarity:
+          type: string
+          enum: [S, A, B, C, D]
+        value:
+          type: string
+          minLength: 1
+        description:
+          type: string
+
+    AdminUpdateCosmeticInput:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [badge, border, background]
+        rarity:
+          type: string
+          enum: [S, A, B, C, D]
+        value:
+          type: string
+        description:
+          type: string

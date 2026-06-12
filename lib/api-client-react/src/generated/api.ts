@@ -21,9 +21,13 @@ import type {
 
 import type {
   AddMemberInput,
+  AdminAdjustWalletInput,
+  AdminAdjustWalletResult,
   AdminBulkFollowInput,
   AdminBulkFollowResult,
+  AdminCreateCosmeticInput,
   AdminFollowInput,
+  AdminUpdateCosmeticInput,
   AdminUserUpdate,
   Announcement,
   AnnouncementInput,
@@ -32,6 +36,7 @@ import type {
   Badge,
   ConversationMemberInfo,
   ConversationSummary,
+  Cosmetic,
   CreateCreditInput,
   CreateDmInput,
   CreateFormInput,
@@ -51,6 +56,7 @@ import type {
   FormSummary,
   GachaBoardResult,
   GachaClaimResult,
+  GachaSettings,
   HealthStatus,
   Message,
   MyFormResponse,
@@ -76,7 +82,8 @@ import type {
   UserRoleUpdate,
   UserSettings,
   UserSettingsUpdate,
-  UserUpdate
+  UserUpdate,
+  WalletTransaction
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -5700,4 +5707,514 @@ export function useGetMyFormResponse<TData = Awaited<ReturnType<typeof getMyForm
 
 
 
+
+export const getListWalletTransactionsUrl = () => {
+
+
+
+
+  return `/api/wallet/transactions`
+}
+
+/**
+ * @summary Get current user wallet transactions
+ */
+export const listWalletTransactions = async ( options?: RequestInit): Promise<WalletTransaction[]> => {
+
+  return customFetch<WalletTransaction[]>(getListWalletTransactionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWalletTransactionsQueryKey = () => {
+    return [
+    `/api/wallet/transactions`
+    ] as const;
+    }
+
+
+export const getListWalletTransactionsQueryOptions = <TData = Awaited<ReturnType<typeof listWalletTransactions>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWalletTransactions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWalletTransactionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWalletTransactions>>> = ({ signal }) => listWalletTransactions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWalletTransactions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListWalletTransactionsQueryResult = NonNullable<Awaited<ReturnType<typeof listWalletTransactions>>>
+export type ListWalletTransactionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get current user wallet transactions
+ */
+
+export function useListWalletTransactions<TData = Awaited<ReturnType<typeof listWalletTransactions>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWalletTransactions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListWalletTransactionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminAdjustWalletUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/users/${id}/wallet`
+}
+
+/**
+ * @summary Adjust a user's wallet balance (admin only)
+ */
+export const adminAdjustWallet = async (id: number,
+    adminAdjustWalletInput: AdminAdjustWalletInput, options?: RequestInit): Promise<AdminAdjustWalletResult> => {
+
+  return customFetch<AdminAdjustWalletResult>(getAdminAdjustWalletUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminAdjustWalletInput,)
+  }
+);}
+
+
+
+
+export const getAdminAdjustWalletMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminAdjustWallet>>, TError,{id: number;data: BodyType<AdminAdjustWalletInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminAdjustWallet>>, TError,{id: number;data: BodyType<AdminAdjustWalletInput>}, TContext> => {
+
+const mutationKey = ['adminAdjustWallet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminAdjustWallet>>, {id: number;data: BodyType<AdminAdjustWalletInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adminAdjustWallet(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminAdjustWalletMutationResult = NonNullable<Awaited<ReturnType<typeof adminAdjustWallet>>>
+    export type AdminAdjustWalletMutationBody = BodyType<AdminAdjustWalletInput>
+    export type AdminAdjustWalletMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Adjust a user's wallet balance (admin only)
+ */
+export const useAdminAdjustWallet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminAdjustWallet>>, TError,{id: number;data: BodyType<AdminAdjustWalletInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminAdjustWallet>>,
+        TError,
+        {id: number;data: BodyType<AdminAdjustWalletInput>},
+        TContext
+      > => {
+      return useMutation(getAdminAdjustWalletMutationOptions(options));
+    }
+
+export const getGetAdminGachaSettingsUrl = () => {
+
+
+
+
+  return `/api/admin/gacha/settings`
+}
+
+/**
+ * @summary Get gacha settings (admin only)
+ */
+export const getAdminGachaSettings = async ( options?: RequestInit): Promise<GachaSettings> => {
+
+  return customFetch<GachaSettings>(getGetAdminGachaSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminGachaSettingsQueryKey = () => {
+    return [
+    `/api/admin/gacha/settings`
+    ] as const;
+    }
+
+
+export const getGetAdminGachaSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminGachaSettings>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminGachaSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminGachaSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminGachaSettings>>> = ({ signal }) => getAdminGachaSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminGachaSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminGachaSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminGachaSettings>>>
+export type GetAdminGachaSettingsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get gacha settings (admin only)
+ */
+
+export function useGetAdminGachaSettings<TData = Awaited<ReturnType<typeof getAdminGachaSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminGachaSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminGachaSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateAdminGachaSettingsUrl = () => {
+
+
+
+
+  return `/api/admin/gacha/settings`
+}
+
+/**
+ * @summary Update gacha settings (admin only)
+ */
+export const updateAdminGachaSettings = async (gachaSettings: GachaSettings, options?: RequestInit): Promise<GachaSettings> => {
+
+  return customFetch<GachaSettings>(getUpdateAdminGachaSettingsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      gachaSettings,)
+  }
+);}
+
+
+
+
+export const getUpdateAdminGachaSettingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminGachaSettings>>, TError,{data: BodyType<GachaSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAdminGachaSettings>>, TError,{data: BodyType<GachaSettings>}, TContext> => {
+
+const mutationKey = ['updateAdminGachaSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAdminGachaSettings>>, {data: BodyType<GachaSettings>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateAdminGachaSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAdminGachaSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateAdminGachaSettings>>>
+    export type UpdateAdminGachaSettingsMutationBody = BodyType<GachaSettings>
+    export type UpdateAdminGachaSettingsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update gacha settings (admin only)
+ */
+export const useUpdateAdminGachaSettings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminGachaSettings>>, TError,{data: BodyType<GachaSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAdminGachaSettings>>,
+        TError,
+        {data: BodyType<GachaSettings>},
+        TContext
+      > => {
+      return useMutation(getUpdateAdminGachaSettingsMutationOptions(options));
+    }
+
+export const getAdminCreateCosmeticUrl = () => {
+
+
+
+
+  return `/api/admin/cosmetics`
+}
+
+/**
+ * @summary Add a new cosmetic (admin only)
+ */
+export const adminCreateCosmetic = async (adminCreateCosmeticInput: AdminCreateCosmeticInput, options?: RequestInit): Promise<Cosmetic> => {
+
+  return customFetch<Cosmetic>(getAdminCreateCosmeticUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminCreateCosmeticInput,)
+  }
+);}
+
+
+
+
+export const getAdminCreateCosmeticMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminCreateCosmetic>>, TError,{data: BodyType<AdminCreateCosmeticInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminCreateCosmetic>>, TError,{data: BodyType<AdminCreateCosmeticInput>}, TContext> => {
+
+const mutationKey = ['adminCreateCosmetic'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminCreateCosmetic>>, {data: BodyType<AdminCreateCosmeticInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminCreateCosmetic(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminCreateCosmeticMutationResult = NonNullable<Awaited<ReturnType<typeof adminCreateCosmetic>>>
+    export type AdminCreateCosmeticMutationBody = BodyType<AdminCreateCosmeticInput>
+    export type AdminCreateCosmeticMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a new cosmetic (admin only)
+ */
+export const useAdminCreateCosmetic = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminCreateCosmetic>>, TError,{data: BodyType<AdminCreateCosmeticInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminCreateCosmetic>>,
+        TError,
+        {data: BodyType<AdminCreateCosmeticInput>},
+        TContext
+      > => {
+      return useMutation(getAdminCreateCosmeticMutationOptions(options));
+    }
+
+export const getAdminUpdateCosmeticUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/cosmetics/${id}`
+}
+
+/**
+ * @summary Update a cosmetic (admin only)
+ */
+export const adminUpdateCosmetic = async (id: number,
+    adminUpdateCosmeticInput: AdminUpdateCosmeticInput, options?: RequestInit): Promise<Cosmetic> => {
+
+  return customFetch<Cosmetic>(getAdminUpdateCosmeticUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminUpdateCosmeticInput,)
+  }
+);}
+
+
+
+
+export const getAdminUpdateCosmeticMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateCosmetic>>, TError,{id: number;data: BodyType<AdminUpdateCosmeticInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdateCosmetic>>, TError,{id: number;data: BodyType<AdminUpdateCosmeticInput>}, TContext> => {
+
+const mutationKey = ['adminUpdateCosmetic'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdateCosmetic>>, {id: number;data: BodyType<AdminUpdateCosmeticInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adminUpdateCosmetic(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdateCosmeticMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdateCosmetic>>>
+    export type AdminUpdateCosmeticMutationBody = BodyType<AdminUpdateCosmeticInput>
+    export type AdminUpdateCosmeticMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a cosmetic (admin only)
+ */
+export const useAdminUpdateCosmetic = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateCosmetic>>, TError,{id: number;data: BodyType<AdminUpdateCosmeticInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdateCosmetic>>,
+        TError,
+        {id: number;data: BodyType<AdminUpdateCosmeticInput>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdateCosmeticMutationOptions(options));
+    }
+
+export const getAdminDeleteCosmeticUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/cosmetics/${id}`
+}
+
+/**
+ * @summary Delete a cosmetic (admin only)
+ */
+export const adminDeleteCosmetic = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getAdminDeleteCosmeticUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getAdminDeleteCosmeticMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminDeleteCosmetic>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminDeleteCosmetic>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['adminDeleteCosmetic'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminDeleteCosmetic>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  adminDeleteCosmetic(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminDeleteCosmeticMutationResult = NonNullable<Awaited<ReturnType<typeof adminDeleteCosmetic>>>
+
+    export type AdminDeleteCosmeticMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a cosmetic (admin only)
+ */
+export const useAdminDeleteCosmetic = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminDeleteCosmetic>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminDeleteCosmetic>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getAdminDeleteCosmeticMutationOptions(options));
+    }
 

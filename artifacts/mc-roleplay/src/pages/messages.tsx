@@ -279,10 +279,12 @@ function ConvItem({
           : "hover:bg-slate-50 text-slate-600 hover:text-slate-900"
       }`}
     >
-      <Avatar className="w-9 h-9 border border-[#eae8f5] shrink-0">
-        <AvatarImage src={avatar ?? undefined} />
-        <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(name)}</AvatarFallback>
-      </Avatar>
+      <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${conv.type === "dm" && (conv as any).otherUserEquippedBorder ? (conv as any).otherUserEquippedBorder : "border border-[#eae8f5]"}`}>
+        <Avatar className="w-9 h-9 shrink-0">
+          <AvatarImage src={avatar ?? undefined} />
+          <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(name)}</AvatarFallback>
+        </Avatar>
+      </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -323,10 +325,12 @@ function MessageBubble({
     <>
       <div className={`flex gap-2 group ${isOwn ? "flex-row-reverse" : ""}`}>
         {!isOwn && (
-        <Avatar className="w-8 h-8 shrink-0 mt-0.5 border border-[#d7e4de]">
-          <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
-          <AvatarFallback className="text-[10px] bg-[#edf5f1] font-bold text-[#0b6b58]">{getInitials(name)}</AvatarFallback>
-        </Avatar>
+        <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible mt-0.5 ${(msg as any).senderEquippedBorder ? (msg as any).senderEquippedBorder : "border border-[#d7e4de]"}`}>
+          <Avatar className="w-8 h-8 shrink-0">
+            <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
+            <AvatarFallback className="text-[10px] bg-[#edf5f1] font-bold text-[#0b6b58]">{getInitials(name)}</AvatarFallback>
+          </Avatar>
+        </div>
         )}
         <div
           className={`max-w-[84%] sm:max-w-[72%] flex flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}
@@ -702,12 +706,14 @@ export default function MessagesPage() {
         {/* User Account / Profile Details Bottom Sidebar */}
         <div className="p-4 border-t border-[#eae8f5] space-y-3 shrink-0 bg-white">
           <div className="flex items-center gap-3 px-2 py-1">
-            <Avatar className="h-9 w-9 border border-[#eae8f5]">
-              <AvatarImage src={me?.avatarUrl || undefined} />
-              <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
-                {getInitials(me?.displayName || me?.username)}
-              </AvatarFallback>
-            </Avatar>
+            <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${me?.equippedBorder ? me.equippedBorder : "border border-[#eae8f5]"}`}>
+              <Avatar className="h-9 w-9 shrink-0">
+                <AvatarImage src={me?.avatarUrl || undefined} />
+                <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
+                  {getInitials(me?.displayName || me?.username)}
+                </AvatarFallback>
+              </Avatar>
+            </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-[#110e3d] truncate">{me?.displayName || me?.username}</p>
               <p className="text-[10px] text-slate-400 font-bold capitalize">{me?.role?.replace('_', ' ') || "Member"}</p>
@@ -977,16 +983,18 @@ export default function MessagesPage() {
                     >
                       <ArrowLeft className="h-5 w-5" />
                     </Button>
-                    <Avatar className="w-9 h-9 border border-[#eae8f5]">
-                      <AvatarImage
-                        src={
-                          selectedConv.type === "dm"
-                            ? (selectedConv.otherAvatarUrl ?? undefined)
-                            : (selectedConv.iconUrl ?? undefined)
-                        }
-                      />
-                      <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(selectedName)}</AvatarFallback>
-                    </Avatar>
+                    <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder : "border border-[#eae8f5]"}`}>
+                      <Avatar className="w-9 h-9 shrink-0">
+                        <AvatarImage
+                          src={
+                            selectedConv.type === "dm"
+                              ? (selectedConv.otherAvatarUrl ?? undefined)
+                              : (selectedConv.iconUrl ?? undefined)
+                          }
+                        />
+                        <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(selectedName)}</AvatarFallback>
+                      </Avatar>
+                    </div>
                     <div className="min-w-0">
                       <p className="font-extrabold text-sm leading-none truncate max-w-[42vw] sm:max-w-none">{selectedName}</p>
                       <p className="text-[10px] text-white/70 font-bold mt-1">
@@ -1192,12 +1200,14 @@ export default function MessagesPage() {
                     onClick={() => handleStartDm(f.id)}
                     className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-50 text-left transition-colors"
                   >
-                    <Avatar className="w-8 h-8 border border-[#eae8f5]">
-                      <AvatarImage src={f.avatarUrl ?? undefined} />
-                      <AvatarFallback className="text-xs font-bold bg-slate-100 text-[#6366f1]">
-                        {getInitials(f.displayName ?? f.username)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${(f as any).equippedBorder ? (f as any).equippedBorder : "border border-[#eae8f5]"}`}>
+                      <Avatar className="w-8 h-8 shrink-0">
+                        <AvatarImage src={f.avatarUrl ?? undefined} />
+                        <AvatarFallback className="text-xs font-bold bg-slate-100 text-[#6366f1]">
+                          {getInitials(f.displayName ?? f.username)}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-extrabold text-[#110e3d] truncate">{f.displayName ?? f.username}</p>
                       <p className="text-[10px] text-slate-400 font-bold truncate">@{f.username} <span className="text-[#6366f1] font-semibold">{f.userTag}</span></p>
@@ -1238,12 +1248,14 @@ export default function MessagesPage() {
                       checked ? "bg-violet-50/70 text-[#6366f1]" : "hover:bg-slate-50 text-slate-600"
                     }`}
                   >
-                    <Avatar className="w-8 h-8 border border-[#eae8f5]">
-                      <AvatarImage src={f.avatarUrl ?? undefined} />
-                      <AvatarFallback className="text-xs font-bold bg-slate-100 text-[#6366f1]">
-                        {getInitials(f.displayName ?? f.username)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${(f as any).equippedBorder ? (f as any).equippedBorder : "border border-[#eae8f5]"}`}>
+                      <Avatar className="w-8 h-8 shrink-0">
+                        <AvatarImage src={f.avatarUrl ?? undefined} />
+                        <AvatarFallback className="text-xs font-bold bg-slate-100 text-[#6366f1]">
+                          {getInitials(f.displayName ?? f.username)}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
                     <span className="text-xs font-bold flex-1 truncate">{f.displayName ?? f.username} <span className="text-[10px] text-[#6366f1] font-semibold">{f.userTag}</span></span>
                     {checked && <span className="ml-auto text-[#6366f1] text-xs font-bold">✓</span>}
                   </button>

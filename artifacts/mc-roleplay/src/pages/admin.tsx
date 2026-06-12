@@ -36,6 +36,13 @@ import {
   useUpdateForm,
   useDeleteForm,
   useListFormResponses,
+  useGetAdminGachaSettings,
+  useUpdateAdminGachaSettings,
+  useAdminCreateCosmetic,
+  useAdminUpdateCosmetic,
+  useAdminDeleteCosmetic,
+  useAdminAdjustWallet,
+  useGetGachaBoard,
 } from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -71,6 +78,10 @@ import {
   Home,
   ClipboardList,
   User,
+  Coins,
+  TrendingUp,
+  Wallet,
+  Dices,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -195,9 +206,13 @@ const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
 
 export default function Admin() {
   const { data: user, isLoading } = useGetMe();
-  const queryRole = user?.role;
-  const isDevWebsite = queryRole === "dev_website";
-  const canQueryAdmin = queryRole === "admin" || isDevWebsite;
+  const role = user?.role;
+  const canManageAdmin = role === "admin" || role === "dev_website";
+  const canManageAnnouncements = role === "admin" || role === "staff" || role === "dev_website";
+  const canManageTickets = role === "admin" || role === "dev" || role === "dev_website";
+  const canManageDevWebsiteRole = role === "dev_website";
+  const isDevWebsite = role === "dev_website";
+  const canQueryAdmin = role === "admin" || isDevWebsite;
   const { data: devs, isLoading: devsLoading } = useListDevelopments();
   const { data: anns, isLoading: annsLoading } = useListAnnouncements();
   const { data: users, isLoading: usersLoading } = useListUsers({
@@ -281,6 +296,162 @@ export default function Admin() {
 
   // User directory
   const [userDirSearch, setUserDirSearch] = useState("");
+
+  // Gacha & Wallet Sub-tab State
+  const [gachaSubTab, setGachaSubTab] = useState<"settings" | "registry" | "wallets">("settings");
+
+  // Gacha Settings Hooks & Mutation
+  const { data: adminGachaSettings, isLoading: adminGachaSettingsLoading } = useGetAdminGachaSettings({
+    query: { enabled: canManageAdmin } as any,
+  });
+  const updateGachaSettings = useUpdateAdminGachaSettings();
+
+  // Cosmetics Pool Hooks & Mutation
+  const { data: gachaBoard, isLoading: gachaBoardLoading } = useGetGachaBoard({
+    query: { enabled: canManageAdmin } as any,
+  });
+  const createCosmetic = useAdminCreateCosmetic();
+  const updateCosmetic = useAdminUpdateCosmetic();
+  const deleteCosmetic = useAdminDeleteCosmetic();
+
+  // Wallet Audit Hook
+  const adjustWallet = useAdminAdjustWallet();
+
+  // Gacha settings state
+  const [gachaSettingsForm, setGachaSettingsForm] = useState({
+    spinCost1: 9,
+    spinCost10: 79,
+    spinCost25: 195,
+    spinCost50: 390,
+    duplicateRefund: 100,
+    rateS: 1.5,
+    rateA: 8.0,
+    rateB: 25.0,
+    rateC: 60.0,
+  });
+  const [hasInitializedGachaSettings, setHasInitializedGachaSettings] = useState(false);
+
+  useEffect(() => {
+    if (adminGachaSettings && !hasInitializedGachaSettings) {
+      setGachaSettingsForm({
+        spinCost1: adminGachaSettings.spinCost1 ?? 9,
+        spinCost10: adminGachaSettings.spinCost10 ?? 79,
+        spinCost25: adminGachaSettings.spinCost25 ?? 195,
+        spinCost50: adminGachaSettings.spinCost50 ?? 390,
+        duplicateRefund: adminGachaSettings.duplicateRefund ?? 100,
+        rateS: adminGachaSettings.rateS ?? 1.5,
+        rateA: adminGachaSettings.rateA ?? 8.0,
+        rateB: adminGachaSettings.rateB ?? 25.0,
+        rateC: adminGachaSettings.rateC ?? 60.0,
+      });
+      setHasInitializedGachaSettings(true);
+    }
+  }, [adminGachaSettings, hasInitializedGachaSettings]);
+
+  // Cosmetic Registry Form State
+  const emptyCosmetic: { name: string; type: "badge" | "border" | "background"; rarity: "S" | "A" | "B" | "C" | "D"; value: string; description: string } = {
+    name: "",
+    type: "border",
+    rarity: "S",
+    value: "",
+    description: "",
+  };
+  const [cosmeticForm, setCosmeticForm] = useState(emptyCosmetic);
+  const [editingCosmeticId, setEditingCosmeticId] = useState<number | null>(null);
+  const [cosmeticDialogOpen, setCosmeticDialogOpen] = useState(false);
+  const [deletingCosmeticId, setDeletingCosmeticId] = useState<number | null>(null);
+
+  // User wallet auditor state
+  const [walletTargetUser, setWalletTargetUser] = useState<any | null>(null);
+  const [walletDialogOpen, setWalletDialogOpen] = useState(false);
+  const [walletAdjustmentAmount, setWalletAdjustmentAmount] = useState("");
+  const [walletAdjustmentReason, setWalletAdjustmentReason] = useState("");
+
+  const openNewCosmetic = () => {
+    setCosmeticForm(emptyCosmetic);
+    setEditingCosmeticId(null);
+    setCosmeticDialogOpen(true);
+  };
+
+  const openEditCosmetic = (c: any) => {
+    setCosmeticForm({
+      name: c.name,
+      type: c.type,
+      rarity: c.rarity,
+      value: c.value,
+      description: c.description ?? "",
+    });
+    setEditingCosmeticId(c.id);
+    setCosmeticDialogOpen(true);
+  };
+
+  const handleSaveCosmetic = async () => {
+    if (!cosmeticForm.name.trim()) {
+      toast({ title: "Error", description: "Name is required.", variant: "destructive" });
+      return;
+    }
+    if (!cosmeticForm.value.trim()) {
+      toast({ title: "Error", description: "Value is required.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const payload = {
+        name: cosmeticForm.name.trim(),
+        type: cosmeticForm.type,
+        rarity: cosmeticForm.rarity,
+        value: cosmeticForm.value.trim(),
+        description: cosmeticForm.description.trim() || undefined,
+      };
+
+      if (editingCosmeticId !== null) {
+        await updateCosmetic.mutateAsync({ id: editingCosmeticId, data: payload });
+        toast({ title: "Success", description: "Cosmetic item updated." });
+      } else {
+        await createCosmetic.mutateAsync({ data: payload });
+        toast({ title: "Success", description: "Cosmetic item added to registry." });
+      }
+      setCosmeticDialogOpen(false);
+      invalidate("/api/gacha/board");
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to save cosmetic.", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteCosmetic = async (id: number) => {
+    try {
+      await deleteCosmetic.mutateAsync({ id });
+      toast({ title: "Deleted", description: "Cosmetic item removed from system." });
+      invalidate("/api/gacha/board");
+      setDeletingCosmeticId(null);
+    } catch {
+      toast({ title: "Error", description: "Failed to delete cosmetic.", variant: "destructive" });
+    }
+  };
+
+  const handleSaveWalletAdjustment = async () => {
+    if (!walletTargetUser) return;
+    const amountNum = parseInt(walletAdjustmentAmount, 10);
+    if (isNaN(amountNum) || amountNum === 0) {
+      toast({ title: "Error", description: "Please enter a valid non-zero diamond amount.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      await adjustWallet.mutateAsync({
+        id: walletTargetUser.id,
+        data: {
+          amount: amountNum,
+          reason: walletAdjustmentReason.trim() || undefined,
+        },
+      });
+      toast({ title: "Wallet Adjusted", description: `Adjusted balance of ${walletTargetUser.displayName || walletTargetUser.username} by ${amountNum} diamonds.` });
+      setWalletDialogOpen(false);
+      invalidate("/api/users", "/api/gacha/board", "/api/wallet/transactions");
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to adjust wallet balance.", variant: "destructive" });
+    }
+  };
 
   // Forms & Voting state
   const { data: forms = [], isLoading: formsLoading } = useListForms();
@@ -452,11 +623,6 @@ export default function Admin() {
   const realmName = currentSettings?.realmName || "Arcadia Guild";
   const realmLogoUrl = currentSettings?.realmLogoUrl || "";
 
-  const role = user?.role;
-  const canManageAdmin = role === "admin" || role === "dev_website";
-  const canManageAnnouncements = role === "admin" || role === "staff" || role === "dev_website";
-  const canManageTickets = role === "admin" || role === "dev" || role === "dev_website";
-  const canManageDevWebsiteRole = role === "dev_website";
   const defaultTab = role === "staff" ? "announcements" : role === "dev" ? "tickets" : "developments";
 
   const [location, setLocation] = useLocation();
@@ -466,7 +632,7 @@ export default function Admin() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "developments", "announcements", "tickets", "forms", "users", "credits", "settings"].includes(tab)) {
+    if (tab && ["dashboard", "developments", "announcements", "tickets", "forms", "users", "credits", "settings", "gacha"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [window.location.search]);
@@ -957,6 +1123,16 @@ export default function Admin() {
                     <ShieldAlert className="w-4.5 h-4.5" /> Arcadia Credits
                   </button>
                   <button
+                    onClick={() => handleTabChange("gacha")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "gacha"
+                        ? "bg-violet-50 text-[#6366f1]"
+                        : "text-slate-500 hover:bg-slate-55 hover:text-slate-900"
+                    }`}
+                  >
+                    <Coins className="w-4.5 h-4.5" /> Gacha & Wallet
+                  </button>
+                  <button
                     onClick={() => handleTabChange("settings")}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
                       activeTab === "settings"
@@ -1117,6 +1293,14 @@ export default function Admin() {
                       }`}
                     >
                       <ShieldAlert className="w-4.5 h-4.5" /> Credits
+                    </button>
+                    <button
+                      onClick={() => handleTabChangeMobile("gacha")}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        activeTab === "gacha" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-55"
+                      }`}
+                    >
+                      <Coins className="w-4.5 h-4.5" /> Gacha & Wallet
                     </button>
                     <button
                       onClick={() => handleTabChangeMobile("settings")}
@@ -2067,6 +2251,428 @@ export default function Admin() {
               </Card>
             </div>
           )}
+
+          {/* TAB: GACHA & WALLET CONFIG */}
+          {activeTab === "gacha" && (
+            <div className="space-y-6 animate-fade-in">
+              {/* Premium Header */}
+              <div className="relative rounded-2xl bg-gradient-to-r from-pink-600 via-[#8b5cf6] to-violet-600 p-6 md:p-8 text-white shadow-xl shadow-purple-600/10 overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6 border border-purple-500/20">
+                <div className="absolute right-[-10%] top-[-20%] w-[35%] h-[150%] bg-white/5 skew-x-12 blur-sm pointer-events-none" />
+                <div className="space-y-2 max-w-xl">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 text-[10px] font-bold tracking-wide uppercase">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" /> Gacha Royale & Diamonds Console
+                  </div>
+                  <h3 className="text-xl md:text-2xl font-black leading-tight tracking-tight">Cyber-Neon Economy Calibrator</h3>
+                  <p className="text-xs text-purple-100/90 leading-relaxed font-medium">
+                    Adjust spin rates, modify pool cosmetics (borders, badges, and backdrops), and audit user wallet accounts directly with immediate database updates.
+                  </p>
+                </div>
+              </div>
+
+              {/* Sub-tab Navigation */}
+              <div className="flex border-b border-[#eae8f5] gap-2">
+                <button
+                  onClick={() => setGachaSubTab("settings")}
+                  className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+                    gachaSubTab === "settings"
+                      ? "border-[#6366f1] text-[#6366f1]"
+                      : "border-transparent text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  <Settings className="w-4 h-4" /> Rates & Costs
+                </button>
+                <button
+                  onClick={() => setGachaSubTab("registry")}
+                  className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+                    gachaSubTab === "registry"
+                      ? "border-[#6366f1] text-[#6366f1]"
+                      : "border-transparent text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  <Dices className="w-4 h-4" /> Cosmetics Pool Registry
+                </button>
+                <button
+                  onClick={() => setGachaSubTab("wallets")}
+                  className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+                    gachaSubTab === "wallets"
+                      ? "border-[#6366f1] text-[#6366f1]"
+                      : "border-transparent text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  <Wallet className="w-4 h-4" /> Member Wallet Auditor
+                </button>
+              </div>
+
+              {/* Gacha Settings Inner Tab */}
+              {gachaSubTab === "settings" && (
+                <div className="grid md:grid-cols-3 gap-6 items-start">
+                  {/* Costs Form */}
+                  <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl p-6 md:col-span-2 space-y-6">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[#110e3d]">💎 Spin Package Prices</h4>
+                      <p className="text-[10px] text-slate-400 font-bold mt-1">Configure costs in diamonds for gacha spin packages.</p>
+                    </div>
+
+                    {adminGachaSettingsLoading ? (
+                      <div className="space-y-4">
+                        <Skeleton className="h-9 w-full rounded-xl" />
+                        <Skeleton className="h-9 w-full rounded-xl" />
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-600">1x Spin Cost (Diamonds)</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={gachaSettingsForm.spinCost1}
+                              onChange={(e) => setGachaSettingsForm({ ...gachaSettingsForm, spinCost1: parseInt(e.target.value) || 0 })}
+                              className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-600">10x Spin Cost (Diamonds)</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={gachaSettingsForm.spinCost10}
+                              onChange={(e) => setGachaSettingsForm({ ...gachaSettingsForm, spinCost10: parseInt(e.target.value) || 0 })}
+                              className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-600">25x Spin Cost (Diamonds)</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={gachaSettingsForm.spinCost25}
+                              onChange={(e) => setGachaSettingsForm({ ...gachaSettingsForm, spinCost25: parseInt(e.target.value) || 0 })}
+                              className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-600">50x Spin Cost (Diamonds)</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={gachaSettingsForm.spinCost50}
+                              onChange={(e) => setGachaSettingsForm({ ...gachaSettingsForm, spinCost50: parseInt(e.target.value) || 0 })}
+                              className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                          <Label className="text-xs font-bold text-slate-600">Duplicate Refund Rate (Diamonds)</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={gachaSettingsForm.duplicateRefund}
+                            onChange={(e) => setGachaSettingsForm({ ...gachaSettingsForm, duplicateRefund: parseInt(e.target.value) || 0 })}
+                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                          />
+                          <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">Amount credited when a user rolls a cosmetic item they already own.</p>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+
+                  {/* Rates Card */}
+                  <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl p-6 space-y-6">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[#110e3d]">🎲 Rarity Tier Odds</h4>
+                      <p className="text-[10px] text-slate-400 font-bold mt-1">Calibrate roll distribution rates (out of 100%).</p>
+                    </div>
+
+                    {adminGachaSettingsLoading ? (
+                      <div className="space-y-3">
+                        <Skeleton className="h-6 w-full rounded" />
+                        <Skeleton className="h-6 w-full rounded" />
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="space-y-3">
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs font-bold text-slate-600">
+                              <span>S Tier Threshold (%)</span>
+                              <span className="text-red-500 font-extrabold">Rate: {gachaSettingsForm.rateS}%</span>
+                            </div>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              min={0}
+                              max={100}
+                              value={gachaSettingsForm.rateS}
+                              onChange={(e) => setGachaSettingsForm({ ...gachaSettingsForm, rateS: parseFloat(e.target.value) || 0 })}
+                              className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-8 text-slate-850"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs font-bold text-slate-600">
+                              <span>A Tier Threshold (%)</span>
+                              <span className="text-purple-500 font-extrabold">Rate: {Math.max(0, gachaSettingsForm.rateA - gachaSettingsForm.rateS).toFixed(1)}%</span>
+                            </div>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              min={0}
+                              max={100}
+                              value={gachaSettingsForm.rateA}
+                              onChange={(e) => setGachaSettingsForm({ ...gachaSettingsForm, rateA: parseFloat(e.target.value) || 0 })}
+                              className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-8 text-slate-850"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs font-bold text-slate-600">
+                              <span>B Tier Threshold (%)</span>
+                              <span className="text-blue-500 font-extrabold">Rate: {Math.max(0, gachaSettingsForm.rateB - gachaSettingsForm.rateA).toFixed(1)}%</span>
+                            </div>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              min={0}
+                              max={100}
+                              value={gachaSettingsForm.rateB}
+                              onChange={(e) => setGachaSettingsForm({ ...gachaSettingsForm, rateB: parseFloat(e.target.value) || 0 })}
+                              className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-8 text-slate-855"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs font-bold text-slate-600">
+                              <span>C Tier Threshold (%)</span>
+                              <span className="text-green-500 font-extrabold">Rate: {Math.max(0, gachaSettingsForm.rateC - gachaSettingsForm.rateB).toFixed(1)}%</span>
+                            </div>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              min={0}
+                              max={100}
+                              value={gachaSettingsForm.rateC}
+                              onChange={(e) => setGachaSettingsForm({ ...gachaSettingsForm, rateC: parseFloat(e.target.value) || 0 })}
+                              className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-8 text-slate-860"
+                            />
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs font-bold text-slate-500">
+                            <span>D Tier (Remainder)</span>
+                            <span className="text-slate-600 font-extrabold">{Math.max(0, 100 - gachaSettingsForm.rateC).toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+
+                  {/* Actions Row */}
+                  <div className="md:col-span-3 flex justify-end">
+                    <Button
+                      onClick={async () => {
+                        try {
+                          await updateGachaSettings.mutateAsync({ data: gachaSettingsForm });
+                          toast({ title: "Calibrated", description: "Gacha pricing and odds updated successfully." });
+                          invalidate("/api/admin/gacha/settings", "/api/gacha/board");
+                        } catch (err: any) {
+                          toast({ title: "Error", description: err.message || "Failed to update gacha settings.", variant: "destructive" });
+                        }
+                      }}
+                      disabled={updateGachaSettings.isPending}
+                      className="bg-[#6366f1] text-white hover:bg-violet-600 font-black rounded-xl text-xs h-10 px-8 transition-all shadow-md active:scale-95 shadow-violet-500/10"
+                    >
+                      {updateGachaSettings.isPending ? "Applying configs..." : "Apply Gacha Configurations"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Cosmetics Registry Tab */}
+              {gachaSubTab === "registry" && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[#110e3d]">Cosmetics Registry</h4>
+                      <p className="text-[10px] text-slate-400 font-bold mt-0.5">Maintain the pool of equipped cosmetics in the Gacha Royale system.</p>
+                    </div>
+                    <Button onClick={openNewCosmetic} className="bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs h-9 px-4 shadow-md shadow-violet-500/5">
+                      + Register Cosmetic
+                    </Button>
+                  </div>
+
+                  {gachaBoardLoading ? (
+                    <Skeleton className="h-48 w-full rounded-2xl" />
+                  ) : !gachaBoard?.cosmetics || gachaBoard.cosmetics.length === 0 ? (
+                    <div className="text-center py-16 text-slate-400 bg-white border border-[#eae8f5] rounded-2xl">
+                      No cosmetics in registry. Click "+ Register Cosmetic" to seed.
+                    </div>
+                  ) : (
+                    <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader className="bg-[#f8f7fa]">
+                            <TableRow className="border-[#eae8f5]">
+                              <TableHead className="text-xs font-black text-[#110e3d] w-16">Preview</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d]">Name</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d] w-32">Type</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d] w-24">Rarity</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d] max-w-xs">Value / CSS Class</TableHead>
+                              <TableHead className="text-right text-xs font-black text-[#110e3d] w-40">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {gachaBoard.cosmetics.map((cosmetic: any) => (
+                              <TableRow key={cosmetic.id} className="border-[#eae8f5] hover:bg-slate-50/50">
+                                <TableCell className="py-2.5">
+                                  {cosmetic.type === "border" ? (
+                                    <div className="relative p-1 inline-block">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-slate-900 border border-slate-700 overflow-hidden ${cosmetic.value}`}>
+                                        <span className="text-[7px] text-slate-500 font-bold uppercase select-none">Pvw</span>
+                                      </div>
+                                    </div>
+                                  ) : cosmetic.type === "badge" ? (
+                                    <span className={`text-[9px] px-2 py-0.5 rounded font-black select-none ${cosmetic.value}`}>
+                                      Tag
+                                    </span>
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shadow-sm">
+                                      <img src={cosmetic.value} alt="" className="w-full h-full object-cover animate-fade-in" onError={(e) => { (e.target as any).src = "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=100"; }} />
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell className="font-extrabold text-xs text-[#110e3d]">{cosmetic.name}</TableCell>
+                                <TableCell className="text-xs text-slate-500 font-bold capitalize">{cosmetic.type}</TableCell>
+                                <TableCell>
+                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                    cosmetic.rarity === "S"
+                                      ? "bg-gradient-to-r from-red-500 to-amber-500 text-white shadow-sm"
+                                      : cosmetic.rarity === "A"
+                                      ? "bg-purple-100 text-purple-700"
+                                      : cosmetic.rarity === "B"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : cosmetic.rarity === "C"
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-slate-100 text-slate-600"
+                                  }`}>
+                                    {cosmetic.rarity} Tier
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-xs text-slate-500 font-mono truncate max-w-[180px]" title={cosmetic.value}>
+                                  {cosmetic.value}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-1.5">
+                                    <Button size="sm" variant="outline" className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-[10px] font-bold rounded-xl h-7 px-3" onClick={() => openEditCosmetic(cosmetic)}>Edit</Button>
+                                    <Button size="sm" variant="outline" className="border-red-100 text-red-500 hover:bg-red-55 hover:border-red-200 text-[10px] font-bold rounded-xl h-7 px-3" onClick={() => setDeletingCosmeticId(cosmetic.id)}>Delete</Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Auditor & Wallets Tab */}
+              {gachaSubTab === "wallets" && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[#110e3d]">Member Wallet Auditor</h4>
+                      <p className="text-[10px] text-slate-400 font-bold mt-0.5">Monitor and adjust players' diamond balances manually.</p>
+                    </div>
+                    <div className="relative flex-1 max-w-xs">
+                      <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                      <Input
+                        value={userDirSearch}
+                        onChange={(e) => setUserDirSearch(e.target.value)}
+                        placeholder="Search player name, tag, or UID…"
+                        className="pl-9 bg-white border-[#eae8f5] rounded-xl text-xs h-9 focus-visible:ring-1 focus-visible:ring-[#6366f1]"
+                      />
+                    </div>
+                  </div>
+
+                  {usersLoading ? (
+                    <Skeleton className="h-48 w-full rounded-2xl" />
+                  ) : (
+                    <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden">
+                      <Table>
+                        <TableHeader className="bg-[#f8f7fa]">
+                          <TableRow className="border-[#eae8f5]">
+                            <TableHead className="text-xs font-black text-[#110e3d]">Player Profile</TableHead>
+                            <TableHead className="text-xs font-black text-[#110e3d] w-24">UID</TableHead>
+                            <TableHead className="text-xs font-black text-[#110e3d]">Role</TableHead>
+                            <TableHead className="text-xs font-black text-[#110e3d] w-40">Wallet Balance</TableHead>
+                            <TableHead className="text-right text-xs font-black text-[#110e3d] w-40">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {users
+                            ?.filter((u) => {
+                              const q = userDirSearch.toLowerCase();
+                              return (
+                                !q ||
+                                u.username.toLowerCase().includes(q) ||
+                                u.userTag.toLowerCase().includes(q) ||
+                                (u.displayName && u.displayName.toLowerCase().includes(q)) ||
+                                String(u.id).includes(q)
+                              );
+                            })
+                            .map((u) => (
+                              <TableRow key={u.id} className="border-[#eae8f5] hover:bg-slate-50/50">
+                                <TableCell>
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center font-black text-[#6366f1] text-xs shrink-0 overflow-hidden border border-[#eae8f5]">
+                                      {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="w-full h-full object-cover" /> : (u.displayName || u.username).charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="font-extrabold text-xs text-[#110e3d] truncate">
+                                        {u.displayName || u.username}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400 font-bold truncate">@{u.username}</div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-xs text-slate-400 font-bold">#{u.id}</TableCell>
+                                <TableCell>
+                                  <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${ROLE_BADGE_CLASSES[u.role as UserRole] || "bg-muted text-muted-foreground"}`}>
+                                    {ROLE_LABELS[u.role as UserRole] || u.role}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-700">
+                                    <span className="text-sky-500 font-black">💎</span>
+                                    <span>{u.diamonds?.toLocaleString() ?? 0}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-[10px] font-bold rounded-xl h-8 px-3.5"
+                                    onClick={() => {
+                                      setWalletTargetUser(u);
+                                      setWalletAdjustmentAmount("");
+                                      setWalletAdjustmentReason("");
+                                      setWalletDialogOpen(true);
+                                    }}
+                                  >
+                                    Adjust Wallet
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </Card>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </main>
       </div>
 
@@ -2643,6 +3249,177 @@ export default function Admin() {
           {selectedFormResponses && (
             <FormResponsesContent form={selectedFormResponses} onClose={() => setSelectedFormResponses(null)} />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Cosmetic Registry Dialog (Create/Edit) */}
+      <Dialog open={cosmeticDialogOpen} onOpenChange={setCosmeticDialogOpen}>
+        <DialogContent className="bg-white border-[#eae8f5] max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-[#110e3d] font-extrabold text-base">
+              {editingCosmeticId ? "Edit Cosmetic reward" : "Register New Cosmetic Reward"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Cosmetic Item Name *</Label>
+              <Input
+                value={cosmeticForm.name}
+                onChange={(e) => setCosmeticForm({ ...cosmeticForm, name: e.target.value })}
+                placeholder="e.g. Golden Aura, Rich Citizen"
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">Type</Label>
+                <Select
+                  value={cosmeticForm.type}
+                  onValueChange={(v: any) => setCosmeticForm({ ...cosmeticForm, type: v })}
+                >
+                  <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                    <SelectItem value="border">Avatar Border</SelectItem>
+                    <SelectItem value="badge">Profile Badge</SelectItem>
+                    <SelectItem value="background">Member Backdrop Card</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">Gacha Odds Rarity Tier</Label>
+                <Select
+                  value={cosmeticForm.rarity}
+                  onValueChange={(v: any) => setCosmeticForm({ ...cosmeticForm, rarity: v })}
+                >
+                  <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                    <SelectItem value="S">S Tier (Legendary Gold)</SelectItem>
+                    <SelectItem value="A">A Tier (Purple Epic)</SelectItem>
+                    <SelectItem value="B">B Tier (Blue Rare)</SelectItem>
+                    <SelectItem value="C">C Tier (Green Uncommon)</SelectItem>
+                    <SelectItem value="D">D Tier (Grey Common)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Value (CSS class or Image URL) *</Label>
+              <Input
+                value={cosmeticForm.value}
+                onChange={(e) => setCosmeticForm({ ...cosmeticForm, value: e.target.value })}
+                placeholder={
+                  cosmeticForm.type === "border"
+                    ? "e.g. gacha-border-golden-aura"
+                    : cosmeticForm.type === "background"
+                    ? "e.g. https://images.unsplash.com/..."
+                    : "e.g. bg-gradient-to-r from-red-500 to-amber-500 text-white"
+                }
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800 font-mono"
+              />
+              <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">
+                {cosmeticForm.type === "border" && "This key will trigger the specific CSS glow animations around avatar elements in message chats and menus."}
+                {cosmeticForm.type === "background" && "Must be a direct valid Image URL path to render behind player profile layouts."}
+                {cosmeticForm.type === "badge" && "Standard TailwindCSS utility classes defining gradients, font styling, and border details."}
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Description</Label>
+              <Textarea
+                value={cosmeticForm.description}
+                onChange={(e) => setCosmeticForm({ ...cosmeticForm, description: e.target.value })}
+                placeholder="Give details about how this reward is earned or its special properties..."
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 pt-4 border-t border-slate-50">
+            <Button variant="outline" className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-xs font-bold rounded-xl h-9 px-5" onClick={() => setCosmeticDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveCosmetic} className="bg-[#6366f1] text-white hover:bg-violet-600 text-xs font-bold rounded-xl h-9 px-5 shadow-md shadow-violet-500/5">
+              {editingCosmeticId ? "Save Changes" : "Register Cosmetic"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Cosmetic confirmation dialog */}
+      <Dialog open={deletingCosmeticId !== null} onOpenChange={() => setDeletingCosmeticId(null)}>
+        <DialogContent className="bg-white border-[#eae8f5] max-w-sm rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-[#110e3d] font-extrabold text-base">Unregister Cosmetic Reward?</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+            Are you sure you want to delete this cosmetic item? This will permanently remove it from the active Gacha Royale spin pool registry.
+          </p>
+          <DialogFooter className="gap-2 pt-4 border-t border-slate-50">
+            <Button variant="outline" className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-xs font-bold rounded-xl h-9 px-4" onClick={() => setDeletingCosmeticId(null)}>Cancel</Button>
+            <Button className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl h-9 px-4" onClick={() => deletingCosmeticId && handleDeleteCosmetic(deletingCosmeticId)}>Delete Cosmetic</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Adjust Wallet balance dialog */}
+      <Dialog open={walletDialogOpen} onOpenChange={setWalletDialogOpen}>
+        <DialogContent className="bg-white border-[#eae8f5] max-w-md rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-[#110e3d] font-extrabold text-base">
+              Calibrate Wallet: {walletTargetUser?.displayName || walletTargetUser?.username}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-3 p-3 bg-slate-50 border border-[#eae8f5] rounded-xl shadow-sm">
+              <Avatar className="w-10 h-10 border border-[#eae8f5]">
+                <AvatarImage src={walletTargetUser?.avatarUrl || undefined} />
+                <AvatarFallback className="text-xs font-bold bg-[#6366f1] text-white">
+                  {walletTargetUser ? getInitials(walletTargetUser.displayName || walletTargetUser.username) : "?"}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="text-xs font-extrabold text-[#110e3d] truncate">{walletTargetUser?.displayName || walletTargetUser?.username}</p>
+                <p className="text-[10px] text-slate-400 font-bold">Current Balance: <span className="text-sky-500">💎 {walletTargetUser?.diamonds?.toLocaleString() ?? 0}</span></p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Adjustment Amount (Diamonds) *</Label>
+              <Input
+                type="number"
+                value={walletAdjustmentAmount}
+                onChange={(e) => setWalletAdjustmentAmount(e.target.value)}
+                placeholder="e.g. 1000 to credit, -500 to debit"
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+              />
+              <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">
+                Use positive integers to add diamond credits to their wallet balance, or negative numbers to subtract/charge diamonds.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Audit / Adjust Reason</Label>
+              <Input
+                value={walletAdjustmentReason}
+                onChange={(e) => setWalletAdjustmentReason(e.target.value)}
+                placeholder="e.g. Reward for roleplay event winner, Refund for duplicate glitch"
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 pt-4 border-t border-slate-50">
+            <Button variant="outline" className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-xs font-bold rounded-xl h-9 px-5" onClick={() => setWalletDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveWalletAdjustment} className="bg-[#6366f1] text-white hover:bg-violet-600 text-xs font-bold rounded-xl h-9 px-5 shadow-md shadow-violet-500/5">
+              Confirm Adjustment
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

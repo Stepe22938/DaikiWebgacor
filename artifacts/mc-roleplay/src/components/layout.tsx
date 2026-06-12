@@ -74,9 +74,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 className="flex items-center gap-1.5 focus:outline-none group cursor-pointer"
                 aria-label="User menu"
               >
-                <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary/50 group-hover:border-primary transition-colors flex items-center justify-center bg-muted">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-muted relative p-0.5 overflow-visible ${me?.equippedBorder || "border-2 border-primary/50 group-hover:border-primary"}`}>
                   {me?.avatarUrl ? (
-                    <img src={me.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                    <img src={me.avatarUrl} alt="Avatar" className="w-full h-full rounded-full object-cover" />
                   ) : (
                     <span className="text-sm font-bold text-primary">{getInitials(me?.displayName || me?.username)}</span>
                   )}

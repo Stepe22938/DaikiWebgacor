@@ -10,3 +10,5 @@ export * from "./forms";
 export * from "./credits";
 export * from "./badges";
 export * from "./cosmetics";
+export * from "./wallet";
+

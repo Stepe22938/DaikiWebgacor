@@ -25,4 +25,6 @@ export interface Message {
   senderAvatarUrl?: string | null;
   /** @nullable */
   senderRole?: string | null;
+  /** @nullable */
+  senderEquippedBorder?: string | null;
 }

@@ -8,6 +8,8 @@ import {
   conversationsTable,
   conversationMembersTable,
   messagesTable,
+  userCosmeticsTable,
+  cosmeticsTable,
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 import {
@@ -65,6 +67,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
   let otherDisplayName: string | null = null;
   let otherAvatarUrl: string | null = null;
   let otherUserRole: string | null = null;
+  let otherUserEquippedBorder: string | null = null;
 
   if (conv.type === "dm") {
     const other = memberRows.find((m) => m.userId !== currentUserId);
@@ -76,6 +79,19 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
       otherUserRole = other.role ?? null;
       name = other.displayName ?? other.username;
       iconUrl = other.avatarUrl ?? null;
+
+      const equipped = await db
+        .select({ value: cosmeticsTable.value })
+        .from(userCosmeticsTable)
+        .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+        .where(
+          and(
+            eq(userCosmeticsTable.userId, other.userId),
+            eq(userCosmeticsTable.isEquipped, true),
+            eq(cosmeticsTable.type, "border")
+          )
+        );
+      otherUserEquippedBorder = equipped[0]?.value ?? null;
     }
   }
 
@@ -91,6 +107,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     otherDisplayName,
     otherAvatarUrl,
     otherUserRole,
+    otherUserEquippedBorder,
     lastMessageContent: lastMsg ? (lastMsg.content || (lastMsg.imageUrl ? "📷 Image" : "")) : null,
     lastMessageAt: lastMsg ? serializeDates(lastMsg).createdAt : null,
     lastMessageSenderId: lastMsg?.senderId ?? null,
@@ -352,7 +369,37 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
     .orderBy(messagesTable.createdAt)
     .limit(50);
 
-  res.json(ListMessagesResponse.parse(rows.map((r) => serializeDates(r))));
+  const senderIds = Array.from(new Set(rows.map((r) => r.senderId).filter(Boolean))) as number[];
+  const bordersMap = new Map<number, string>();
+  if (senderIds.length > 0) {
+    const senderBorders = await db
+      .select({
+        userId: userCosmeticsTable.userId,
+        value: cosmeticsTable.value,
+      })
+      .from(userCosmeticsTable)
+      .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+      .where(
+        and(
+          inArray(userCosmeticsTable.userId, senderIds),
+          eq(userCosmeticsTable.isEquipped, true),
+          eq(cosmeticsTable.type, "border")
+        )
+      );
+    for (const b of senderBorders) {
+      bordersMap.set(b.userId, b.value);
+    }
+  }
+
+  const result = rows.map((r) => {
+    const serialized = serializeDates(r);
+    return {
+      ...serialized,
+      senderEquippedBorder: r.senderId ? (bordersMap.get(r.senderId) ?? null) : null,
+    };
+  });
+
+  res.json(ListMessagesResponse.parse(result));
 });
 
 router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
@@ -383,12 +430,25 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     .set({ updatedAt: new Date() })
     .where(eq(conversationsTable.id, id));
 
+  const userBorder = await db
+    .select({ value: cosmeticsTable.value })
+    .from(userCosmeticsTable)
+    .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+    .where(
+      and(
+        eq(userCosmeticsTable.userId, user.id),
+        eq(userCosmeticsTable.isEquipped, true),
+        eq(cosmeticsTable.type, "border")
+      )
+    );
+
   res.status(201).json({
     ...serializeDates(msg),
     senderUsername: user.username,
     senderDisplayName: user.displayName ?? null,
     senderAvatarUrl: user.avatarUrl ?? null,
     senderRole: user.role ?? null,
+    senderEquippedBorder: userBorder[0]?.value ?? null,
   });
 });
 

@@ -304,12 +304,14 @@ export default function Friends() {
         {/* User Account Details Bottom Sidebar */}
         <div className="p-4 border-t border-[#eae8f5] space-y-3">
           <div className="flex items-center gap-3 px-2 py-1">
-            <Avatar className="h-9 w-9 border border-[#eae8f5]">
-              <AvatarImage src={me?.avatarUrl || undefined} />
-              <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
-                {getInitials(me?.displayName || me?.username)}
-              </AvatarFallback>
-            </Avatar>
+            <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${me?.equippedBorder ? me.equippedBorder : "border border-[#eae8f5]"}`}>
+              <Avatar className="h-9 w-9 shrink-0">
+                <AvatarImage src={me?.avatarUrl || undefined} />
+                <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
+                  {getInitials(me?.displayName || me?.username)}
+                </AvatarFallback>
+              </Avatar>
+            </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-[#110e3d] truncate">{me?.displayName || me?.username}</p>
               <p className="text-[10px] text-slate-400 font-bold capitalize">{me?.role?.replace('_', ' ') || "Member"}</p>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers, useGetGachaBoard, useClaimDiamonds, useSpinGacha, useListOwnedCosmetics, useEquipCosmetic } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers, useGetGachaBoard, useClaimDiamonds, useSpinGacha, useListOwnedCosmetics, useEquipCosmetic, useListWalletTransactions } from "@workspace/api-client-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -41,7 +41,8 @@ import {
   MessageSquare,
   Users,
   Home,
-  Settings
+  Settings,
+  Wallet,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -84,7 +85,7 @@ export default function Member() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha"].includes(tab)) {
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet"].includes(tab)) {
       setActiveTab(tab);
     } else if (!tab) {
       setActiveTab("dashboard");
@@ -359,6 +360,16 @@ export default function Member() {
                 >
                   <Sparkles className="w-4.5 h-4.5 text-amber-500" /> Gacha Royale
                 </button>
+                <button
+                  onClick={() => handleTabChange("wallet")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "wallet"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Wallet className="w-4.5 h-4.5 text-emerald-500" /> My Wallet
+                </button>
               </nav>
             </div>
 
@@ -533,6 +544,14 @@ export default function Member() {
                 >
                   <Sparkles className="w-4.5 h-4.5 text-amber-500" /> Gacha Royale
                 </button>
+                <button
+                  onClick={() => handleTabChangeMobile("wallet")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "wallet" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Wallet className="w-4.5 h-4.5 text-emerald-500" /> My Wallet
+                </button>
 
                 <div className="py-2 border-t border-[#eae8f5] my-2">
                   <span className="px-3 text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Social</span>
@@ -633,7 +652,7 @@ export default function Member() {
               <span>Guild Portal</span>
               <span>/</span>
               <span className="text-[#110e3d] capitalize">
-                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : "Arcadia Credits"}
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : "Arcadia Credits"}
               </span>
             </div>
           </div>
@@ -1289,6 +1308,17 @@ export default function Member() {
           {activeTab === "gacha" && (
             <div className="space-y-4">
               <GachaTab />
+            </div>
+          )}
+
+          {/* My Wallet Tab */}
+          {activeTab === "wallet" && (
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-black text-[#110e3d]">My Wallet</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Manage your diamonds and view transaction logs</p>
+              </div>
+              <WalletTab />
             </div>
           )}
         </div>
@@ -2291,13 +2321,157 @@ function GachaTab() {
   const { data: user, refetch: refetchMe } = useGetMe();
   const claimDiamonds = useClaimDiamonds();
   const spinGacha = useSpinGacha();
+  const equipCosmetic = useEquipCosmetic();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [spinResults, setSpinResults] = useState<any[] | null>(null);
   const [resultsModalOpen, setResultsModalOpen] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [spinCount, setSpinCount] = useState<1 | 5 | 25 | 50>(1);
+  const [spinCount, setSpinCount] = useState<1 | 10 | 25 | 50>(1);
+  const [bulkOption, setBulkOption] = useState<10 | 25 | 50>(10);
+  const [bulkDropdownOpen, setBulkDropdownOpen] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<"S" | "A" | "B" | "C" | "D">("S");
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [previewHadiahOpen, setPreviewHadiahOpen] = useState(false);
+  
+  // Equip won items state
+  const [shouldEquipWon, setShouldEquipWon] = useState(true);
+  const [skipAnimation, setSkipAnimation] = useState(false);
+  const [crateExploded, setCrateExploded] = useState(false);
+  const [flyingDiamonds, setFlyingDiamonds] = useState<boolean>(false);
+
+  // Audio Context helper
+  const playSound = (type: "charge" | "explosion" | "reveal" | "click" | "rare") => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      
+      if (type === "click") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.05, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+      } else if (type === "charge") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(100, ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 2.0);
+        
+        filter.type = "lowpass";
+        filter.Q.setValueAtTime(5, ctx.currentTime);
+        filter.frequency.setValueAtTime(150, ctx.currentTime);
+        filter.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 2.0);
+        
+        gain.gain.setValueAtTime(0.01, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 1.8);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 2.0);
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start();
+        osc.stop(ctx.currentTime + 2.0);
+      } else if (type === "explosion") {
+        const bufferSize = ctx.sampleRate * 1.5;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        
+        const filter = ctx.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(800, ctx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 1.2);
+        
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.4);
+        
+        const subOsc = ctx.createOscillator();
+        const subGain = ctx.createGain();
+        subOsc.type = "sine";
+        subOsc.frequency.setValueAtTime(120, ctx.currentTime);
+        subOsc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.5);
+        subGain.gain.setValueAtTime(0.4, ctx.currentTime);
+        subGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+        
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        
+        subOsc.connect(subGain);
+        subGain.connect(ctx.destination);
+        
+        noise.start();
+        noise.stop(ctx.currentTime + 1.5);
+        
+        subOsc.start();
+        subOsc.stop(ctx.currentTime + 0.6);
+      } else if (type === "reveal") {
+        const now = ctx.currentTime;
+        const notes = [440, 554.37, 659.25, 880];
+        notes.forEach((freq, index) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0, now + index * 0.08);
+          gain.gain.linearRampToValueAtTime(0.08, now + index * 0.08 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + index * 0.08 + 0.4);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + index * 0.08);
+          osc.stop(now + index * 0.08 + 0.5);
+        });
+      } else if (type === "rare") {
+        const now = ctx.currentTime;
+        const chords = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50];
+        chords.forEach((freq, index) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "triangle";
+          osc.frequency.value = freq;
+          osc.detune.value = (Math.random() - 0.5) * 15;
+          
+          gain.gain.setValueAtTime(0, now);
+          gain.gain.linearRampToValueAtTime(0.05, now + 0.1 + index * 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5 + index * 0.05);
+          
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 2.0);
+        });
+      }
+    } catch (e) {
+      console.error("Audio Context Error", e);
+    }
+  };
+
+  useEffect(() => {
+    if (board && board.cosmetics.length > 0 && !selectedItem) {
+      const sTiers = board.cosmetics.filter((c: any) => c.rarity === "S");
+      if (sTiers.length > 0) setSelectedItem(sTiers[0]);
+      else setSelectedItem(board.cosmetics[0]);
+    }
+  }, [board, selectedItem]);
 
   if (isLoading || !board) {
     return (
@@ -2308,8 +2482,19 @@ function GachaTab() {
   }
 
   const handleClaimDiamonds = async () => {
+    playSound("click");
     try {
-      await claimDiamonds.mutateAsync();
+      const res = await claimDiamonds.mutateAsync();
+      if (res && res.diamonds !== undefined) {
+        queryClient.setQueryData(["/api/gacha/board"], (old: any) => {
+          if (!old) return old;
+          return { ...old, diamonds: res.diamonds };
+        });
+        queryClient.setQueryData(["/api/me"], (old: any) => {
+          if (!old) return old;
+          return { ...old, diamonds: res.diamonds };
+        });
+      }
       toast({
         title: "Diamonds claimed! 💎",
         description: "You've received +1,000 Diamonds for testing."
@@ -2326,9 +2511,10 @@ function GachaTab() {
     }
   };
 
-  const handleSpin = async (count: 1 | 5 | 25 | 50) => {
+  const handleSpin = async (count: 1 | 10 | 25 | 50) => {
+    playSound("click");
     let cost = 9;
-    if (count === 5) cost = 39;
+    if (count === 10) cost = 79;
     else if (count === 25) cost = 195;
     else if (count === 50) cost = 390;
 
@@ -2343,36 +2529,121 @@ function GachaTab() {
 
     setSpinCount(count);
     setIsSpinning(true);
+    setSkipAnimation(false);
+    setCrateExploded(false);
+    setFlyingDiamonds(false);
+    
+    playSound("charge");
+
+    // Optimistic balance deduction: subtract cost immediately!
+    queryClient.setQueryData(["/api/gacha/board"], (old: any) => {
+      if (!old) return old;
+      return { ...old, diamonds: Math.max(0, (old.diamonds ?? 0) - cost) };
+    });
+    queryClient.setQueryData(["/api/me"], (old: any) => {
+      if (!old) return old;
+      return { ...old, diamonds: Math.max(0, (old.diamonds ?? 0) - cost) };
+    });
+
+    let spinResponse: any = null;
+    let apiError: any = null;
+    
+    const apiPromise = spinGacha.mutateAsync({ data: { count } })
+      .then(res => { spinResponse = res; })
+      .catch(err => { apiError = err; });
+
+    const animationTimeout = setTimeout(() => {
+      triggerExplosion(apiPromise, () => spinResponse, () => apiError);
+    }, 2500);
+
+    (window as any).skipGachaAnim = () => {
+      clearTimeout(animationTimeout);
+      triggerExplosion(apiPromise, () => spinResponse, () => apiError);
+    };
+  };
+
+  const triggerExplosion = async (apiPromise: Promise<void>, getResponse: () => any, getError: () => any) => {
+    setSkipAnimation(true);
+    await apiPromise;
+    const err = getError();
+    const res = getResponse();
+
+    if (err) {
+      toast({
+        title: "Spin failed",
+        description: err.message || "Failed to roll gacha.",
+        variant: "destructive"
+      });
+      setIsSpinning(false);
+      // Restore the diamonds if the spin API fails by refetching actual backend data
+      refetch();
+      refetchMe();
+      return;
+    }
+
+    setCrateExploded(true);
+    playSound("explosion");
+
+    setTimeout(() => {
+      const hasRare = res.results?.some((r: any) => r.cosmetic.rarity === "S" || r.cosmetic.rarity === "A");
+      if (hasRare) {
+        playSound("rare");
+      } else {
+        playSound("reveal");
+      }
+    }, 100);
 
     setTimeout(async () => {
-      try {
-        const res = await spinGacha.mutateAsync({
-          data: { count }
-        });
-        setSpinResults(res.results ?? []);
-        setResultsModalOpen(true);
-        await refetch();
-        await refetchMe();
-        await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
-        await queryClient.invalidateQueries({ queryKey: ["/api/cosmetics"] });
-      } catch (err: any) {
-        toast({
-          title: "Spin failed",
-          description: err.message || "Failed to roll gacha.",
-          variant: "destructive"
-        });
-      } finally {
-        setIsSpinning(false);
+      setSpinResults(res.results ?? []);
+      setResultsModalOpen(true);
+      setIsSpinning(false);
+      
+      if (shouldEquipWon && res.results) {
+        const newUnlocks = res.results.filter((r: any) => !r.isDuplicate);
+        if (newUnlocks.length > 0) {
+          const rarityWeight = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+          newUnlocks.sort((x: any, y: any) => 
+            (rarityWeight[y.cosmetic.rarity as keyof typeof rarityWeight] || 0) - 
+            (rarityWeight[x.cosmetic.rarity as keyof typeof rarityWeight] || 0)
+          );
+          
+          const itemToEquip = newUnlocks[0].cosmetic;
+          try {
+            await equipCosmetic.mutateAsync({ id: itemToEquip.id, data: { equip: true } });
+          } catch (e) {
+            console.error("Failed to auto-equip item:", e);
+          }
+        }
       }
-    }, 1800);
+
+      if (res && res.diamonds !== undefined) {
+        queryClient.setQueryData(["/api/gacha/board"], (old: any) => {
+          if (!old) return old;
+          return { ...old, diamonds: res.diamonds };
+        });
+        queryClient.setQueryData(["/api/me"], (old: any) => {
+          if (!old) return old;
+          return { ...old, diamonds: res.diamonds };
+        });
+      }
+      await refetch();
+      await refetchMe();
+      await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/cosmetics"] });
+      
+      if (res.refunded > 0) {
+        setFlyingDiamonds(true);
+        setTimeout(() => setFlyingDiamonds(false), 2000);
+      }
+    }, 600);
   };
 
   const tiers = {
-    S: board.cosmetics.filter(c => c.rarity === "S"),
-    A: board.cosmetics.filter(c => c.rarity === "A"),
-    B: board.cosmetics.filter(c => c.rarity === "B"),
-    C: board.cosmetics.filter(c => c.rarity === "C"),
-    D: board.cosmetics.filter(c => c.rarity === "D"),
+    S: board.cosmetics.filter((c: any) => c.rarity === "S"),
+    A: board.cosmetics.filter((c: any) => c.rarity === "A"),
+    B: board.cosmetics.filter((c: any) => c.rarity === "B"),
+    C: board.cosmetics.filter((c: any) => c.rarity === "C"),
+    D: board.cosmetics.filter((c: any) => c.rarity === "D"),
   };
 
   const ownedIds = new Set(board.ownedCosmeticIds || []);
@@ -2397,274 +2668,1105 @@ function GachaTab() {
     }
   };
 
-  const getAvatarBorder = () => {
-    if (user?.equippedBorder) return user.equippedBorder;
-    return "";
+  const renderCosmeticPreview = (item: any, size: "sm" | "lg" = "lg") => {
+    const isLg = size === "lg";
+    if (item.type === "border") {
+      return (
+        <div className={`relative flex items-center justify-center rounded-full ${isLg ? "w-24 h-24 p-2" : "w-12 h-12 p-1"}`}>
+          <div className={`w-full h-full rounded-full bg-slate-900 border-2 flex items-center justify-center overflow-hidden border-slate-700 ${item.value}`}>
+            <span className={`${isLg ? "text-[10px]" : "text-[6px]"} font-black text-purple-305/80 uppercase tracking-widest select-none`}>
+              Border
+            </span>
+          </div>
+        </div>
+      );
+    }
+    
+    if (item.type === "badge") {
+      return (
+        <div className="flex flex-col items-center justify-center py-2">
+          <span className={`px-4 py-1 rounded-lg border text-center font-black uppercase tracking-wider select-none ${isLg ? "text-xs px-5 py-2 shadow-lg" : "text-[8px] px-2 py-0.5"} ${item.value}`}>
+            {item.name}
+          </span>
+        </div>
+      );
+    }
+    
+    if (item.type === "background") {
+      return (
+        <div className={`relative overflow-hidden rounded-xl border border-purple-500/20 bg-slate-950 shadow-inner flex flex-col justify-end items-center ${isLg ? "w-36 h-20" : "w-20 h-11"}`}>
+          <img src={item.value} alt="" className="absolute inset-0 w-full h-full object-cover opacity-65" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent animate-pulse" />
+          <span className={`relative z-10 font-black text-slate-350 uppercase tracking-widest select-none ${isLg ? "text-[9px] mb-2" : "text-[5px] mb-1"}`}>
+            BG CARD
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`rounded-xl bg-purple-950/40 border border-purple-500/10 flex items-center justify-center shadow-inner select-none ${isLg ? "w-16 h-16 text-3xl" : "w-10 h-10 text-xl"}`}>
+        🎁
+      </div>
+    );
   };
+
+  const isTierFullyOwned = (tierKey: keyof typeof tiers) => {
+    const list = tiers[tierKey];
+    if (list.length === 0) return false;
+    return list.every((item: any) => ownedIds.has(item.id));
+  };
+
+  const renderTierCard = (tierKey: "S" | "A" | "B" | "C" | "D") => {
+    const tierList = tiers[tierKey];
+    const ownedCount = tierList.filter(c => ownedIds.has(c.id)).length;
+    const totalCount = tierList.length;
+    const isOwned = totalCount > 0 && ownedCount === totalCount;
+    const isActive = selectedTier === tierKey;
+
+    const previewItem = selectedItem && selectedItem.rarity === tierKey ? selectedItem : tierList[0];
+
+    let theme = {
+      border: "border-slate-800",
+      bg: "bg-slate-900/40",
+      text: "text-slate-400",
+      badge: "bg-slate-800 text-slate-400 border-slate-700",
+      glow: "",
+      accentColor: "slate",
+      hover: "hover:border-slate-700 hover:bg-slate-900/60"
+    };
+
+    if (tierKey === "S") {
+      theme = {
+        border: isActive ? "border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.5)]" : "border-amber-500/30",
+        bg: isActive ? "bg-amber-950/20" : "bg-[#161208]/80",
+        text: "text-amber-400 font-extrabold",
+        badge: "bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-500 text-slate-950 border-amber-350 font-black",
+        glow: "shadow-[inset_0_0_15px_rgba(245,158,11,0.1)]",
+        accentColor: "amber",
+        hover: "hover:border-amber-400 hover:bg-amber-950/10"
+      };
+    } else if (tierKey === "A") {
+      theme = {
+        border: isActive ? "border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.5)]" : "border-pink-500/30",
+        bg: isActive ? "bg-pink-950/20" : "bg-[#180a12]/80",
+        text: "text-pink-400 font-extrabold",
+        badge: "bg-gradient-to-r from-pink-500 to-rose-500 text-white border-pink-400 font-bold",
+        glow: "shadow-[inset_0_0_15px_rgba(236,72,153,0.1)]",
+        accentColor: "pink",
+        hover: "hover:border-pink-400 hover:bg-pink-950/10"
+      };
+    } else if (tierKey === "B") {
+      theme = {
+        border: isActive ? "border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.5)]" : "border-purple-500/30",
+        bg: isActive ? "bg-purple-950/20" : "bg-[#100818]/80",
+        text: "text-purple-400 font-extrabold",
+        badge: "bg-gradient-to-r from-purple-500 to-violet-600 text-white border-purple-400 font-bold",
+        glow: "shadow-[inset_0_0_15px_rgba(168,85,247,0.1)]",
+        accentColor: "purple",
+        hover: "hover:border-purple-400 hover:bg-purple-950/10"
+      };
+    } else if (tierKey === "C") {
+      theme = {
+        border: isActive ? "border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.5)]" : "border-cyan-500/30",
+        bg: isActive ? "bg-cyan-950/20" : "bg-[#08121a]/80",
+        text: "text-cyan-400 font-extrabold",
+        badge: "bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 border-cyan-400 font-bold",
+        glow: "shadow-[inset_0_0_15px_rgba(6,182,212,0.1)]",
+        accentColor: "cyan",
+        hover: "hover:border-cyan-400 hover:bg-cyan-950/10"
+      };
+    } else if (tierKey === "D") {
+      theme = {
+        border: isActive ? "border-slate-400 shadow-[0_0_15px_rgba(148,163,184,0.4)]" : "border-slate-500/20",
+        bg: isActive ? "bg-slate-800/20" : "bg-slate-900/60",
+        text: "text-slate-350 font-extrabold",
+        badge: "bg-slate-700 text-slate-200 border-slate-650 font-medium",
+        glow: "",
+        accentColor: "slate",
+        hover: "hover:border-slate-400 hover:bg-slate-800/30"
+      };
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          playSound("click");
+          setSelectedTier(tierKey);
+          if (previewItem) {
+            setSelectedItem(previewItem);
+          }
+        }}
+        className={`relative w-full rounded-xl p-3 border text-left transition-all flex items-center justify-between overflow-hidden select-none cursor-pointer group ${theme.border} ${theme.bg} ${theme.hover} ${theme.glow} ${
+          isOwned ? "opacity-90" : ""
+        }`}
+      >
+        <div className="absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-current opacity-5 pointer-events-none" />
+
+        <div className="flex items-center gap-3 relative z-10">
+          <div className={`px-3 py-1 rounded text-[10px] font-black border uppercase tracking-wider ${theme.badge} -skew-x-12`}>
+            <span className="inline-block skew-x-12">{tierKey} TIER</span>
+          </div>
+
+          <div className="flex flex-col">
+            <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider leading-none">DIMILIKI</span>
+            <span className={`text-xs font-black tracking-tight mt-0.5 ${theme.text}`}>
+              {ownedCount} / {totalCount}
+            </span>
+          </div>
+        </div>
+
+        {previewItem && (
+          <div className="flex items-center gap-2 relative z-10 shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-black/60 border border-purple-500/15 flex items-center justify-center p-0.5 relative group-hover:scale-105 transition-transform">
+              {renderCosmeticPreview(previewItem, "sm")}
+              {ownedIds.has(previewItem.id) && (
+                <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-black border border-slate-900">
+                  ✓
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isOwned && (
+          <div className="absolute top-1 right-1 border border-emerald-500/40 text-emerald-400 bg-emerald-950/80 font-black text-[7px] tracking-wider px-1 py-0.2 rounded uppercase -skew-x-6">
+            FULL OWNED
+          </div>
+        )}
+      </button>
+    );
+  };
+
+  const totalRewards = board.cosmetics.length;
+  const ownedRewards = board.ownedCosmeticIds.length;
+  const remainingRewards = totalRewards - ownedRewards;
 
   return (
     <div className="space-y-6">
-      <div className="relative rounded-2xl bg-gradient-to-br from-indigo-905 via-purple-900 to-indigo-950 p-6 md:p-8 text-white overflow-hidden shadow-xl border border-indigo-500/20">
-        <div className="absolute right-0 top-0 w-1/3 h-full opacity-5 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white to-transparent" />
+      <style>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(12px) scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+        .animate-fade-in-card {
+          opacity: 0;
+          animation: fadeIn 0.3s ease-out forwards;
+        }
+        @keyframes fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes gacha-float {
+          0%, 100% { transform: translateY(0) rotate(0deg); }
+          50% { transform: translateY(-12px) rotate(2deg); }
+        }
+        @keyframes gacha-shake {
+          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+          10% { transform: translate(-3px, -2px) rotate(-1deg); }
+          20% { transform: translate(3px, 2px) rotate(1deg); }
+          30% { transform: translate(-3px, 1px) rotate(-1deg); }
+          40% { transform: translate(2px, -1px) rotate(1deg); }
+          50% { transform: translate(-1px, 2px) rotate(0deg); }
+          60% { transform: translate(3px, 1px) rotate(1deg); }
+          70% { transform: translate(-2px, -1px) rotate(-1deg); }
+          80% { transform: translate(1px, 2px) rotate(1deg); }
+          90% { transform: translate(-1px, -2px) rotate(-1deg); }
+        }
+        @keyframes gacha-spin-slow {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes diamond-fly {
+          0% { transform: translate(0, 0) scale(1); opacity: 1; }
+          10% { transform: translate(-20px, 30px) scale(1.2); }
+          100% { transform: translate(var(--target-x), var(--target-y)) scale(0.6); opacity: 0; }
+        }
+        .animate-gacha-float {
+          animation: gacha-float 3s ease-in-out infinite;
+        }
+        .animate-gacha-shake {
+          animation: gacha-shake 0.3s linear infinite;
+        }
+        .animate-spin-slow {
+          animation: gacha-spin-slow 20s linear infinite;
+        }
+        .preview-glow-ring {
+          box-shadow: 0 0 30px 5px rgba(6, 182, 212, 0.4), inset 0 0 15px rgba(6, 182, 212, 0.3);
+        }
+        .cyber-slant-bg {
+          clip-path: polygon(0 0, 100% 0, 96% 100%, 0 100%);
+        }
+        .stamp-dimiliki {
+          box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+          text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+        .flying-diamond-particle {
+          animation: diamond-fly 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+        .diagonal-neon-banner {
+          clip-path: polygon(0 0, 92% 0, 100% 100%, 0 100%);
+          background: linear-gradient(135deg, rgba(236,72,153,0.95) 0%, rgba(168,85,247,0.95) 70%, rgba(168,85,247,0) 100%);
+          text-shadow: 0 0 8px rgba(236, 72, 153, 0.8);
+          box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+        }
+      `}</style>
+
+      {/* FLYING DIAMONDS PARTICLE OVERLAY */}
+      {flyingDiamonds && (
+        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+          {Array.from({ length: 12 }).map((_, i) => {
+            const startX = window.innerWidth / 2 + (Math.random() - 0.5) * 200;
+            const startY = window.innerHeight / 2 + (Math.random() - 0.5) * 200;
+            const targetX = window.innerWidth - startX - 80;
+            const targetY = 40 - startY;
+            return (
+              <div
+                key={i}
+                className="absolute text-lg text-amber-300 font-bold flying-diamond-particle"
+                style={{
+                  left: `${startX}px`,
+                  top: `${startY}px`,
+                  "--target-x": `${targetX}px`,
+                  "--target-y": `${targetY}px`,
+                  animationDelay: `${i * 0.08}s`
+                } as any}
+              >
+                💎
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* HEADER BANNER */}
+      <div className="relative rounded-2xl bg-gradient-to-br from-[#1b1528] via-[#100b1a] to-[#07040d] p-6 md:p-8 text-white overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-purple-500/20">
+        <div className="absolute right-0 top-0 w-1/3 h-full opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-purple-500 to-transparent pointer-events-none" />
         
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative z-10">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black tracking-widest uppercase border border-amber-500/30">
-              💎 GACHA ROYALE
+          <div className="space-y-4 flex-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black tracking-widest uppercase border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                ⚡ RUSH BOARD EVENT
+              </div>
+              
+              <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-rose-500/20 text-rose-400 text-[10px] font-black tracking-widest uppercase border border-rose-500/30">
+                ⏳ ENDS IN: 7d 6h
+              </div>
+
+              <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-black tracking-widest uppercase border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)] animate-pulse">
+                BOARD SELANJUTNYA &gt;&gt;
+              </div>
             </div>
-            <h1 className="text-xl md:text-2xl font-black tracking-tight flex items-center gap-2">
-              Spin for Exclusive Cosmetics <Sparkles className="w-5 h-5 text-amber-400 animate-spin" />
+            
+            <h1 className="text-3xl md:text-4xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-purple-400 uppercase flex items-center gap-3 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] transform -skew-x-6">
+              RUSH BOARD
             </h1>
-            <p className="text-xs text-indigo-200 font-semibold max-w-xl">
-              Unlock rare borders, badges, and profile banners. Duplicate cosmetics automatically convert into a <strong className="text-amber-300">100 💎 refund</strong>!
-            </p>
+            
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 max-w-xl">
+              <div className="diagonal-neon-banner text-white px-5 py-2 uppercase font-black tracking-wider text-[11px] select-none flex items-center shrink-0 min-w-[260px]">
+                {remainingRewards} / {totalRewards} HADIAH TERSISA &gt;&gt;
+              </div>
+
+              <Button
+                onClick={() => setPreviewHadiahOpen(true)}
+                className="bg-purple-900/40 hover:bg-purple-900/60 border border-purple-500/30 text-xs font-black text-purple-200 px-4 py-2 rounded-xl transition-all self-start sm:self-auto"
+              >
+                PREVIEW POOL
+              </Button>
+            </div>
           </div>
 
-          <div className="shrink-0 flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-sm self-start md:self-auto min-w-[200px] justify-between">
+          <div className="shrink-0 flex items-center gap-4 bg-purple-950/40 border border-purple-500/30 rounded-2xl p-4 backdrop-blur-md self-start md:self-auto min-w-[225px] justify-between shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
             <div className="flex flex-col">
-              <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest leading-none">Your Balance</span>
-              <span className="text-2xl font-black text-amber-300 mt-1 flex items-center gap-1.5">
-                {board.diamonds ?? 0} <span className="text-lg">💎</span>
+              <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest leading-none">Your Diamonds</span>
+              <span className="text-2xl font-black text-amber-300 mt-1 flex items-center gap-1.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+                {board.diamonds ?? 0} <span className="text-xl">💎</span>
               </span>
             </div>
 
             <Button
               onClick={handleClaimDiamonds}
               disabled={claimDiamonds.isPending}
-              className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-extrabold text-xs px-3.5 py-2.5 rounded-xl h-auto shadow-lg shadow-amber-500/25 border-t border-white/20"
+              className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-black text-xs px-4 py-2.5 rounded-xl h-auto shadow-lg shadow-amber-500/35 border-t border-white/20 active:scale-95 transition-transform"
             >
-              {claimDiamonds.isPending ? "Claiming..." : "+ 1,000 💎"}
+              {claimDiamonds.isPending ? "..." : "+ 1,000 💎"}
             </Button>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-7 space-y-4">
-          <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
-            <CardHeader className="pb-3 border-b border-slate-50">
-              <CardTitle className="text-sm font-extrabold text-[#110e3d]">Rewards Board & Odds</CardTitle>
-              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Collect all cosmetics. Owned cosmetics display a checkmark.</p>
-            </CardHeader>
-            <CardContent className="p-0 divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-              {(Object.keys(tiers) as Array<keyof typeof tiers>).map((tierKey) => {
-                const tierList = tiers[tierKey];
-                const ownedInTier = tierList.filter(c => ownedIds.has(c.id)).length;
-                return (
-                  <div key={tierKey} className="p-4 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-[10px] px-2.5 py-0.5 rounded-lg border ${getTierBadgeStyle(tierKey)}`}>
-                        {getRarityLabel(tierKey)}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-bold">
-                        {ownedInTier} / {tierList.length} Owned
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {tierList.map((item) => {
-                        const isOwned = ownedIds.has(item.id);
-                        return (
-                          <div key={item.id} className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
-                            isOwned 
-                              ? "border-violet-100 bg-violet-50/5 text-slate-800" 
-                              : "border-slate-50 bg-slate-50/40 text-slate-450"
-                          }`}>
-                            <div className="min-w-0 flex-1">
-                              <p className="font-extrabold truncate">{item.name}</p>
-                              <span className="text-[8px] font-bold text-slate-400 uppercase">{item.type}</span>
-                            </div>
-                            {isOwned ? (
-                              <span className="text-emerald-500 font-bold shrink-0 ml-2">✓</span>
-                            ) : (
-                              <span className="text-slate-400 shrink-0 ml-2">🔒</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="lg:col-span-5 space-y-6">
-          <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden relative">
-            <div className="h-28 bg-slate-105 relative">
-              {user?.equippedBackground ? (
-                <img src={user.equippedBackground} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-r from-slate-200 to-slate-300" />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-white via-white/10 to-transparent" />
+      {/* DUAL PANE DASHBOARD */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* LEFT PANEL - TIERS LIST & SUB-GRID POOL */}
+        <div className="lg:col-span-7 flex flex-col space-y-4">
+          <div className="flex-grow bg-[#0f0a1a]/90 border border-purple-500/20 shadow-2xl rounded-2xl p-5 backdrop-blur-md relative overflow-hidden flex flex-col justify-between">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-purple-500/5 to-transparent pointer-events-none rounded-full" />
+            
+            <div>
+              <h2 className="text-xs font-black text-purple-300 uppercase tracking-widest mb-4 border-b border-purple-500/10 pb-2 flex items-center justify-between">
+                <span>RUSH BOARD TIER MAP</span>
+                <span className="text-[10px] text-purple-400 font-extrabold">CLICK TIER TO SEE POOL</span>
+              </h2>
+              
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                <div className="col-span-2">
+                  {renderTierCard("S")}
+                </div>
+                <div className="col-span-1">
+                  {renderTierCard("A")}
+                </div>
+                <div className="col-span-1">
+                  {renderTierCard("B")}
+                </div>
+                <div className="col-span-1">
+                  {renderTierCard("C")}
+                </div>
+                <div className="col-span-1">
+                  {renderTierCard("D")}
+                </div>
+              </div>
             </div>
 
-            <CardContent className="relative -mt-10 flex flex-col items-center p-5 pt-0 text-center">
-              <div className="relative mb-3.5">
-                <div className={`w-20 h-20 rounded-full flex items-center justify-center bg-white p-1 shadow-md overflow-visible ${getAvatarBorder()}`}>
+            {/* NEON SUB-GRID OF REWARDS POOL */}
+            <div className="bg-[#0b0713]/90 border border-purple-500/15 rounded-xl p-4 min-h-[260px] mt-2">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-purple-400">
+                  {selectedTier}-Tier Items Pool ({tiers[selectedTier].length} items)
+                </span>
+                <span className="text-[9px] text-purple-200/40">Select item to preview details</span>
+              </div>
+
+              {tiers[selectedTier].length === 0 ? (
+                <div className="flex items-center justify-center min-h-[200px] text-slate-500 text-xs font-bold">
+                  No items in this tier.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {tiers[selectedTier].map((item: any) => {
+                    const isOwned = ownedIds.has(item.id);
+                    const isSelected = selectedItem?.id === item.id;
+                    
+                    let rarityBorder = "border-purple-500/10 bg-purple-950/10 hover:border-purple-500/40";
+                    if (isSelected) {
+                      if (selectedTier === "S") rarityBorder = "border-amber-500 bg-amber-500/10 shadow-[0_0_10px_rgba(245,158,11,0.2)]";
+                      else if (selectedTier === "A") rarityBorder = "border-pink-500 bg-pink-500/10 shadow-[0_0_10px_rgba(236,72,153,0.2)]";
+                      else if (selectedTier === "B") rarityBorder = "border-purple-500 bg-purple-500/10 shadow-[0_0_10px_rgba(168,85,247,0.2)]";
+                      else if (selectedTier === "C") rarityBorder = "border-cyan-500 bg-cyan-500/10 shadow-[0_0_10px_rgba(6,182,212,0.2)]";
+                      else rarityBorder = "border-slate-400 bg-slate-450/10 shadow-[0_0_10px_rgba(148,163,184,0.2)]";
+                    }
+
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          playSound("click");
+                          setSelectedItem(item);
+                        }}
+                        className={`relative rounded-xl p-3 border flex flex-col justify-between items-center text-center cursor-pointer transition-all aspect-square select-none ${rarityBorder}`}
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-black/40 flex items-center justify-center border border-purple-500/5 text-lg relative">
+                          {item.type === "badge" ? "🛡️" : item.type === "border" ? "🖼️" : "🖼️"}
+                          {isOwned && (
+                            <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black border border-[#0b0713]">
+                              ✓
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="w-full mt-2 min-w-0">
+                          <p className="text-[10px] font-black text-slate-100 truncate w-full leading-tight">
+                            {item.name}
+                          </p>
+                          <span className="text-[8px] font-bold text-purple-300/60 uppercase block mt-0.5">
+                            {item.type}
+                          </span>
+                        </div>
+
+                        {!isOwned && (
+                          <span className="absolute top-1 right-1 text-[8px] opacity-40">🔒</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* SPIN CONTROLS PANEL */}
+          <div className="bg-[#0f0a1a]/95 border border-purple-500/20 shadow-2xl rounded-2xl p-5 relative overflow-visible">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-col">
+                <span className="text-xs font-black text-purple-300 uppercase tracking-widest">SUMMON CONTROLS</span>
+                <span className="text-[10px] text-slate-400 font-semibold mt-0.5">Discounts increase with bulk tiers</span>
+              </div>
+              
+              <div className="flex items-center gap-2 text-[10px] text-purple-300 font-black">
+                <input
+                  type="checkbox"
+                  id="auto-equip-check"
+                  checked={shouldEquipWon}
+                  onChange={(e) => setShouldEquipWon(e.target.checked)}
+                  className="rounded border-purple-500 text-purple-600 bg-[#06040a] focus:ring-0 cursor-pointer"
+                />
+                <label htmlFor="auto-equip-check" className="cursor-pointer select-none">
+                  Auto-Equip Won Items
+                </label>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-12 gap-4 relative overflow-visible">
+              <div className="col-span-5">
+                <button
+                  type="button"
+                  onClick={() => handleSpin(1)}
+                  disabled={isSpinning}
+                  className="w-full py-4 rounded-xl bg-gradient-to-br from-cyan-600 to-purple-800 hover:from-cyan-500 hover:to-purple-700 text-white border border-cyan-400/30 shadow-[0_4px_15px_rgba(6,182,212,0.25)] flex flex-col items-center justify-center cursor-pointer active:scale-[0.97] transition-all disabled:opacity-50 select-none group -skew-x-12"
+                >
+                  <span className="text-xs font-black uppercase italic tracking-wider group-hover:scale-105 transition-transform skew-x-12">
+                    1 SPIN
+                  </span>
+                  <span className="text-xs font-black text-cyan-300 mt-1.5 flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] skew-x-12">
+                    9 <span className="text-[10px]">💎</span>
+                  </span>
+                </button>
+              </div>
+
+              <div className="col-span-7 flex relative overflow-visible">
+                <button
+                  type="button"
+                  onClick={() => handleSpin(bulkOption)}
+                  disabled={isSpinning}
+                  className="flex-1 py-4 rounded-l-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 border-t border-b border-l border-amber-400/20 shadow-[0_4px_20px_rgba(245,158,11,0.25)] flex flex-col items-center justify-center cursor-pointer active:scale-[0.98] transition-all disabled:opacity-50 select-none group -skew-x-12"
+                >
+                  <span className="text-xs font-black uppercase italic tracking-wider group-hover:scale-105 transition-transform skew-x-12">
+                    {bulkOption} SPIN
+                  </span>
+                  <span className="text-xs font-black text-slate-950 mt-1.5 flex items-center gap-1 skew-x-12">
+                    {bulkOption === 10 ? 79 : bulkOption === 25 ? 195 : 390} <span className="text-[10px]">💎</span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound("click");
+                    setBulkDropdownOpen(!bulkDropdownOpen);
+                  }}
+                  disabled={isSpinning}
+                  className="px-3 rounded-r-xl bg-amber-500 hover:bg-amber-400 border-l border-amber-955/20 border-t border-b border-r border-amber-400/20 text-slate-950 flex items-center justify-center cursor-pointer disabled:opacity-50 select-none -skew-x-12"
+                >
+                  <span className={`text-[10px] skew-x-12 transition-transform duration-200 ${bulkDropdownOpen ? "rotate-180" : ""}`}>▼</span>
+                </button>
+
+                {bulkDropdownOpen && (
+                  <div className="absolute right-0 bottom-full mb-3 bg-[#120a22] border-2 border-amber-500/40 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.9)] z-50 overflow-hidden w-56 py-1 divide-y divide-purple-500/10">
+                    {[10, 25, 50].map((option: any) => {
+                      let cost = 79;
+                      if (option === 25) cost = 195;
+                      else if (option === 50) cost = 390;
+                      
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => {
+                            playSound("click");
+                            setBulkOption(option);
+                            setBulkDropdownOpen(false);
+                          }}
+                          className={`w-full px-4 py-3.5 text-left text-xs font-black flex items-center justify-between hover:bg-purple-950/60 transition-colors ${
+                            bulkOption === option ? "text-amber-400" : "text-purple-200"
+                          }`}
+                        >
+                          <span>{option} SPINS Option</span>
+                          <span className="text-amber-400 font-extrabold">{cost} 💎</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT PANEL - PREVIEW STAND */}
+        <div className="lg:col-span-5 flex flex-col h-full min-h-[460px]">
+          <div className="flex-grow bg-gradient-to-b from-[#1b1528] to-[#07040d] border border-purple-500/20 shadow-2xl rounded-2xl overflow-hidden backdrop-blur-md relative flex flex-col justify-between">
+            
+            {/* Cyber Grid Background */}
+            <div className="absolute inset-0 opacity-[0.08] bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none z-0" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(168,85,247,0.15)_0%,_transparent_70%)] pointer-events-none z-0" />
+
+            <div className="p-4 border-b border-purple-500/10 bg-black/40 flex items-center justify-between relative z-10">
+              <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest">
+                ❖ COSMETIC PREVIEW SHOWCASE
+              </span>
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+              </span>
+            </div>
+
+            {/* Avatar stand display */}
+            <div className="flex-grow flex flex-col items-center justify-center p-6 relative z-10 min-h-[300px]">
+              
+              {selectedItem && selectedItem.type === "background" ? (
+                <div className="absolute inset-0 z-0">
+                  <img
+                    src={selectedItem.value}
+                    alt=""
+                    className="w-full h-full object-cover opacity-50"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#07040d] via-transparent to-[#07040d]/40" />
+                </div>
+              ) : user?.equippedBackground ? (
+                <div className="absolute inset-0 z-0">
+                  <img
+                    src={user.equippedBackground}
+                    alt=""
+                    className="w-full h-full object-cover opacity-35"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#07040d] via-transparent to-[#07040d]/40" />
+                </div>
+              ) : null}
+
+              {/* Hologram/Cyber Stand lines */}
+              <div className="absolute bottom-20 w-48 h-12 rounded-full border-2 border-cyan-500/30 bg-cyan-500/5 rotate-[-5deg] preview-glow-ring animate-pulse pointer-events-none" />
+              <div className="absolute bottom-24 w-40 h-8 rounded-full border border-purple-500/20 bg-purple-500/5 rotate-[-5deg] pointer-events-none" />
+
+              <div className="absolute bottom-0 w-2 h-20 bg-gradient-to-t from-cyan-500/0 via-cyan-500/20 to-cyan-500/0 blur-sm pointer-events-none" />
+
+              <div className="relative animate-gacha-float flex flex-col items-center z-10">
+                <div className={`w-36 h-36 rounded-full flex items-center justify-center bg-black/80 p-1.5 border-2 border-purple-500/20 shadow-[0_0_30px_rgba(168,85,247,0.3)] overflow-visible relative transition-all duration-300 ${
+                  selectedItem && selectedItem.type === "border" ? selectedItem.value : (user?.equippedBorder || "")
+                }`}>
                   <Avatar className="w-full h-full rounded-full">
                     <AvatarImage src={user?.avatarUrl || undefined} />
-                    <AvatarFallback className="text-xl bg-slate-100 font-bold text-slate-650">
+                    <AvatarFallback className="text-3xl bg-purple-900/60 font-black text-purple-200">
                       {getInitials(user?.displayName || user?.username)}
                     </AvatarFallback>
                   </Avatar>
+
+                  {selectedItem && selectedItem.type === "badge" ? (
+                    <span className={`absolute -bottom-2 -right-2 text-[10px] px-2.5 py-1 rounded border border-purple-300 font-black uppercase tracking-wider ${selectedItem.value} shadow-md`}>
+                      {selectedItem.name}
+                    </span>
+                  ) : user?.equippedBadge ? (
+                    <span className={`absolute -bottom-2 -right-2 text-[10px] px-2.5 py-1 rounded border border-purple-300 font-black uppercase tracking-wider ${user.equippedBadge} shadow-md`}>
+                      {(() => {
+                        const match = board.cosmetics.find(c => c.value === user.equippedBadge);
+                        return match ? match.name : "Active Badge";
+                      })()}
+                    </span>
+                  ) : null}
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-1">
-                <h3 className="font-extrabold text-sm text-[#110e3d] flex items-center gap-1 justify-center">
-                  <span>{user?.displayName || user?.username}</span>
-                  {user?.userTag && <span className="text-[10px] text-slate-400 font-bold">{user.userTag}</span>}
-                </h3>
-                
-                {user?.equippedBadge ? (
-                  <span className={`inline-block text-[9px] px-2.5 py-0.5 rounded-lg border font-black uppercase tracking-wider ${user.equippedBadge}`}>
-                    {(() => {
-                      // Find badge name if possible
-                      const allBoardCos = board?.cosmetics || [];
-                      const match = allBoardCos.find(c => c.value === user.equippedBadge);
-                      return match ? match.name : "Equipped Badge";
-                    })()}
-                  </span>
-                ) : (
-                  <span className="inline-block text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded border border-slate-200 font-bold uppercase tracking-wider">
-                    No Badge Equipped
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+            {/* Bottom floating details & yellow-accented tag pill */}
+            <div className="p-5 bg-black/60 border-t border-purple-500/10 backdrop-blur-md relative z-10 flex flex-col items-center">
+              {selectedItem ? (
+                <div className="w-full flex flex-col items-center space-y-4">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 border-2 border-yellow-500 bg-yellow-500/10 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.2)] -skew-x-12">
+                    <span className="text-[11px] font-black text-yellow-400 uppercase tracking-widest skew-x-12">
+                      {selectedItem.name}
+                    </span>
+                  </div>
 
-          <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-extrabold text-[#110e3d]">Play Board</CardTitle>
-              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Pick a gacha spin count. Bulk packages offer progressive discounts!</p>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-1">
-              {isSpinning ? (
-                <div className="py-10 text-center space-y-4">
-                  <div className="w-12 h-12 border-4 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-xs font-black text-violet-600 animate-pulse">
-                    Summoning items from the cosmic void...
-                  </p>
+                  <div className="text-center space-y-1">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span className={`text-[8px] font-black px-2 py-0.5 rounded border ${getTierBadgeStyle(selectedItem.rarity)}`}>
+                        Tier {selectedItem.rarity}
+                      </span>
+                      <span className="text-[9px] font-extrabold text-slate-450 uppercase tracking-wider">
+                        {selectedItem.type}
+                      </span>
+                    </div>
+                    <p className="text-xs font-semibold text-slate-350 max-w-xs mx-auto leading-relaxed">
+                      {selectedItem.description || "Kosmetik eksklusif dari gacha royale."}
+                    </p>
+                  </div>
+
+                  <div className="w-full pt-2 flex justify-center">
+                    {ownedIds.has(selectedItem.id) ? (
+                      (() => {
+                        const isEquipped = (selectedItem.type === "badge" && user?.equippedBadge === selectedItem.value) ||
+                                           (selectedItem.type === "border" && user?.equippedBorder === selectedItem.value) ||
+                                           (selectedItem.type === "background" && user?.equippedBackground === selectedItem.value);
+                        
+                        return (
+                          <Button
+                            onClick={async () => {
+                              playSound("click");
+                              try {
+                                await equipCosmetic.mutateAsync({ id: selectedItem.id, data: { equip: !isEquipped } });
+                                toast({
+                                  title: isEquipped ? "Cosmetic unequipped!" : "Cosmetic equipped!",
+                                  description: "Inventory configuration updated successfully."
+                                });
+                                await refetchMe();
+                              } catch (e) {
+                                toast({ title: "Failed to equip", variant: "destructive" });
+                              }
+                            }}
+                            disabled={equipCosmetic.isPending}
+                            className={`w-full py-5 text-xs font-black rounded-xl uppercase tracking-widest transition-all -skew-x-12 ${
+                              isEquipped
+                                ? "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+                                : "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black shadow-md shadow-emerald-500/20"
+                            }`}
+                          >
+                            <span className="inline-block skew-x-12">
+                              {isEquipped ? "UNEQUIP COSMETIC" : "EQUIP COSMETIC"}
+                            </span>
+                          </Button>
+                        );
+                      })()
+                    ) : (
+                      <div className="w-full text-center py-2 px-4 bg-slate-950/60 border border-purple-500/10 rounded-xl text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                        🔒 SPIN GACHA UNTUK MEMBUKA ITEM INI
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => handleSpin(1)}
-                    className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-violet-300 hover:bg-violet-50/10 hover:shadow-sm transition-all text-center flex flex-col items-center justify-center cursor-pointer group"
-                  >
-                    <span className="text-xs font-black text-slate-700 leading-none">1 Spin</span>
-                    <span className="text-xs font-black text-amber-500 mt-2 flex items-center gap-1">
-                      9 <span className="text-[10px]">💎</span>
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => handleSpin(5)}
-                    className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-violet-300 hover:bg-violet-50/10 hover:shadow-sm transition-all text-center flex flex-col items-center justify-center cursor-pointer group relative overflow-hidden"
-                  >
-                    <div className="absolute right-0 top-0 bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-bl-lg">DISCOUNT</div>
-                    <span className="text-xs font-black text-slate-700 leading-none">5 Spins</span>
-                    <span className="text-xs font-black text-amber-500 mt-2 flex items-center gap-1">
-                      39 <span className="text-[10px]">💎</span>
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => handleSpin(25)}
-                    className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-violet-300 hover:bg-violet-50/10 hover:shadow-sm transition-all text-center flex flex-col items-center justify-center cursor-pointer group"
-                  >
-                    <span className="text-xs font-black text-slate-700 leading-none">25 Spins</span>
-                    <span className="text-xs font-black text-amber-500 mt-2 flex items-center gap-1">
-                      195 <span className="text-[10px]">💎</span>
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => handleSpin(50)}
-                    className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-violet-300 hover:bg-violet-50/10 hover:shadow-sm transition-all text-center flex flex-col items-center justify-center cursor-pointer group"
-                  >
-                    <span className="text-xs font-black text-slate-700 leading-none">50 Spins</span>
-                    <span className="text-xs font-black text-amber-500 mt-2 flex items-center gap-1">
-                      390 <span className="text-[10px]">💎</span>
-                    </span>
-                  </button>
+                <div className="py-8 text-xs text-slate-500 font-black">
+                  NO COSMETIC SELECTED FOR PREVIEW
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
 
-      <Dialog open={resultsModalOpen} onOpenChange={(open) => { if (!open) setResultsModalOpen(false); }}>
-        <DialogContent className="bg-[#0b0f19] border-indigo-500/30 text-white max-w-2xl flex flex-col max-h-[85vh] p-0 overflow-hidden rounded-2xl">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b border-indigo-900/30 bg-[#0d1222]">
+      {/* FULLSCREEN CRATE OPENING ANIMATION OVERLAY */}
+      {isSpinning && (
+        <div className="fixed inset-0 bg-black/95 z-[99] flex flex-col items-center justify-center p-4">
+          <div className="absolute w-80 h-80 rounded-full border border-purple-500/10 blur-[10px] animate-spin-slow pointer-events-none" />
+          <div className="absolute w-64 h-64 rounded-full border border-cyan-500/5 blur-[5px] animate-spin pointer-events-none" style={{ animationDirection: "reverse", animationDuration: "12s" }} />
+
+          <div className="relative flex flex-col items-center">
+            <div className="absolute -top-64 w-32 h-[500px] bg-gradient-to-b from-purple-500/0 via-purple-500/5 to-purple-500/20 blur-xl pointer-events-none" style={{ clipPath: "polygon(40% 0, 60% 0, 100% 100%, 0 100%)" }} />
+
+            <div className="absolute bottom-[-20px] w-48 h-12 rounded-full bg-purple-500/10 blur-[2px] border-2 border-purple-500/20 rotate-[-5deg] preview-glow-ring pointer-events-none" />
+
+            <div className={`w-36 h-36 flex items-center justify-center relative ${
+              crateExploded ? "scale-150 opacity-0 transition-all duration-300" : "animate-gacha-float"
+            }`}>
+              <div className={`${crateExploded ? "" : "animate-gacha-shake"} relative w-full h-full flex items-center justify-center`}>
+                <div className="w-24 h-24 bg-gradient-to-br from-[#29184d] to-[#120726] border-2 border-purple-400 rounded-xl relative shadow-[0_0_40px_rgba(168,85,247,0.5),_inset_0_0_15px_rgba(168,85,247,0.3)] overflow-visible">
+                  <div className="absolute inset-2 bg-gradient-to-tr from-purple-500 to-cyan-500 opacity-40 blur-sm rounded-lg animate-pulse" />
+                  
+                  <div className="absolute top-0 left-4 right-4 h-1 bg-cyan-400 shadow-[0_0_5px_#22d3ee] rounded-full" />
+                  <div className="absolute bottom-0 left-4 right-4 h-1 bg-cyan-400 shadow-[0_0_5px_#22d3ee] rounded-full" />
+                  
+                  <div className="absolute -top-1 -left-1 w-3.5 h-3.5 border-t-2 border-l-2 border-cyan-400" />
+                  <div className="absolute -top-1 -right-1 w-3.5 h-3.5 border-t-2 border-r-2 border-cyan-400" />
+                  <div className="absolute -bottom-1 -left-1 w-3.5 h-3.5 border-b-2 border-l-2 border-cyan-400" />
+                  <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 border-b-2 border-r-2 border-cyan-400" />
+                  
+                  <div className="absolute inset-0 m-auto w-6 h-6 rounded bg-[#0b0417] border border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.4)] flex items-center justify-center text-[10px] text-cyan-400 font-black animate-pulse">
+                    ❖
+                  </div>
+                </div>
+
+                <div className="absolute inset-0 bg-gradient-to-t from-transparent via-cyan-400/20 to-transparent blur-md transform scale-125 animate-pulse pointer-events-none" />
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-16 text-sm font-black text-purple-300 tracking-widest uppercase animate-pulse drop-shadow-[0_2px_5px_rgba(168,85,247,0.5)]">
+            Summoning items from the cosmic void...
+          </p>
+
+          <button
+            onClick={() => {
+              if ((window as any).skipGachaAnim) {
+                (window as any).skipGachaAnim();
+              }
+            }}
+            className="absolute bottom-12 px-6 py-2 border border-purple-500/30 bg-purple-950/20 hover:bg-purple-950/50 hover:border-purple-500/50 text-[10px] font-black uppercase text-purple-200 tracking-widest rounded-full cursor-pointer transition-all active:scale-95"
+          >
+            Tekan untuk lewati
+          </button>
+        </div>
+      )}
+
+      {/* RUSH REWARDS DETAIL PREVIEW MODAL */}
+      <Dialog open={previewHadiahOpen} onOpenChange={(open) => { playSound("click"); if (!open) setPreviewHadiahOpen(false); }}>
+        <DialogContent className="bg-[#120a22] border-purple-500/30 text-white max-w-md flex flex-col p-6 rounded-2xl shadow-2xl z-[100]">
+          <DialogHeader className="pb-4 border-b border-purple-500/10">
+            <DialogTitle className="text-base font-black text-white italic tracking-wide flex items-center gap-2">
+              📋 PREVIEW HADIAH
+            </DialogTitle>
+            <p className="text-[10px] text-purple-300 font-bold uppercase tracking-wider mt-1">
+              Board NO. 780608
+            </p>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {(Object.keys(tiers) as Array<keyof typeof tiers>).map((tierKey) => {
+              const tierList = tiers[tierKey];
+              const ownedCount = tierList.filter(c => ownedIds.has(c.id)).length;
+              const percent = tierList.length > 0 ? (ownedCount / tierList.length) * 100 : 0;
+              
+              let barColor = "bg-slate-400";
+              if (tierKey === "S") barColor = "bg-gradient-to-r from-amber-500 to-yellow-500";
+              else if (tierKey === "A") barColor = "bg-gradient-to-r from-pink-500 to-rose-500";
+              else if (tierKey === "B") barColor = "bg-gradient-to-r from-purple-500 to-indigo-500";
+              else if (tierKey === "C") barColor = "bg-gradient-to-r from-blue-500 to-sky-500";
+
+              return (
+                <div key={tierKey} className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-black uppercase tracking-wide">
+                    <span className="flex items-center gap-1.5">
+                      <span className={`px-1.5 py-0.2 rounded text-[9px] border leading-none ${getTierBadgeStyle(tierKey)}`}>
+                        {tierKey}
+                      </span>
+                      <span className="text-purple-200">TIER</span>
+                    </span>
+                    <span className="text-purple-300/80">
+                      {ownedCount} / {tierList.length}
+                    </span>
+                  </div>
+
+                  <div className="h-3 bg-purple-950/60 rounded-full border border-purple-500/10 overflow-hidden p-0.5">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter className="pt-2 border-t border-purple-500/10">
+            <Button
+              onClick={() => setPreviewHadiahOpen(false)}
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs py-2 rounded-xl border border-white/5 active:scale-95"
+            >
+              YA
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CONGRATULATIONS (SELAMAT) REVEAL MODAL */}
+      <Dialog open={resultsModalOpen} onOpenChange={(open) => { playSound("click"); if (!open) setResultsModalOpen(false); }}>
+        <DialogContent className="bg-[#0b0614] border-purple-500/30 text-white max-w-2xl flex flex-col max-h-[85vh] p-0 overflow-hidden rounded-2xl shadow-2xl z-[100]">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-purple-500/15 bg-black/40">
             <div className="flex items-center justify-between">
-              <DialogTitle className="text-lg font-black text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" /> Spin Results ({spinCount}x)
+              <DialogTitle className="text-lg font-black text-white italic tracking-wider flex items-center gap-2">
+                🌟 Spin Results ({spinCount}x)
               </DialogTitle>
-              <span className="text-xs bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-lg font-bold">
+              <span className="text-[10px] bg-purple-950 border border-purple-500/30 text-amber-300 px-3 py-1 rounded-full font-black">
                 Balance: {board.diamonds} 💎
               </span>
             </div>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 p-6 bg-[#090d16]">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {spinResults?.map((res, i) => {
+          <ScrollArea className="flex-1 p-6 bg-[radial-gradient(circle_at_center,_#1c102a_0%,_#09050d_100%)]">
+            {spinCount === 1 ? (
+              (() => {
+                const res = spinResults?.[0];
+                if (!res) return null;
                 const item = res.cosmetic;
                 const isDup = res.isDuplicate;
-                const rarityColor = getTierBadgeStyle(item.rarity);
-                return (
-                  <div key={i} className={`p-4 rounded-xl border flex flex-col justify-between items-center text-center relative overflow-hidden ${
-                    isDup ? "border-indigo-950 bg-indigo-950/20" : "border-indigo-500/20 bg-indigo-900/10"
-                  }`}>
-                    {item.rarity === "S" && (
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(251,191,36,0.15)_0%,_transparent_100%)] animate-pulse" />
-                    )}
+                
+                let rarityGlow = "shadow-[0_0_40px_rgba(148,163,184,0.3)] border-slate-400";
+                if (item.rarity === "S") rarityGlow = "shadow-[0_0_50px_rgba(245,158,11,0.5)] border-amber-500";
+                else if (item.rarity === "A") rarityGlow = "shadow-[0_0_45px_rgba(236,72,153,0.4)] border-pink-500";
+                else if (item.rarity === "B") rarityGlow = "shadow-[0_0_40px_rgba(168,85,247,0.4)] border-purple-500";
+                else if (item.rarity === "C") rarityGlow = "shadow-[0_0_35px_rgba(59,130,246,0.3)] border-blue-500";
 
-                    <div className="space-y-2 w-full relative z-10">
-                      <span className={`text-[8px] px-2 py-0.5 rounded border ${rarityColor}`}>
+                return (
+                  <div className="flex flex-col items-center py-6 relative">
+                    <div className="absolute w-[450px] h-[450px] rounded-full bg-[radial-gradient(circle_at_center,_rgba(168,85,247,0.1)_0%,_transparent_70%)] animate-spin-slow pointer-events-none z-0" />
+                    
+                    <h3 className="text-3xl font-black text-amber-400 italic tracking-widest text-center uppercase drop-shadow-[0_3px_6px_rgba(0,0,0,0.8)] mb-6 z-10">
+                      SELAMAT
+                    </h3>
+
+                    <div className={`w-52 rounded-2xl bg-black/80 border-2 p-5 flex flex-col items-center justify-between text-center min-h-[260px] relative z-10 ${rarityGlow}`}>
+                      <span className={`text-[9px] font-black px-2.5 py-0.5 rounded border ${getTierBadgeStyle(item.rarity)}`}>
                         Tier {item.rarity}
                       </span>
-                      
-                      <h4 className="text-xs font-black text-slate-100 truncate w-full">{item.name}</h4>
-                      <p className="text-[9px] text-indigo-300 font-bold uppercase">{item.type}</p>
-                    </div>
 
-                    <div className="mt-4 w-full relative z-10">
-                      {isDup ? (
-                        <div className="flex flex-col items-center justify-center p-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                          <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest leading-none">Duplicate</span>
-                          <span className="text-[10px] font-black text-amber-300 mt-1 flex items-center gap-0.5 justify-center">
-                            +100 💎
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-[9px] font-extrabold uppercase tracking-wide">
-                          🎉 UNLOCKED!
-                        </div>
-                      )}
+                      <div className="mt-4 flex items-center justify-center">
+                        {renderCosmeticPreview(item, "lg")}
+                      </div>
+
+                      <div className="mt-4 w-full">
+                        <h4 className="text-sm font-black text-slate-100 uppercase tracking-wide">
+                          {item.name}
+                        </h4>
+                        <p className="text-[9px] text-purple-300 font-bold uppercase block mt-0.5">
+                          {item.type}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-2 px-2 leading-relaxed">
+                          {item.description || "Kosmetik eksklusif dari gacha royale."}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 w-full">
+                        {isDup ? (
+                          <div className="py-1.5 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex flex-col items-center">
+                            <span className="text-[8px] font-black text-amber-400 uppercase tracking-wider leading-none">Duplicate</span>
+                            <span className="text-xs font-black text-amber-300 mt-1 flex items-center gap-0.5">
+                              +100 💎 Refunded
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="py-1.5 px-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-[10px] font-black uppercase tracking-widest animate-bounce">
+                            🎉 UNLOCKED!
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
-              })}
-            </div>
+              })()
+            ) : (
+              <div className="space-y-6">
+                <h3 className="text-2xl font-black text-amber-400 italic tracking-widest text-center uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                  SELAMAT
+                </h3>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3.5">
+                  {spinResults?.map((res, i) => {
+                    const item = res.cosmetic;
+                    const isDup = res.isDuplicate;
+                    const rarityColor = getTierBadgeStyle(item.rarity);
+                    
+                    let cardGlow = "border-purple-500/10 bg-black/60 hover:border-purple-500/30";
+                    if (item.rarity === "S") cardGlow = "border-amber-500/50 bg-[#140c02] shadow-[0_0_10px_rgba(245,158,11,0.2)]";
+                    else if (item.rarity === "A") cardGlow = "border-pink-500/50 bg-[#140610] shadow-[0_0_10px_rgba(236,72,153,0.2)]";
+                    
+                    return (
+                      <div
+                        key={i}
+                        className={`p-3 rounded-xl border flex flex-col justify-between items-center text-center relative overflow-hidden transition-all select-none hover:scale-[1.03] duration-200 animate-fade-in-card ${cardGlow}`}
+                        style={{
+                          animationDelay: `${i * 0.08}s`
+                        }}
+                      >
+                        {item.rarity === "S" && (
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(251,191,36,0.1)_0%,_transparent_100%)] animate-pulse" />
+                        )}
+
+                        <div className="space-y-1.5 w-full relative z-10 flex flex-col items-center">
+                          <span className={`text-[8px] font-black px-1.5 py-0.2 rounded border leading-none ${rarityColor}`}>
+                            Tier {item.rarity}
+                          </span>
+                          
+                          <div className="mt-2 flex items-center justify-center min-h-[56px]">
+                            {renderCosmeticPreview(item, "sm")}
+                          </div>
+
+                          <h4 className="text-[10px] font-black text-slate-100 truncate w-full mt-1.5 leading-tight">
+                            {item.name}
+                          </h4>
+                          <span className="text-[7px] text-purple-300/60 font-bold uppercase tracking-wider">
+                            {item.type}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 w-full relative z-10">
+                          {isDup ? (
+                            <div className="py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg text-center">
+                              <span className="text-[7px] font-black text-amber-300 mt-1 flex items-center gap-0.5 justify-center leading-none">
+                                +100 💎
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-[8px] font-black tracking-wider text-center leading-none">
+                              🎉 UNLOCKED
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </ScrollArea>
 
-          <DialogFooter className="px-6 py-4 border-t border-indigo-900/30 bg-[#0d1222] gap-3">
-            <Button
-              onClick={() => setResultsModalOpen(false)}
-              className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-extrabold text-xs px-6 py-2.5 rounded-xl border-t border-white/10"
-            >
-              Continue
-            </Button>
+          <DialogFooter className="px-6 py-4 border-t border-purple-500/15 bg-black/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
+              <span>{shouldEquipWon ? "✓ Auto-Equipped highest tier item." : "Items stored in Inventory."}</span>
+            </div>
+
+            <div className="flex gap-3 w-full sm:w-auto shrink-0 justify-end">
+              <Button
+                onClick={() => {
+                  playSound("click");
+                  setResultsModalOpen(false);
+                  handleSpin(spinCount);
+                }}
+                className="w-full sm:w-auto bg-[#1b122b] hover:bg-[#251b3b] border border-purple-500/30 text-purple-300 font-black text-xs px-5 py-2.5 rounded-xl transition-all"
+              >
+                SPIN LAGI ({spinCount}x)
+              </Button>
+
+              <Button
+                onClick={() => {
+                  playSound("click");
+                  setResultsModalOpen(false);
+                }}
+                className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs px-6 py-2.5 rounded-xl border border-white/5 active:scale-95 transition-all"
+              >
+                YA
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function WalletTab() {
+  const { data: me } = useGetMe();
+  const { data: transactions = [], isLoading } = useListWalletTransactions();
+  const claimDiamonds = useClaimDiamonds();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const handleClaim = async () => {
+    try {
+      const res = await claimDiamonds.mutateAsync();
+      if (res && res.diamonds !== undefined) {
+        queryClient.setQueryData(["/api/gacha/board"], (old: any) => {
+          if (!old) return old;
+          return { ...old, diamonds: res.diamonds };
+        });
+        queryClient.setQueryData(["/api/me"], (old: any) => {
+          if (!old) return old;
+          return { ...old, diamonds: res.diamonds };
+        });
+      }
+      toast({
+        title: "Diamonds claimed! 💎",
+        description: "You've received +1,000 Diamonds for testing.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/gacha/board"] });
+    } catch (err: any) {
+      toast({
+        title: "Claim Failed",
+        description: err.message || "Failed to claim test diamonds.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-8 text-center text-slate-500 font-bold bg-[#f4f3f8] min-h-[300px] flex items-center justify-center">
+        Loading Wallet Data...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* WALLET NEON CARD */}
+      <div className="bg-gradient-to-br from-[#120726] to-[#080214] border border-purple-500/30 rounded-3xl p-6 md:p-8 relative overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+        <div className="absolute -right-10 -top-10 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-2xl">
+                <Wallet className="w-8 h-8 text-purple-400" />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-purple-300 uppercase tracking-widest">Arcadia Wallet</h3>
+                <p className="text-lg font-bold text-white leading-none mt-0.5">{me?.displayName || me?.username}</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest block">Available Balance</span>
+              <div className="text-4xl md:text-5xl font-black text-amber-300 flex items-center gap-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
+                {me?.diamonds ?? 0} <span className="text-3xl">💎</span>
+              </div>
+            </div>
+          </div>
+
+          <Button
+            onClick={handleClaim}
+            disabled={claimDiamonds.isPending}
+            className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-black text-xs px-6 py-3.5 rounded-xl h-auto shadow-lg shadow-amber-500/25 border-t border-white/20 active:scale-95 transition-transform shrink-0 self-start md:self-auto"
+          >
+            {claimDiamonds.isPending ? "Claiming..." : "CLAIM FREE 1,000 💎"}
+          </Button>
+        </div>
+      </div>
+
+      {/* TRANSACTION HISTORY */}
+      <div className="bg-white border border-[#eae8f5] shadow-sm rounded-2xl p-5">
+        <h3 className="text-sm font-extrabold text-[#110e3d] uppercase tracking-wider mb-4 pb-2 border-b border-[#eae8f5] flex items-center gap-2">
+          <span>📜</span> Transaction History
+        </h3>
+
+        {transactions.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 font-bold border border-dashed border-[#eae8f5] rounded-xl bg-slate-50">
+            <p className="text-xs">No transactions logged yet. Spin Gacha or claim free diamonds to start!</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-[#eae8f5] text-[10px] uppercase text-slate-400 font-black">
+                  <th className="py-2.5">Date</th>
+                  <th className="py-2.5">Type</th>
+                  <th className="py-2.5">Description</th>
+                  <th className="py-2.5 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#eae8f5]/50">
+                {transactions.map((t: any) => {
+                  const isCredit = t.amount > 0;
+                  return (
+                    <tr key={t.id} className="text-xs font-semibold text-slate-600">
+                      <td className="py-3 text-slate-400">{format(new Date(t.createdAt), "MMM d, yyyy HH:mm")}</td>
+                      <td className="py-3">
+                        <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                          t.type === "claim_free" ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
+                          t.type === "spin_cost" ? "bg-red-50 text-red-600 border border-red-100" :
+                          t.type === "duplicate_refund" ? "bg-amber-50 text-amber-600 border border-amber-100" :
+                          "bg-purple-50 text-purple-600 border border-purple-100"
+                        }`}>
+                          {t.type.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td className="py-3 text-[#110e3d]">{t.description}</td>
+                      <td className={`py-3 text-right font-black ${isCredit ? "text-emerald-500" : "text-red-500"}`}>
+                        {isCredit ? "+" : ""}{t.amount} 💎
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
