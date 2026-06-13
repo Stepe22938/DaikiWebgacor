@@ -43,6 +43,21 @@ import {
   Home,
   Settings,
   Wallet,
+  Music,
+  Play,
+  Pause,
+  SkipForward,
+  SkipBack,
+  Volume2,
+  VolumeX,
+  Repeat,
+  Shuffle,
+  Library,
+  Search,
+  Heart,
+  ListMusic,
+  Volume1,
+  Clock,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -55,6 +70,13 @@ import {
 } from "recharts";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+declare global {
+  interface Window {
+    Spotify?: any;
+    onSpotifyWebPlaybackSDKReady?: () => void;
+  }
+}
 
 export default function Member() {
   const { data: user, isLoading: userLoading } = useGetMe();
@@ -85,7 +107,7 @@ export default function Member() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet"].includes(tab)) {
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet", "music"].includes(tab)) {
       setActiveTab(tab);
     } else if (!tab) {
       setActiveTab("dashboard");
@@ -277,7 +299,7 @@ export default function Member() {
 
   return (
     <div className="min-h-screen bg-[#f4f3f8] text-[#1e1b4b] flex font-sans antialiased">
-      {/* ── Left Sidebar (Desktop) ────────────────────────────────────────── */}
+      {/* â”€â”€ Left Sidebar (Desktop) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <aside className="w-64 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex">
         <div className="flex flex-col">
           {/* Logo Branding */}
@@ -369,6 +391,16 @@ export default function Member() {
                   }`}
                 >
                   <Wallet className="w-4.5 h-4.5 text-emerald-500" /> My Wallet
+                </button>
+                <button
+                  onClick={() => handleTabChange("music")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "music"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Music className="w-4.5 h-4.5 text-pink-500" /> Music Player
                 </button>
               </nav>
             </div>
@@ -473,7 +505,7 @@ export default function Member() {
         </div>
       </aside>
 
-      {/* ── Mobile Sidebar Drawer ────────────────────────────────────────── */}
+      {/* â”€â”€ Mobile Sidebar Drawer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden bg-black/40 backdrop-blur-sm">
           <div className="w-64 bg-white flex flex-col justify-between p-4 shadow-2xl animate-slide-in">
@@ -492,7 +524,7 @@ export default function Member() {
                     <span className="text-[10px] text-slate-400 font-bold">Player Hub</span>
                   </div>
                 </Link>
-                <Button variant="ghost" size="sm" onClick={() => setMobileSidebarOpen(false)} className="text-slate-400 hover:text-[#110e3d]">✕</Button>
+                <Button variant="ghost" size="sm" onClick={() => setMobileSidebarOpen(false)} className="text-slate-400 hover:text-[#110e3d]">âœ•</Button>
               </div>
 
               <nav className="space-y-1">
@@ -551,6 +583,14 @@ export default function Member() {
                   }`}
                 >
                   <Wallet className="w-4.5 h-4.5 text-emerald-500" /> My Wallet
+                </button>
+                <button
+                  onClick={() => handleTabChangeMobile("music")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "music" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Music className="w-4.5 h-4.5 text-pink-500" /> Music Player
                 </button>
 
                 <div className="py-2 border-t border-[#eae8f5] my-2">
@@ -634,7 +674,7 @@ export default function Member() {
         </div>
       )}
 
-      {/* ── Main Content Area ────────────────────────────────────────────── */}
+      {/* â”€â”€ Main Content Area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         {/* Top Header Bar */}
         <header className="h-16 bg-white border-b border-[#eae8f5] px-6 flex items-center justify-between shrink-0">
@@ -652,7 +692,7 @@ export default function Member() {
               <span>Guild Portal</span>
               <span>/</span>
               <span className="text-[#110e3d] capitalize">
-                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : "Arcadia Credits"}
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "music" ? "Music Player" : "Arcadia Credits"}
               </span>
             </div>
           </div>
@@ -871,7 +911,7 @@ export default function Member() {
                               {ann.title}
                             </CardTitle>
                             <span className="text-[10px] text-slate-400 font-bold mt-1 block">
-                              By {ann.authorName} • {format(new Date(ann.createdAt), 'MMMM d, yyyy')}
+                              By {ann.authorName} â€¢ {format(new Date(ann.createdAt), 'MMMM d, yyyy')}
                             </span>
                           </div>
                           <span className="text-[9px] font-black tracking-wider uppercase bg-violet-50 text-[#6366f1] border border-violet-100 px-2 py-0.5 rounded-lg">
@@ -1075,7 +1115,7 @@ export default function Member() {
                   <p className="text-[11px] text-slate-400 font-semibold mt-1">
                     Handle: <span className="text-slate-800 font-bold">@{user?.username}</span>
                     {user?.userTag && <> <span className="text-[#6366f1] font-bold">{user.userTag}</span></>}
-                    {user?.displayName && <> · Display Name: <span className="text-slate-800 font-bold">{user.displayName}</span></>}
+                    {user?.displayName && <> Â· Display Name: <span className="text-slate-800 font-bold">{user.displayName}</span></>}
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1170,7 +1210,7 @@ export default function Member() {
                     <Input
                       id="currentPassword"
                       type="password"
-                      placeholder="••••••••"
+                      placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
@@ -1321,10 +1361,21 @@ export default function Member() {
               <WalletTab />
             </div>
           )}
+
+          {/* Music Player Tab */}
+          {activeTab === "music" && (
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-black text-[#110e3d]">Music Player</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Stream high-quality RPG background soundtracks</p>
+              </div>
+              <MusicTab />
+            </div>
+          )}
         </div>
       </main>
 
-      {/* ── Dialog Modals ────────────────────────────────────────────────── */}
+      {/* â”€â”€ Dialog Modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
 
       {/* Announcement Detail Modal */}
       <Dialog open={selectedAnnouncement !== null} onOpenChange={() => setSelectedAnnouncement(null)}>
@@ -1524,7 +1575,7 @@ function DevSwitchAccountCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-amber-600 font-extrabold text-sm flex items-center gap-2">
-            <span>🛠️ Switch Account (Roblox Style)</span>
+            <span>ðŸ› ï¸ Switch Account (Roblox Style)</span>
           </CardTitle>
           {activeSwitchClerkId && (
             <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-lg font-bold uppercase tracking-wider">
@@ -1591,7 +1642,7 @@ function DevSwitchAccountCard() {
                         <p className="text-[10px] text-slate-400 font-semibold truncate">
                           @{sessionUsername}
                           {u.primaryEmailAddress?.emailAddress && (
-                            <span className="text-slate-400/70"> · {u.primaryEmailAddress.emailAddress}</span>
+                            <span className="text-slate-400/70"> Â· {u.primaryEmailAddress.emailAddress}</span>
                           )}
                         </p>
                       </div>
@@ -1629,7 +1680,7 @@ function DevSwitchAccountCard() {
               onClick={() => void handleAddAccount()}
               className="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl h-9 shadow-sm"
             >
-              ➕ Add Account (Sign In to Another Account)
+              âž• Add Account (Sign In to Another Account)
             </Button>
             <p className="text-[9px] text-slate-400 font-semibold text-center leading-relaxed">
               *Ensure multi-sessions are enabled in your Clerk dashboard configuration.
@@ -1677,7 +1728,7 @@ function DevSwitchAccountCard() {
                           </span>
                           {u.mcUsername && (
                             <span className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-100 px-1.5 py-0.2 rounded-lg font-bold font-mono">
-                              🎮 {u.mcUsername}
+                              ðŸŽ® {u.mcUsername}
                             </span>
                           )}
                         </div>
@@ -1890,7 +1941,7 @@ function FormsTab() {
   if (forms.length === 0) {
     return (
       <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
-        <div className="text-4xl mb-3">🗳️</div>
+        <div className="text-4xl mb-3">ðŸ—³ï¸</div>
         <p>No active voting options or forms at this time.</p>
       </div>
     );
@@ -1909,7 +1960,7 @@ function FormsTab() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1.5">
                   <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${form.type === "poll" ? "bg-violet-50 text-[#6366f1] border-violet-100" : "bg-blue-50 text-blue-600 border-blue-100"}`}>
-                    {form.type === "poll" ? "🗳️ Voting" : "📋 Form"}
+                    {form.type === "poll" ? "ðŸ—³ï¸ Voting" : "ðŸ“‹ Form"}
                   </span>
                   <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${form.status === "open" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-slate-50 text-slate-500 border-slate-100"}`}>
                     {form.status === "open" ? "Open" : "Closed"}
@@ -1918,11 +1969,11 @@ function FormsTab() {
                 <h3 className="font-extrabold text-sm text-[#110e3d] group-hover:text-[#6366f1] transition-colors truncate">{form.title}</h3>
                 {form.description && <p className="text-[11px] text-slate-400 font-semibold mt-1 line-clamp-2 leading-relaxed">{form.description}</p>}
                 <div className="flex items-center gap-3 mt-3 text-[10px] text-slate-400 font-bold">
-                  <span>👥 {form.responseCount} responses</span>
-                  {form.deadline && <span>⏰ Deadline: {format(new Date(form.deadline), "d MMM yyyy")}</span>}
+                  <span>ðŸ‘¥ {form.responseCount} responses</span>
+                  {form.deadline && <span>â° Deadline: {format(new Date(form.deadline), "d MMM yyyy")}</span>}
                 </div>
               </div>
-              <div className="text-[#6366f1] opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0 shrink-0 font-bold">→</div>
+              <div className="text-[#6366f1] opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0 shrink-0 font-bold">â†’</div>
             </div>
           </div>
         ))}
@@ -1995,10 +2046,10 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
       <DialogHeader className="px-5 pt-5 pb-3 border-b border-slate-100 bg-white shrink-0">
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
           <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black border ${form.type === "poll" ? "bg-violet-50 text-[#6366f1] border-violet-100" : "bg-blue-50 text-blue-600 border-blue-100"}`}>
-            {form.type === "poll" ? "🗳️ Voting" : "📋 Form"}
+            {form.type === "poll" ? "ðŸ—³ï¸ Voting" : "ðŸ“‹ Form"}
           </span>
           {hasResponded && (
-            <span className="text-[9px] px-2 py-0.5 rounded-lg font-black border bg-emerald-50 text-emerald-600 border-emerald-100">✓ Submitted</span>
+            <span className="text-[9px] px-2 py-0.5 rounded-lg font-black border bg-emerald-50 text-emerald-600 border-emerald-100">âœ“ Submitted</span>
           )}
         </div>
         <DialogTitle className="text-[#110e3d] font-extrabold text-base">{form.title}</DialogTitle>
@@ -2021,7 +2072,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
                   return (
                     <div key={opt.id} className="space-y-1">
                       <div className="flex justify-between text-xs font-bold">
-                        <span className={`${isMyVote ? "text-[#6366f1]" : "text-slate-700"}`}>{isMyVote ? "✓ " : ""}{opt.label}</span>
+                        <span className={`${isMyVote ? "text-[#6366f1]" : "text-slate-700"}`}>{isMyVote ? "âœ“ " : ""}{opt.label}</span>
                         <span className="text-slate-400">{opt.voteCount} ({pct}%)</span>
                       </div>
                       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -2048,7 +2099,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
           <div className="space-y-4">
             {hasResponded ? (
               <div className="text-center py-8">
-                <div className="text-4xl mb-2">✅</div>
+                <div className="text-4xl mb-2">âœ…</div>
                 <p className="text-sm font-extrabold text-[#110e3d]">Form submitted successfully!</p>
                 <p className="text-xs text-slate-400 font-bold mt-1">Thank you for filling this form.</p>
                 {(myResponse?.answers ?? []).length > 0 && (
@@ -2105,11 +2156,11 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
         <div className="p-4 border-t border-slate-100 bg-white shrink-0">
           {form.type === "poll" ? (
             <Button className="w-full bg-[#6366f1] text-white hover:bg-indigo-700 font-extrabold text-xs h-9 rounded-xl shadow-md shadow-violet-500/5" disabled={!selectedOption || submitting} onClick={handleVote}>
-              {submitting ? "Submitting..." : "🗳️ Cast Vote"}
+              {submitting ? "Submitting..." : "ðŸ—³ï¸ Cast Vote"}
             </Button>
           ) : (
             <Button className="w-full bg-[#6366f1] text-white hover:bg-indigo-700 font-extrabold text-xs h-9 rounded-xl shadow-md shadow-violet-500/5" disabled={submitting} onClick={handleSubmitForm}>
-              {submitting ? "Submitting..." : "📋 Submit Answers"}
+              {submitting ? "Submitting..." : "ðŸ“‹ Submit Answers"}
             </Button>
           )}
         </div>
@@ -2139,7 +2190,7 @@ function CreditsTab() {
   if (credits.length === 0) {
     return (
       <div className="text-center py-16 text-slate-400 font-bold border border-dashed border-[#eae8f5] rounded-2xl bg-white">
-        <div className="text-4xl mb-3">🛡️</div>
+        <div className="text-4xl mb-3">ðŸ›¡ï¸</div>
         <p className="text-xs">No team contributors registered in Arcadia Credits.</p>
       </div>
     );
@@ -2496,7 +2547,7 @@ function GachaTab() {
         });
       }
       toast({
-        title: "Diamonds claimed! 💎",
+        title: "Diamonds claimed! ðŸ’Ž",
         description: "You've received +1,000 Diamonds for testing."
       });
       await refetch();
@@ -2521,7 +2572,7 @@ function GachaTab() {
     if ((board.diamonds ?? 0) < cost) {
       toast({
         title: "Insufficient Diamonds",
-        description: `Spinning ${count}x costs ${cost} 💎, but you only have ${board.diamonds} 💎. Claim free diamonds first!`,
+        description: `Spinning ${count}x costs ${cost} ðŸ’Ž, but you only have ${board.diamonds} ðŸ’Ž. Claim free diamonds first!`,
         variant: "destructive"
       });
       return;
@@ -2706,7 +2757,7 @@ function GachaTab() {
 
     return (
       <div className={`rounded-xl bg-purple-950/40 border border-purple-500/10 flex items-center justify-center shadow-inner select-none ${isLg ? "w-16 h-16 text-3xl" : "w-10 h-10 text-xl"}`}>
-        🎁
+        ðŸŽ
       </div>
     );
   };
@@ -2823,7 +2874,7 @@ function GachaTab() {
               {renderCosmeticPreview(previewItem, "sm")}
               {ownedIds.has(previewItem.id) && (
                 <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-black border border-slate-900">
-                  ✓
+                  âœ“
                 </span>
               )}
             </div>
@@ -2939,7 +2990,7 @@ function GachaTab() {
                   animationDelay: `${i * 0.08}s`
                 } as any}
               >
-                💎
+                ðŸ’Ž
               </div>
             );
           })}
@@ -2954,11 +3005,11 @@ function GachaTab() {
           <div className="space-y-4 flex-1">
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black tracking-widest uppercase border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                ⚡ RUSH BOARD EVENT
+                âš¡ RUSH BOARD EVENT
               </div>
               
               <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-rose-500/20 text-rose-400 text-[10px] font-black tracking-widest uppercase border border-rose-500/30">
-                ⏳ ENDS IN: 7d 6h
+                â³ ENDS IN: 7d 6h
               </div>
 
               <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-black tracking-widest uppercase border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)] animate-pulse">
@@ -2988,7 +3039,7 @@ function GachaTab() {
             <div className="flex flex-col">
               <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest leading-none">Your Diamonds</span>
               <span className="text-2xl font-black text-amber-300 mt-1 flex items-center gap-1.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                {board.diamonds ?? 0} <span className="text-xl">💎</span>
+                {board.diamonds ?? 0} <span className="text-xl">ðŸ’Ž</span>
               </span>
             </div>
 
@@ -2997,7 +3048,7 @@ function GachaTab() {
               disabled={claimDiamonds.isPending}
               className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-black text-xs px-4 py-2.5 rounded-xl h-auto shadow-lg shadow-amber-500/35 border-t border-white/20 active:scale-95 transition-transform"
             >
-              {claimDiamonds.isPending ? "..." : "+ 1,000 💎"}
+              {claimDiamonds.isPending ? "..." : "+ 1,000 ðŸ’Ž"}
             </Button>
           </div>
         </div>
@@ -3073,10 +3124,10 @@ function GachaTab() {
                         className={`relative rounded-xl p-3 border flex flex-col justify-between items-center text-center cursor-pointer transition-all aspect-square select-none ${rarityBorder}`}
                       >
                         <div className="w-10 h-10 rounded-lg bg-black/40 flex items-center justify-center border border-purple-500/5 text-lg relative">
-                          {item.type === "badge" ? "🛡️" : item.type === "border" ? "🖼️" : "🖼️"}
+                          {item.type === "badge" ? "ðŸ›¡ï¸" : item.type === "border" ? "ðŸ–¼ï¸" : "ðŸ–¼ï¸"}
                           {isOwned && (
                             <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black border border-[#0b0713]">
-                              ✓
+                              âœ“
                             </span>
                           )}
                         </div>
@@ -3091,7 +3142,7 @@ function GachaTab() {
                         </div>
 
                         {!isOwned && (
-                          <span className="absolute top-1 right-1 text-[8px] opacity-40">🔒</span>
+                          <span className="absolute top-1 right-1 text-[8px] opacity-40">ðŸ”’</span>
                         )}
                       </div>
                     );
@@ -3135,7 +3186,7 @@ function GachaTab() {
                     1 SPIN
                   </span>
                   <span className="text-xs font-black text-cyan-300 mt-1.5 flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] skew-x-12">
-                    9 <span className="text-[10px]">💎</span>
+                    9 <span className="text-[10px]">ðŸ’Ž</span>
                   </span>
                 </button>
               </div>
@@ -3151,7 +3202,7 @@ function GachaTab() {
                     {bulkOption} SPIN
                   </span>
                   <span className="text-xs font-black text-slate-950 mt-1.5 flex items-center gap-1 skew-x-12">
-                    {bulkOption === 10 ? 79 : bulkOption === 25 ? 195 : 390} <span className="text-[10px]">💎</span>
+                    {bulkOption === 10 ? 79 : bulkOption === 25 ? 195 : 390} <span className="text-[10px]">ðŸ’Ž</span>
                   </span>
                 </button>
 
@@ -3164,7 +3215,7 @@ function GachaTab() {
                   disabled={isSpinning}
                   className="px-3 rounded-r-xl bg-amber-500 hover:bg-amber-400 border-l border-amber-955/20 border-t border-b border-r border-amber-400/20 text-slate-950 flex items-center justify-center cursor-pointer disabled:opacity-50 select-none -skew-x-12"
                 >
-                  <span className={`text-[10px] skew-x-12 transition-transform duration-200 ${bulkDropdownOpen ? "rotate-180" : ""}`}>▼</span>
+                  <span className={`text-[10px] skew-x-12 transition-transform duration-200 ${bulkDropdownOpen ? "rotate-180" : ""}`}>â–¼</span>
                 </button>
 
                 {bulkDropdownOpen && (
@@ -3188,7 +3239,7 @@ function GachaTab() {
                           }`}
                         >
                           <span>{option} SPINS Option</span>
-                          <span className="text-amber-400 font-extrabold">{cost} 💎</span>
+                          <span className="text-amber-400 font-extrabold">{cost} ðŸ’Ž</span>
                         </button>
                       );
                     })}
@@ -3209,7 +3260,7 @@ function GachaTab() {
 
             <div className="p-4 border-b border-purple-500/10 bg-black/40 flex items-center justify-between relative z-10">
               <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest">
-                ❖ COSMETIC PREVIEW SHOWCASE
+                â– COSMETIC PREVIEW SHOWCASE
               </span>
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
@@ -3334,7 +3385,7 @@ function GachaTab() {
                       })()
                     ) : (
                       <div className="w-full text-center py-2 px-4 bg-slate-950/60 border border-purple-500/10 rounded-xl text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                        🔒 SPIN GACHA UNTUK MEMBUKA ITEM INI
+                        ðŸ”’ SPIN GACHA UNTUK MEMBUKA ITEM INI
                       </div>
                     )}
                   </div>
@@ -3376,7 +3427,7 @@ function GachaTab() {
                   <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 border-b-2 border-r-2 border-cyan-400" />
                   
                   <div className="absolute inset-0 m-auto w-6 h-6 rounded bg-[#0b0417] border border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.4)] flex items-center justify-center text-[10px] text-cyan-400 font-black animate-pulse">
-                    ❖
+                    â–
                   </div>
                 </div>
 
@@ -3407,7 +3458,7 @@ function GachaTab() {
         <DialogContent className="bg-[#120a22] border-purple-500/30 text-white max-w-md flex flex-col p-6 rounded-2xl shadow-2xl z-[100]">
           <DialogHeader className="pb-4 border-b border-purple-500/10">
             <DialogTitle className="text-base font-black text-white italic tracking-wide flex items-center gap-2">
-              📋 PREVIEW HADIAH
+              ðŸ“‹ PREVIEW HADIAH
             </DialogTitle>
             <p className="text-[10px] text-purple-300 font-bold uppercase tracking-wider mt-1">
               Board NO. 780608
@@ -3468,10 +3519,10 @@ function GachaTab() {
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-purple-500/15 bg-black/40">
             <div className="flex items-center justify-between">
               <DialogTitle className="text-lg font-black text-white italic tracking-wider flex items-center gap-2">
-                🌟 Spin Results ({spinCount}x)
+                ðŸŒŸ Spin Results ({spinCount}x)
               </DialogTitle>
               <span className="text-[10px] bg-purple-950 border border-purple-500/30 text-amber-300 px-3 py-1 rounded-full font-black">
-                Balance: {board.diamonds} 💎
+                Balance: {board.diamonds} ðŸ’Ž
               </span>
             </div>
           </DialogHeader>
@@ -3524,12 +3575,12 @@ function GachaTab() {
                           <div className="py-1.5 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex flex-col items-center">
                             <span className="text-[8px] font-black text-amber-400 uppercase tracking-wider leading-none">Duplicate</span>
                             <span className="text-xs font-black text-amber-300 mt-1 flex items-center gap-0.5">
-                              +100 💎 Refunded
+                              +100 ðŸ’Ž Refunded
                             </span>
                           </div>
                         ) : (
                           <div className="py-1.5 px-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-[10px] font-black uppercase tracking-widest animate-bounce">
-                            🎉 UNLOCKED!
+                            ðŸŽ‰ UNLOCKED!
                           </div>
                         )}
                       </div>
@@ -3586,12 +3637,12 @@ function GachaTab() {
                           {isDup ? (
                             <div className="py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg text-center">
                               <span className="text-[7px] font-black text-amber-300 mt-1 flex items-center gap-0.5 justify-center leading-none">
-                                +100 💎
+                                +100 ðŸ’Ž
                               </span>
                             </div>
                           ) : (
                             <div className="py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-[8px] font-black tracking-wider text-center leading-none">
-                              🎉 UNLOCKED
+                              ðŸŽ‰ UNLOCKED
                             </div>
                           )}
                         </div>
@@ -3605,7 +3656,7 @@ function GachaTab() {
 
           <DialogFooter className="px-6 py-4 border-t border-purple-500/15 bg-black/40 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
-              <span>{shouldEquipWon ? "✓ Auto-Equipped highest tier item." : "Items stored in Inventory."}</span>
+              <span>{shouldEquipWon ? "âœ“ Auto-Equipped highest tier item." : "Items stored in Inventory."}</span>
             </div>
 
             <div className="flex gap-3 w-full sm:w-auto shrink-0 justify-end">
@@ -3658,7 +3709,7 @@ function WalletTab() {
         });
       }
       toast({
-        title: "Diamonds claimed! 💎",
+        title: "Diamonds claimed! ðŸ’Ž",
         description: "You've received +1,000 Diamonds for testing.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/me"] });
@@ -3703,7 +3754,7 @@ function WalletTab() {
             <div className="space-y-1">
               <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest block">Available Balance</span>
               <div className="text-4xl md:text-5xl font-black text-amber-300 flex items-center gap-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
-                {me?.diamonds ?? 0} <span className="text-3xl">💎</span>
+                {me?.diamonds ?? 0} <span className="text-3xl">ðŸ’Ž</span>
               </div>
             </div>
           </div>
@@ -3713,7 +3764,7 @@ function WalletTab() {
             disabled={claimDiamonds.isPending}
             className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-black text-xs px-6 py-3.5 rounded-xl h-auto shadow-lg shadow-amber-500/25 border-t border-white/20 active:scale-95 transition-transform shrink-0 self-start md:self-auto"
           >
-            {claimDiamonds.isPending ? "Claiming..." : "CLAIM FREE 1,000 💎"}
+            {claimDiamonds.isPending ? "Claiming..." : "CLAIM FREE 1,000 ðŸ’Ž"}
           </Button>
         </div>
       </div>
@@ -3721,7 +3772,7 @@ function WalletTab() {
       {/* TRANSACTION HISTORY */}
       <div className="bg-white border border-[#eae8f5] shadow-sm rounded-2xl p-5">
         <h3 className="text-sm font-extrabold text-[#110e3d] uppercase tracking-wider mb-4 pb-2 border-b border-[#eae8f5] flex items-center gap-2">
-          <span>📜</span> Transaction History
+          <span>ðŸ“œ</span> Transaction History
         </h3>
 
         {transactions.length === 0 ? (
@@ -3757,7 +3808,7 @@ function WalletTab() {
                       </td>
                       <td className="py-3 text-[#110e3d]">{t.description}</td>
                       <td className={`py-3 text-right font-black ${isCredit ? "text-emerald-500" : "text-red-500"}`}>
-                        {isCredit ? "+" : ""}{t.amount} 💎
+                        {isCredit ? "+" : ""}{t.amount} ðŸ’Ž
                       </td>
                     </tr>
                   );
@@ -3767,6 +3818,1256 @@ function WalletTab() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// â”€â”€ Spotify Client Credentials Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── YouTube Data API v3 Config ─────────────────────────────────────
+const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || "";
+
+async function searchYouTubeVideoId(artist: string, title: string): Promise<string | null> {
+  if (!YOUTUBE_API_KEY) return null;
+  try {
+    const query = `${artist} ${title} official audio`;
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=1&key=${YOUTUBE_API_KEY}&videoCategoryId=10`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.items?.[0]?.id?.videoId || null;
+  } catch {
+    return null;
+  }
+}
+
+async function searchYouTubeTracks(query: string): Promise<any[]> {
+  if (!YOUTUBE_API_KEY) return [];
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=25&key=${YOUTUBE_API_KEY}&videoCategoryId=10`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.items || [])
+      .filter((item: any) => item?.id?.videoId)
+      .map((item: any) => ({
+        id: `youtube-${item.id.videoId}`,
+        title: item.snippet?.title || "YouTube Track",
+        artist: item.snippet?.channelTitle || "YouTube Music",
+        file: "",
+        cover: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.default?.url || "/village.png",
+        duration: "Full",
+        type: "YouTube Music",
+        isSpotify: false,
+        isYouTube: true,
+        youtubeVideoId: item.id.videoId,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function searchSpotify(query: string): Promise<any[]> {
+  try {
+    const res = await fetch(
+      `/api/music/spotify/search?q=${encodeURIComponent(query)}&market=ID`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.tracks || [];
+    return (data.tracks?.items || []).map((item: any) => ({
+      id: item.id,
+      title: item.name,
+      artist: item.artists?.map((a: any) => a.name).join(", ") || "Unknown",
+      file: "",
+      previewUrl: item.preview_url,
+      cover: item.album?.images?.[0]?.url || "/village.png",
+      duration: formatMsToMinSecStatic(item.duration_ms),
+      type: "Spotify Â· " + (item.album?.name || "Album"),
+      isSpotify: true,
+      spotifyUrl: item.external_urls?.spotify,
+      spotifyEmbedUrl: `https://open.spotify.com/embed/track/${item.id}`,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function formatMsToMinSecStatic(ms: number) {
+  if (!ms) return "3:00";
+  const totalSecs = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSecs / 60);
+  const seconds = totalSecs % 60;
+  return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+}
+
+// Local RPG Tracks (always available offline)
+const LOCAL_TRACKS = [
+    {
+      id: 1,
+      title: "Town Square Melodies",
+      artist: "Lobby Ambient",
+      file: "/music/lobby_ambient.mp3",
+      cover: "/village.png",
+      duration: "6:12",
+      type: "Lobby Favorites"
+    },
+    {
+      id: 2,
+      title: "Quest of the Forest",
+      artist: "Adventure Theme",
+      file: "/music/adventure_theme.mp3",
+      cover: "/dungeon.png",
+      duration: "7:05",
+      type: "Combat & Adventure"
+    },
+    {
+      id: 3,
+      title: "The Drunken Dragon Inn",
+      artist: "Tavern Theme",
+      file: "/music/tavern_theme.mp3",
+      cover: "/lobby.png",
+      duration: "5:44",
+      type: "Tavern Classics"
+    },
+    {
+      id: 4,
+      title: "Valor & Iron",
+      artist: "Castle Theme",
+      file: "/music/castle_siege.mp3",
+      cover: "/login_bg.png",
+      duration: "5:02",
+      type: "Combat & Adventure"
+    },
+    {
+      id: 5,
+      title: "Echoes of the Nether",
+      artist: "Nether Ambient",
+      file: "/music/nether_echoes.mp3",
+      cover: "/char_idle.png",
+      duration: "6:02",
+      type: "Combat & Adventure"
+    },
+    {
+      id: 6,
+      title: "Starlight Oasis",
+      artist: "Desert Ambient",
+      file: "/music/starlight_oasis.mp3",
+      cover: "/char_looking.png",
+      duration: "7:38",
+      type: "Lobby Favorites"
+    },
+    {
+      id: 7,
+      title: "Ancient Ruins",
+      artist: "Dungeon Ambient",
+      file: "/music/ancient_ruins.mp3",
+      cover: "/char_peekaboo.png",
+      duration: "5:30",
+      type: "Combat & Adventure"
+    },
+    {
+      id: 8,
+      title: "Dragon's Lair",
+      artist: "Boss Battle",
+      file: "/music/dragons_lair.mp3",
+      cover: "/login_character.png",
+      duration: "5:18",
+      type: "Combat & Adventure"
+    },
+    {
+      id: 9,
+      title: "Whispering Woods",
+      artist: "Forest Ambient",
+      file: "/music/whispering_woods.mp3",
+      cover: "/opengraph.jpg",
+      duration: "6:35",
+      type: "Lobby Favorites"
+    },
+    {
+      id: 10,
+      title: "Shadow Dungeon",
+      artist: "Dungeon Ambient",
+      file: "/music/shadow_dungeon.mp3",
+      cover: "/dungeon.png",
+      duration: "8:47",
+      type: "Combat & Adventure"
+    },
+    {
+      id: 11,
+      title: "Fallen Kingdom",
+      artist: "Castle Theme",
+      file: "/music/fallen_kingdom.mp3",
+      cover: "/login_bg.png",
+      duration: "9:11",
+      type: "Combat & Adventure"
+    },
+    {
+      id: 12,
+      title: "The Golden Chalice",
+      artist: "Tavern Theme",
+      file: "/music/golden_chalice.mp3",
+      cover: "/lobby.png",
+      duration: "8:33",
+      type: "Tavern Classics"
+    },
+    {
+      id: 13,
+      title: "Eldritch Whispers",
+      artist: "Nether Ambient",
+      file: "/music/eldritch_whispers.mp3",
+      cover: "/char_peekaboo.png",
+      duration: "7:50",
+      type: "Combat & Adventure"
+    },
+    {
+      id: 14,
+      title: "Elven Sanctuary",
+      artist: "Forest Ambient",
+      file: "/music/elven_sanctuary.mp3",
+      cover: "/char_idle.png",
+      duration: "8:36",
+      type: "Lobby Favorites"
+    },
+    {
+      id: 15,
+      title: "Oceanic Voyage",
+      artist: "Adventure Theme",
+      file: "/music/oceanic_voyage.mp3",
+      cover: "/char_looking.png",
+      duration: "7:18",
+      type: "Combat & Adventure"
+    },
+    {
+      id: 16,
+      title: "Volcanic Depths",
+      artist: "Nether Ambient",
+      file: "/music/volcanic_depths.mp3",
+      cover: "/login_character.png",
+      duration: "8:03",
+      type: "Combat & Adventure"
+    }
+];
+
+function MusicTab() {
+  const [tracks, setTracks] = useState<any[]>(LOCAL_TRACKS);
+  const [isLoadingSpotify, setIsLoadingSpotify] = useState(true);
+
+  const [currentTrack, setCurrentTrack] = useState<any>(LOCAL_TRACKS[0]);
+  const [playingPlaylistTracks, setPlayingPlaylistTracks] = useState<any[]>(LOCAL_TRACKS);
+  const [activePlaylist, setActivePlaylist] = useState("All Tracks");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isLooping, setIsLooping] = useState(false);
+  const [isShuffling, setIsShuffling] = useState(false);
+  const [volume, setVolume] = useState(0.8);
+  const [isMuted, setIsMuted] = useState(false);
+  const [hoveredTrackId, setHoveredTrackId] = useState<string | number | null>(null);
+  const [likedTracks, setLikedTracks] = useState<Record<string | number, boolean>>({});
+  const [favoriteTracks, setFavoriteTracks] = useState<Record<string | number, any>>({});
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchSource, setSearchSource] = useState<"youtube" | "spotify" | "itunes" | "none">("none");
+  const [spotifyModalTrack, setSpotifyModalTrack] = useState<any | null>(null);
+  const [ytModalTrack, setYtModalTrack] = useState<any | null>(null);
+  const [ytVideoId, setYtVideoId] = useState<string | null>(null);
+  const [ytVideoLoading, setYtVideoLoading] = useState(false);
+  const [spotifyReplayKey, setSpotifyReplayKey] = useState(0);
+  const [spotifyPlayer, setSpotifyPlayer] = useState<any | null>(null);
+  const [spotifyDeviceId, setSpotifyDeviceId] = useState<string | null>(null);
+  const [spotifyConnected, setSpotifyConnected] = useState(false);
+  const [spotifyError, setSpotifyError] = useState("");
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const spotifyPlayerRef = useRef<any | null>(null);
+
+  const parseDurationToSeconds = (value?: string) => {
+    if (!value) return 0;
+    const parts = value.split(":").map((part) => Number(part));
+    if (parts.some((part) => Number.isNaN(part))) return 0;
+    return parts.reduce((total, part) => total * 60 + part, 0);
+  };
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("arcadia_music_favorites");
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as Record<string | number, any>;
+      setFavoriteTracks(parsed);
+      setLikedTracks(
+        Object.fromEntries(Object.keys(parsed).map((trackId) => [trackId, true]))
+      );
+    } catch {
+      setFavoriteTracks({});
+      setLikedTracks({});
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("arcadia_music_favorites", JSON.stringify(favoriteTracks));
+  }, [favoriteTracks]);
+
+  const getSpotifyUserToken = async () => {
+    const response = await fetch("/api/music/spotify/token");
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data.accessToken === "string" ? data.accessToken : null;
+  };
+
+  const loadSpotifySdk = () =>
+    new Promise<void>((resolve) => {
+      if (window.Spotify) {
+        resolve();
+        return;
+      }
+
+      const existingScript = document.querySelector<HTMLScriptElement>("script[src='https://sdk.scdn.co/spotify-player.js']");
+      window.onSpotifyWebPlaybackSDKReady = () => resolve();
+
+      if (!existingScript) {
+        const script = document.createElement("script");
+        script.src = "https://sdk.scdn.co/spotify-player.js";
+        script.async = true;
+        document.body.appendChild(script);
+      }
+    });
+
+  const connectSpotifyPlayer = async () => {
+    setSpotifyError("");
+    const token = await getSpotifyUserToken();
+    if (!token) {
+      window.location.href = `/api/music/spotify/login?returnTo=${encodeURIComponent("/member?tab=music")}`;
+      return null;
+    }
+
+    await loadSpotifySdk();
+
+    if (spotifyPlayerRef.current && spotifyDeviceId) {
+      return { player: spotifyPlayerRef.current, deviceId: spotifyDeviceId };
+    }
+
+    const player = new window.Spotify.Player({
+      name: "Arcadia Music Player",
+      getOAuthToken: async (callback: (token: string) => void) => {
+        const freshToken = await getSpotifyUserToken();
+        if (freshToken) callback(freshToken);
+      },
+      volume,
+    });
+
+    player.addListener("ready", ({ device_id }: { device_id: string }) => {
+      setSpotifyDeviceId(device_id);
+      setSpotifyConnected(true);
+      setSpotifyError("");
+    });
+    player.addListener("not_ready", () => setSpotifyConnected(false));
+    player.addListener("account_error", ({ message }: { message: string }) => setSpotifyError(message || "Spotify Premium diperlukan."));
+    player.addListener("authentication_error", ({ message }: { message: string }) => setSpotifyError(message || "Spotify login gagal."));
+    player.addListener("playback_error", ({ message }: { message: string }) => setSpotifyError(message || "Spotify playback gagal."));
+    player.addListener("player_state_changed", (state: any) => {
+      if (!state) return;
+      setIsPlaying(!state.paused);
+      setCurrentTime(Math.floor((state.position || 0) / 1000));
+      setDuration(Math.floor((state.duration || 0) / 1000));
+    });
+
+    const connected = await player.connect();
+    if (!connected) {
+      setSpotifyError("Spotify player gagal connect.");
+      return null;
+    }
+
+    spotifyPlayerRef.current = player;
+    setSpotifyPlayer(player);
+    await player.setVolume(volume);
+
+    return new Promise<{ player: any; deviceId: string } | null>((resolve) => {
+      const timeout = window.setTimeout(() => resolve(null), 8000);
+      player.addListener("ready", ({ device_id }: { device_id: string }) => {
+        window.clearTimeout(timeout);
+        resolve({ player, deviceId: device_id });
+      });
+    });
+  };
+
+  useEffect(() => {
+    if (spotifyPlayerRef.current) {
+      void spotifyPlayerRef.current.setVolume(isMuted ? 0 : volume);
+    }
+  }, [volume, isMuted]);
+
+  // Fetch YouTube video ID when modal opens
+  useEffect(() => {
+    if (!ytModalTrack) { setYtVideoId(null); return; }
+    if (ytModalTrack.youtubeVideoId) {
+      setYtVideoId(ytModalTrack.youtubeVideoId);
+      setYtVideoLoading(false);
+      return;
+    }
+    setYtVideoLoading(true);
+    setYtVideoId(null);
+    searchYouTubeVideoId(ytModalTrack.artist, ytModalTrack.title)
+      .then((id) => { setYtVideoId(id); setYtVideoLoading(false); })
+      .catch(() => setYtVideoLoading(false));
+  }, [ytModalTrack]);
+
+
+  // â”€â”€ Auto-load Spotify tracks into All Tracks on mount â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(() => {
+    const GENRE_QUERIES = [
+      { term: "top hits 2024", genre: "Global Charts" },
+      { term: "indonesia pop 2024", genre: "Global Charts" },
+      { term: "hip hop rap", genre: "Global Charts" },
+      { term: "r&b soul", genre: "Global Charts" },
+      { term: "pop hits", genre: "Global Charts" },
+      { term: "EDM electronic", genre: "Global Charts" },
+      { term: "K-pop", genre: "Global Charts" },
+      { term: "rock classic hits", genre: "Global Charts" },
+      { term: "viral tiktok 2024", genre: "Global Charts" },
+      { term: "acoustic indie", genre: "Global Charts" },
+      { term: "jazz chill", genre: "Global Charts" },
+      { term: "latin reggaeton", genre: "Global Charts" },
+    ];
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const seenIds = new Set<string | number>();
+        const allItems: any[] = [];
+
+        await Promise.all(
+          GENRE_QUERIES.map(async ({ term, genre }) => {
+            try {
+              const spotifyTracks = await searchSpotify(term);
+              for (const item of spotifyTracks) {
+                if (!item?.id || seenIds.has(item.id)) continue;
+                seenIds.add(item.id);
+                allItems.push({ ...item, type: genre, isSpotify: true });
+              }
+            } catch (_) {}
+          })
+        );
+
+        if (!cancelled) {
+          setTracks([...LOCAL_TRACKS, ...allItems]);
+          setIsLoadingSpotify(false);
+        }
+      } catch {
+        if (!cancelled) setIsLoadingSpotify(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
+
+
+  // Filter tracks by selected playlist
+  const filteredTracks = activePlaylist === "All Tracks"
+    ? tracks
+    : activePlaylist === "Favorites"
+    ? Object.values(favoriteTracks)
+    : activePlaylist === "Global Charts"
+    ? tracks.filter((t: any) => t.isSpotify === true)
+    : tracks.filter((t: any) => t.type === activePlaylist);
+
+  // Tracks to display in the main content pane
+  const displayTracks = searchQuery.trim() !== "" ? searchResults : filteredTracks;
+
+  const formatMsToMinSec = (ms: number) => {
+    if (!ms) return "3:00";
+    const totalSecs = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSecs / 60);
+    const seconds = totalSecs % 60;
+    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+  };
+
+  // Debounced search: try Spotify first, fallback to iTunes
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      setSearchSource("none");
+      return;
+    }
+
+    setIsSearching(true);
+    const delayDebounceFn = setTimeout(async () => {
+      // 1. Spotify stays as the primary music source.
+      try {
+        const spotifyResults = await searchSpotify(searchQuery);
+        if (spotifyResults.length > 0) {
+          setSearchResults(spotifyResults);
+          setSearchSource("spotify");
+          setIsSearching(false);
+          return;
+        }
+      } catch (e) {
+        console.error("Spotify search error:", e);
+      }
+
+      setSearchResults([]);
+      setSearchSource("spotify");
+      setIsSearching(false);
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? 0 : volume;
+    }
+  }, [volume, isMuted]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.loop = isLooping;
+    }
+  }, [isLooping]);
+
+  useEffect(() => {
+    if (audioRef.current && currentTrack.file) {
+      audioRef.current.src = currentTrack.file;
+      audioRef.current.load();
+      if (isPlaying) {
+        audioRef.current.play().catch(err => {
+          console.log("Playback failed:", err);
+          setIsPlaying(false);
+        });
+      }
+    }
+  }, [currentTrack.file]);
+
+  useEffect(() => {
+    if (!isPlaying || (!currentTrack.isSpotify && !currentTrack.isYouTube)) return;
+
+    const totalSeconds = parseDurationToSeconds(currentTrack.duration);
+    if (!totalSeconds) return;
+
+    const timer = window.setInterval(() => {
+      setCurrentTime((previousTime) => {
+        const nextTime = previousTime + 1;
+        if (nextTime >= totalSeconds) {
+          if (isLooping) {
+            if (currentTrack.isSpotify) {
+              setSpotifyReplayKey((key) => key + 1);
+            }
+            return 0;
+          }
+          setIsPlaying(false);
+          return totalSeconds;
+        }
+        return nextTime;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [currentTrack.duration, currentTrack.isSpotify, currentTrack.isYouTube, isLooping, isPlaying]);
+
+  const handlePlayPause = () => {
+    if (currentTrack.isSpotify) {
+      audioRef.current?.pause();
+      if (!spotifyPlayerRef.current) {
+        void playTrack(currentTrack, playingPlaylistTracks);
+        return;
+      }
+      void spotifyPlayerRef.current.togglePlay();
+      return;
+    }
+    if (currentTrack.isYouTube) {
+      audioRef.current?.pause();
+      setIsPlaying((playing) => !playing);
+      return;
+    }
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play().then(() => {
+        setIsPlaying(true);
+      }).catch(err => {
+        console.log("Playback failed:", err);
+      });
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration);
+    }
+  };
+
+  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    setCurrentTime(time);
+    if (audioRef.current && !currentTrack.isSpotify && !currentTrack.isYouTube) {
+      audioRef.current.currentTime = time;
+    }
+  };
+
+  const handleNext = () => {
+    if (playingPlaylistTracks.length === 0) return;
+    const activeIndex = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id);
+    if (isShuffling) {
+      const randomIndex = Math.floor(Math.random() * playingPlaylistTracks.length);
+      void playTrack(playingPlaylistTracks[randomIndex], playingPlaylistTracks);
+    } else {
+      const nextIndex = (activeIndex + 1) % playingPlaylistTracks.length;
+      void playTrack(playingPlaylistTracks[nextIndex], playingPlaylistTracks);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (playingPlaylistTracks.length === 0) return;
+    const activeIndex = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id);
+    const prevIndex = (activeIndex - 1 + playingPlaylistTracks.length) % playingPlaylistTracks.length;
+    void playTrack(playingPlaylistTracks[prevIndex], playingPlaylistTracks);
+  };
+
+  const handleEnded = () => {
+    if (isLooping) {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(err => console.log(err));
+      }
+    } else {
+      handleNext();
+    }
+  };
+
+  const toggleLike = (track: any) => {
+    const trackId = track.id;
+    setLikedTracks(prev => ({
+      ...prev,
+      [trackId]: !prev[trackId]
+    }));
+    setFavoriteTracks(prev => {
+      if (prev[trackId]) {
+        const next = { ...prev };
+        delete next[trackId];
+        return next;
+      }
+      return { ...prev, [trackId]: track };
+    });
+  };
+
+  const playTrack = async (track: any, playlist: any[]) => {
+    if (track.isYouTube) {
+      audioRef.current?.pause();
+      setCurrentTrack(track);
+      setPlayingPlaylistTracks(playlist);
+      setCurrentTime(0);
+      setDuration(0);
+      setSpotifyReplayKey(0);
+      setIsPlaying(true);
+      return;
+    }
+
+    if (track.isSpotify) {
+      audioRef.current?.pause();
+      setCurrentTrack(track);
+      setPlayingPlaylistTracks(playlist);
+      setCurrentTime(0);
+      setDuration(0);
+      setSpotifyReplayKey(0);
+      const connection = await connectSpotifyPlayer();
+      if (!connection) return;
+      try {
+        const response = await fetch("/api/music/spotify/play", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId: connection.deviceId, uri: track.spotifyUri || `spotify:track:${track.id}` }),
+        });
+        if (!response.ok) {
+          throw new Error(`Spotify playback failed: ${response.status}`);
+        }
+        await connection.player.setVolume(isMuted ? 0 : volume);
+        setIsPlaying(true);
+      } catch (error) {
+        setSpotifyError(error instanceof Error ? error.message : "Spotify playback gagal.");
+      }
+      return;
+    }
+
+    setCurrentTrack(track);
+    setPlayingPlaylistTracks(playlist);
+    setIsPlaying(true);
+  };
+
+  const formatTime = (secs: number) => {
+    if (isNaN(secs)) return "0:00";
+    const minutes = Math.floor(secs / 60);
+    const seconds = Math.floor(secs % 60);
+    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+  };
+
+  // Get active cover representing active playlist
+  const playlistCover = searchQuery.trim() !== "" && displayTracks[0]?.cover
+    ? displayTracks[0].cover
+    : (filteredTracks[0]?.cover || "/village.png");
+
+  const playlistTitle = searchQuery.trim() !== ""
+    ? `Search Results for "${searchQuery}"`
+    : activePlaylist;
+
+  const playlistSubtext = searchQuery.trim() !== ""
+    ? searchSource === "youtube"
+      ? `YouTube Music Catalog - Found ${displayTracks.length} full songs`
+      : searchSource === "spotify"
+      ? `Spotify Catalog - Found ${displayTracks.length} tracks`
+      : `Spotify Catalog - Found ${displayTracks.length} tracks`
+    : `Created by Arcadia Realm Lords Â· ${displayTracks.length} tracks`;
+
+  const playlistCategoryLabel = searchQuery.trim() !== ""
+    ? searchSource === "youtube" ? "YOUTUBE MUSIC" : "SPOTIFY SEARCH"
+    : "PUBLIC PLAYLIST";
+
+  const visualDuration = currentTrack.isSpotify || currentTrack.isYouTube
+    ? parseDurationToSeconds(currentTrack.duration) || 100
+    : duration || 100;
+
+  return (
+    <div className="flex flex-col rounded-3xl overflow-hidden bg-[#121212] border border-[#282828] text-slate-300 font-sans shadow-2xl relative">
+      {/* Hidden Audio element */}
+      <audio
+        ref={audioRef}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onEnded={handleEnded}
+      />
+
+      {/* Main UI body */}
+      <div className="flex flex-col lg:flex-row h-[520px] min-h-[400px]">
+        {/* === SIDEBAR (Library) === */}
+        <aside className="w-full lg:w-60 bg-black p-4 flex flex-col justify-between shrink-0 border-b lg:border-b-0 lg:border-r border-[#282828] text-xs">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2.5 px-3 py-1 font-bold text-white text-sm justify-between">
+              <div className="flex items-center gap-2.5">
+                <Library className="w-5 h-5 text-[#1db954]" />
+                <span>Your Library</span>
+              </div>
+              {isLoadingSpotify && (
+                <span className="flex items-center gap-1 text-[9px] text-[#1db954] font-black animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#1db954] inline-block animate-ping" />
+                  Loading
+                </span>
+              )}
+            </div>
+
+            <nav className="space-y-1">
+              {[
+                { name: "All Tracks", icon: <ListMusic className="w-4 h-4" /> },
+                { name: "Favorites", icon: <Heart className="w-4 h-4" /> },
+                { name: "Global Charts", icon: <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg> },
+                { name: "Lobby Favorites", icon: <Music className="w-4 h-4" /> },
+                { name: "Combat & Adventure", icon: <Hammer className="w-4 h-4" /> },
+                { name: "Tavern Classics", icon: <Home className="w-4 h-4" /> },
+              ].map((p) => {
+                const isActive = activePlaylist === p.name && searchQuery.trim() === "";
+                return (
+                  <button
+                    key={p.name}
+                    onClick={() => {
+                      setActivePlaylist(p.name);
+                      setSearchQuery("");
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-black tracking-wide text-left transition-all ${
+                      isActive
+                        ? "bg-[#282828] text-white"
+                        : "text-slate-400 hover:text-white hover:bg-[#1a1a1a]"
+                    }`}
+                  >
+                    {p.icon}
+                    <span>{p.name}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          <div className="hidden lg:block p-3 bg-[#181818]/60 border border-white/5 rounded-xl mt-4 space-y-1">
+            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">ACTIVE PLAYLIST</span>
+            <span className="text-white font-bold truncate block">{playlistTitle}</span>
+          </div>
+        </aside>
+
+        {/* === MAIN CONTENT (Playlist Detail & Songs Table) === */}
+        <div className="flex-1 flex flex-col bg-[#121212] overflow-y-auto relative">
+          {/* Top Bar with Search Input */}
+          <div className="p-4 bg-black/40 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between border-b border-white/5 gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search millions of songs & artists..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2 rounded-full bg-[#242424] text-white text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-white/20 transition-all placeholder-slate-500 border border-transparent focus:border-white/10"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold"
+                >
+                  âœ•
+                </button>
+              )}
+            </div>
+            {isSearching && (
+              <span className="text-[10px] text-[#1db954] font-bold animate-pulse">Searching...</span>
+            )}
+            {!isSearching && searchSource === "youtube" && searchQuery && (
+              <span className="text-[9px] font-black text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                <svg className="w-2.5 h-2.5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                Via YouTube
+              </span>
+            )}
+            {!isSearching && searchSource === "spotify" && searchQuery && (
+              <span className="text-[9px] font-black text-[#1db954] bg-[#1db954]/10 border border-[#1db954]/30 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                <svg className="w-2.5 h-2.5 fill-[#1db954]" viewBox="0 0 24 24"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+                Via Spotify
+              </span>
+            )}
+          </div>
+
+          {/* Decorative Playlist Banner */}
+          <div className="p-6 bg-gradient-to-b from-[#3b0764]/50 to-[#121212]/90 flex items-center gap-6 border-b border-white/5">
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-lg overflow-hidden shadow-2xl bg-black shrink-0 relative group">
+              <img src={playlistCover} alt="" className="w-full h-full object-cover" />
+            </div>
+
+            <div className="space-y-1 sm:space-y-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#1db954]">{playlistCategoryLabel}</span>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-none">
+                {playlistTitle}
+              </h1>
+              <p className="text-[11px] text-slate-400 font-semibold">
+                {playlistSubtext}
+              </p>
+            </div>
+          </div>
+
+          {/* Table list */}
+          <div className="p-6">
+            {displayTracks.length === 0 ? (
+              <div className="text-center py-12 text-slate-500 font-bold border border-dashed border-[#282828] rounded-xl">
+                {isSearching
+                  ? "Searching Spotify..."
+                  : searchQuery.trim()
+                  ? "Spotify tidak menemukan track yang sesuai."
+                  : activePlaylist === "Favorites"
+                  ? "Belum ada lagu favorite."
+                  : "No songs available."}
+              </div>
+            ) : (
+              <div className="w-full">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-[#282828] text-[10px] uppercase text-slate-500 font-black tracking-wider">
+                      <th className="py-2.5 w-10 text-center">#</th>
+                      <th className="py-2.5">Title</th>
+                      <th className="py-2.5 hidden sm:table-cell">Category / Genre</th>
+                      <th className="py-2.5 w-16 text-center"><Clock className="w-4 h-4 mx-auto" /></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayTracks.map((track, fIndex) => {
+                      const isCurrentTrack = track.id === currentTrack.id;
+                      const isHovered = hoveredTrackId === track.id;
+                      const isLiked = likedTracks[track.id] || false;
+
+                      return (
+                        <tr
+                          key={track.id}
+                          onMouseEnter={() => setHoveredTrackId(track.id)}
+                          onMouseLeave={() => setHoveredTrackId(null)}
+                          onDoubleClick={() => {
+                            void playTrack(track, displayTracks);
+                          }}
+                          className={`group text-xs font-semibold text-slate-400 hover:bg-white/5 border-b border-[#1a1a1a]/50 transition-all cursor-pointer ${
+                            isCurrentTrack ? "bg-white/[0.02]" : ""
+                          }`}
+                        >
+                          {/* Play / Index Cell */}
+                          <td className="py-3 text-center">
+                            {isHovered ? (
+                              <button
+                                onClick={() => {
+                                  if (isCurrentTrack) {
+                                    handlePlayPause();
+                                  } else {
+                                    void playTrack(track, displayTracks);
+                                  }
+                                }}
+                                className="text-white hover:scale-110 transition-transform cursor-pointer"
+                              >
+                                {isCurrentTrack && isPlaying ? (
+                                  <Pause className="w-4 h-4 fill-current mx-auto" />
+                                ) : (
+                                  <Play className="w-4 h-4 fill-current mx-auto" />
+                                )}
+                              </button>
+                            ) : (
+                              <span className={isCurrentTrack ? "text-[#1db954] font-black" : ""}>
+                                {isCurrentTrack && isPlaying ? (
+                                  <div className="flex gap-0.5 items-end justify-center h-3">
+                                    <span className="w-0.5 bg-[#1db954] h-2 rounded-full animate-pulse" />
+                                    <span className="w-0.5 bg-[#1db954] h-3 rounded-full animate-pulse" style={{ animationDelay: '0.15s' }} />
+                                    <span className="w-0.5 bg-[#1db954] h-1.5 rounded-full animate-pulse" style={{ animationDelay: '0.3s' }} />
+                                  </div>
+                                ) : (
+                                  fIndex + 1
+                                )}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Cover & Title */}
+                          <td className="py-2.5 pr-4">
+                            <div className="flex items-center gap-3">
+                              <img src={track.cover} alt="" className="w-9 h-9 rounded object-cover shadow-sm bg-black shrink-0" />
+                              <div className="min-w-0">
+                                <span className={`block truncate text-sm transition-colors ${
+                                  isCurrentTrack ? "text-[#1db954] font-black" : "text-white"
+                                }`}>
+                                  {track.title}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-bold block mt-0.5">{track.artist}</span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Category */}
+                          <td className="py-3 hidden sm:table-cell text-slate-500 font-bold">
+                            {track.type}
+                          </td>
+
+                          {/* Duration / Like / YT */}
+                          <td className="py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleLike(track);
+                                }}
+                                className={`transition-colors cursor-pointer ${
+                                  isLiked
+                                    ? "text-[#1db954]"
+                                    : "text-slate-600 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                                }`}
+                              >
+                                <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-current' : ''}`} />
+                              </button>
+                              {track.isSpotify && track.spotifyUrl && (
+                                <button
+                                  title="Open Spotify"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(track.spotifyUrl, "_blank", "noopener,noreferrer");
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity text-[#1db954] hover:text-[#1ed760] cursor-pointer"
+                                >
+                                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+                                </button>
+                              )}
+                              {track.isYouTube && (
+                                <button
+                                  title="Full Song on YouTube"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setYtModalTrack(track);
+                                  }}
+                                  className={`${track.isYouTube ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity text-red-400 hover:text-red-300 cursor-pointer`}
+                                >
+                                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                                </button>
+                              )}
+                              <span className="text-[10px] text-slate-500 font-bold tracking-wider">{track.duration}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* === SPOTIFY TRACK MODAL === */}
+      {spotifyModalTrack && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => {
+            setSpotifyModalTrack(null);
+          }}
+        >
+          <div
+            className="bg-[#121212] border border-[#282828] rounded-2xl shadow-2xl overflow-hidden w-full max-w-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#282828]">
+              <div className="min-w-0">
+                <p className="text-white font-black text-sm truncate">{spotifyModalTrack.title}</p>
+                <p className="text-slate-400 text-[11px] font-bold truncate">{spotifyModalTrack.artist}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setSpotifyModalTrack(null);
+                }}
+                className="text-slate-400 hover:text-white transition-colors ml-4 shrink-0 text-lg leading-none cursor-pointer"
+              >x</button>
+            </div>
+            <div className="bg-black p-4">
+              {spotifyModalTrack.spotifyEmbedUrl ? (
+                <iframe
+                  className="h-[352px] w-full rounded-xl"
+                  src={`${spotifyModalTrack.spotifyEmbedUrl}?utm_source=generator&theme=0`}
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  loading="lazy"
+                  title={spotifyModalTrack.title}
+                />
+              ) : (
+                <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-xl border border-[#282828] bg-[#181818] px-6 text-center">
+                  <p className="text-white text-sm font-black">Spotify embed belum tersedia untuk track ini.</p>
+                  <p className="text-slate-400 text-xs font-bold">Buka langsung di Spotify untuk lanjut dengerin.</p>
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 flex items-center justify-between">
+              <p className="text-[10px] text-slate-500 font-bold">Diputar lewat Spotify embed. Login Spotify bisa diperlukan untuk playback penuh.</p>
+              {spotifyModalTrack.spotifyUrl && (
+                <a
+                  href={spotifyModalTrack.spotifyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] text-[#1db954] hover:text-[#1ed760] font-black transition-colors shrink-0 ml-2"
+                >Open Spotify</a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === YOUTUBE FULL SONG MODAL === */}
+      {ytModalTrack && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setYtModalTrack(null)}
+        >
+          <div
+            className="bg-[#121212] border border-[#282828] rounded-2xl shadow-2xl overflow-hidden w-full max-w-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#282828]">
+              <div className="min-w-0">
+                <p className="text-white font-black text-sm truncate">{ytModalTrack.title}</p>
+                <p className="text-slate-400 text-[11px] font-bold truncate">{ytModalTrack.artist}</p>
+              </div>
+              <button
+                onClick={() => setYtModalTrack(null)}
+                className="text-slate-400 hover:text-white transition-colors ml-4 shrink-0 text-lg leading-none cursor-pointer"
+              >✕</button>
+            </div>
+            {/* YouTube Embed */}
+            <div className="relative bg-black" style={{ paddingBottom: "56.25%" }}>
+              {ytVideoLoading && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black">
+                  <div className="w-8 h-8 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
+                  <p className="text-slate-400 text-xs font-bold">Finding on YouTube...</p>
+                </div>
+              )}
+              {!ytVideoLoading && ytVideoId && (
+                <iframe
+                  key={ytVideoId}
+                  className="absolute inset-0 w-full h-full"
+                  src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&rel=0&modestbranding=1`}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  title={ytModalTrack.title}
+                />
+              )}
+              {!ytVideoLoading && !ytVideoId && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black px-6 text-center">
+                  <p className="text-white text-sm font-black">Video tidak ketemu dari API.</p>
+                  <p className="text-slate-400 text-xs font-bold">Coba buka pencarian YouTube Music langsung.</p>
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 flex items-center justify-between">
+              <p className="text-[10px] text-slate-500 font-bold">🎵 Full song via YouTube · Preview (30s) still playing in background</p>
+              <a
+                href={`https://music.youtube.com/search?q=${encodeURIComponent(ytModalTrack.artist + ' ' + ytModalTrack.title)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] text-red-400 hover:text-red-300 font-black transition-colors shrink-0 ml-2"
+              >Open YouTube Music ↗</a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === BOTTOM PLAYBACK CONTROLLER BAR === */}
+      <footer className="bg-[#181818] border-t border-[#282828] px-4 py-3.5 flex items-center justify-between z-25 rounded-b-3xl">
+        {/* Left: Active Song details */}
+        <div className="flex items-center gap-3.5 min-w-[120px] max-w-[30%]">
+          <img src={currentTrack.cover} alt="" className="w-13 h-13 rounded-lg object-cover bg-black shadow-lg shrink-0" />
+          <div className="min-w-0">
+            <span className="text-white text-[13px] font-black tracking-wide truncate block hover:underline cursor-pointer">
+              {currentTrack.title}
+            </span>
+            <span className="text-[10px] text-slate-400 font-bold truncate block mt-0.5">
+              {currentTrack.artist}
+            </span>
+          </div>
+          <button
+            onClick={() => toggleLike(currentTrack)}
+            className={`cursor-pointer transition-colors ${
+              likedTracks[currentTrack.id] ? "text-[#1db954]" : "text-slate-500 hover:text-white"
+            }`}
+          >
+            <Heart className={`w-4 h-4 ${likedTracks[currentTrack.id] ? 'fill-current' : ''}`} />
+          </button>
+        </div>
+
+        {/* Center: Controls & Timeline Slider */}
+        <div className="flex flex-col items-center gap-1.5 flex-1 max-w-[45%]">
+          {/* Playback Buttons */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsShuffling(!isShuffling)}
+              className={`transition-colors cursor-pointer ${
+                isShuffling ? "text-[#1db954]" : "text-slate-500 hover:text-white"
+              }`}
+              title="Shuffle"
+            >
+              <Shuffle className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={handlePrevious}
+              className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+              title="Previous"
+            >
+              <SkipBack className="w-4.5 h-4.5 fill-current" />
+            </button>
+
+            <button
+              onClick={handlePlayPause}
+              className="w-8 h-8 rounded-full bg-white hover:scale-105 transition-transform flex items-center justify-center text-black shadow-md cursor-pointer active:scale-95 shrink-0"
+              title={isPlaying ? "Pause" : "Play"}
+            >
+              {isPlaying ? (
+                <Pause className="w-4.5 h-4.5 fill-current" />
+              ) : (
+                <Play className="w-4.5 h-4.5 fill-current ml-0.5" />
+              )}
+            </button>
+
+            <button
+              onClick={handleNext}
+              className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+              title="Next"
+            >
+              <SkipForward className="w-4.5 h-4.5 fill-current" />
+            </button>
+
+            <button
+              onClick={() => {
+                setIsLooping(!isLooping);
+                if ((currentTrack.isSpotify || currentTrack.isYouTube) && currentTime >= visualDuration) {
+                  setCurrentTime(0);
+                }
+              }}
+              className={`transition-colors cursor-pointer ${
+                isLooping ? "text-[#1db954]" : "text-slate-500 hover:text-white"
+              }`}
+              title="Repeat"
+            >
+              <Repeat className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Timeline track */}
+          <div className="w-full flex items-center gap-3">
+            <span className="text-[9px] text-slate-500 font-bold min-w-[28px] text-right">{formatTime(currentTime)}</span>
+            <input
+              type="range"
+              min={0}
+              max={visualDuration}
+              value={currentTime}
+              onChange={handleScrub}
+              className="w-full h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer hover:bg-slate-700 transition-colors"
+              style={{
+                background: `linear-gradient(to right, rgb(29, 185, 84) 0%, rgb(29, 185, 84) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40, 40, 40) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40, 40, 40) 100%)`
+              }}
+            />
+            <span className="text-[9px] text-slate-500 font-bold min-w-[28px]">{currentTrack.isSpotify || currentTrack.isYouTube ? currentTrack.duration : formatTime(duration)}</span>
+          </div>
+          {currentTrack.isSpotify && !spotifyConnected && (
+            <button
+              type="button"
+              onClick={() => void connectSpotifyPlayer()}
+              className="mt-1 rounded-full border border-[#1db954]/30 bg-[#1db954]/10 px-3 py-1 text-[10px] font-black text-[#1db954] hover:bg-[#1db954]/15 transition-colors"
+            >
+              Connect Spotify Premium
+            </button>
+          )}
+          {spotifyError && <p className="mt-1 text-[10px] font-bold text-red-400">{spotifyError}</p>}
+        </div>
+
+        {/* Right: Volume slider */}
+        <div className="flex items-center gap-2 min-w-[100px] justify-end max-w-[25%] text-slate-400">
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            className="hover:text-white transition-colors cursor-pointer"
+          >
+            {isMuted ? (
+              <VolumeX className="w-4 h-4 text-[#1db954]" />
+            ) : volume < 0.4 ? (
+              <Volume1 className="w-4 h-4" />
+            ) : (
+              <Volume2 className="w-4 h-4" />
+            )}
+          </button>
+
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={volume}
+            onChange={(e) => {
+              setVolume(parseFloat(e.target.value));
+              setIsMuted(false);
+            }}
+            className="w-20 sm:w-24 h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, rgb(29, 185, 84) 0%, rgb(29, 185, 84) ${volume * 100}%, rgb(40, 40, 40) ${volume * 100}%, rgb(40, 40, 40) 100%)`
+            }}
+          />
+          {currentTrack.isSpotify && !spotifyConnected && (
+            <span className="hidden sm:inline text-[9px] font-bold text-slate-500">
+              Connect
+            </span>
+          )}
+        </div>
+      </footer>
     </div>
   );
 }

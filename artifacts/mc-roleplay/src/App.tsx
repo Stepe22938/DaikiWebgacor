@@ -187,34 +187,6 @@ const AUTH_STYLES = `
     0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
     50%       { opacity: 1; transform: scale(1.3) rotate(180deg); }
   }
-  @keyframes auth-slide-in-left {
-    from { transform: translateX(-70px); opacity: 0; }
-    to   { transform: translateX(0);     opacity: 1; }
-  }
-  @keyframes auth-slide-up {
-    from { transform: translateY(100%); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
-  }
-  @keyframes auth-fade-up {
-    from { transform: translateY(28px); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
-  }
-  @keyframes auth-glow-pulse {
-    0%, 100% { opacity: 0.25; transform: scale(1);    }
-    50%       { opacity: 0.55; transform: scale(1.09); }
-  }
-  @keyframes auth-cursor-blink {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0; }
-  }
-  @keyframes auth-scan-line {
-    0%   { top: -4px; }
-    100% { top: 100%; }
-  }
-  @keyframes auth-form-in {
-    from { transform: translateX(70px); opacity: 0; }
-    to   { transform: translateX(0);    opacity: 1; }
-  }
   @keyframes auth-mobile-header {
     from { transform: translateY(-30px); opacity: 0; }
     to   { transform: translateY(0);     opacity: 1; }
@@ -231,36 +203,11 @@ const AUTH_STYLES = `
     0%, 100% { transform: translateY(0) rotate(0deg); }
     50%      { transform: translateY(-5px) rotate(1.5deg); }
   }
-  @keyframes auth-mobile-phone {
-    from { transform: translateY(38px) rotate(var(--phone-rotate, 0deg)); opacity: 0; }
-    to   { transform: translateY(0) rotate(var(--phone-rotate, 0deg)); opacity: 1; }
-  }
-  @keyframes auth-human-breathe {
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    45%      { transform: translate3d(0, 3px, 0) scale(1.006); }
-  }
-  @keyframes auth-eye-life {
-    0%, 100% { opacity: 0.34; transform: translate3d(0, 0, 0) scale(1); }
-    50%      { opacity: 0.7;  transform: translate3d(1px, -1px, 0) scale(1.08); }
-  }
   .auth-particle     { animation: auth-float-up linear infinite; }
   .auth-sparkle      { animation: auth-sparkle ease-in-out infinite; }
-  .auth-char-panel   { animation: auth-slide-in-left 0.9s cubic-bezier(0.22,1,0.36,1) both; }
-  .auth-form-panel   { animation: auth-form-in 0.9s cubic-bezier(0.22,1,0.36,1) 0.12s both; }
-  .auth-title        { animation: auth-fade-up 0.8s cubic-bezier(0.22,1,0.36,1) 0.35s both; }
-  .auth-subtitle     { animation: auth-fade-up 0.8s cubic-bezier(0.22,1,0.36,1) 0.55s both; }
-  .auth-glow         { animation: auth-glow-pulse 3s ease-in-out infinite; }
-  .auth-cursor       { display: inline-block; animation: auth-cursor-blink 1.1s step-end infinite; }
-  .auth-scan         { animation: auth-scan-line 3.5s linear infinite; position: absolute; }
-  .auth-human-body   { animation: auth-human-breathe 5.8s ease-in-out infinite; transform-origin: 50% 45%; }
-  .auth-eye-light    { animation: auth-eye-life 3.7s ease-in-out infinite; }
-  .auth-eye-light:nth-child(2) { animation-delay: 0.45s; }
   .auth-login-card  { animation: auth-card-in 0.82s cubic-bezier(0.22,1,0.36,1) both; }
   .auth-card-aura   { animation: auth-card-aura 5.6s ease-in-out infinite; }
   .auth-login-logo  { animation: auth-logo-float 4.6s ease-in-out infinite; }
-  .auth-phone       { animation: auth-mobile-phone 0.72s cubic-bezier(0.22,1,0.36,1) both; }
-  .auth-phone:nth-child(2) { animation-delay: 0.1s; }
-  .auth-phone:nth-child(3) { animation-delay: 0.18s; }
   .cl-socialButtonsBlock,
   .cl-socialButtonsBlock > div,
   .cl-socialButtonsBlock > div > div,
@@ -324,17 +271,12 @@ const AUTH_STYLES = `
 `;
 
 function AuthPageLayout({ children, mode }: { children: React.ReactNode; mode: "sign-in" | "sign-up" }) {
-  const headRef = useRef<HTMLDivElement>(null);
   const realmSettings = useRealmSettings();
   const realmName = getRealmDisplayName(realmSettings);
   const realmLogoUrl = realmSettings?.realmLogoUrl?.trim();
   const logoSrc = realmLogoUrl || `${basePath}/logo.svg`;
   const authAction = mode === "sign-in" ? "Enter" : "Join";
   const authEyebrow = mode === "sign-in" ? "Welcome Back" : "New Legend";
-  // "idle" = normal, "looking" = email field focused, "peekaboo" = password focused
-  const [charState, setCharState] = useState<"idle" | "looking" | "peekaboo">("idle");
-  const [emailPreview, setEmailPreview] = useState("");
-  const [isBlinking, setIsBlinking] = useState(false);
 
   useEffect(() => {
     const providerLabels = ["Continue with Google", "Continue with Discord", "Continue with Facebook"];
@@ -364,152 +306,7 @@ function AuthPageLayout({ children, mode }: { children: React.ReactNode; mode: "
   }, []);
 
 
-  const updateAuthReaction = (target: HTMLElement | null) => {
-    if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) {
-      return;
-    }
 
-    const name = target.getAttribute("name")?.toLowerCase() ?? "";
-    const type = target.getAttribute("type")?.toLowerCase() ?? "";
-    const autocomplete = target.getAttribute("autocomplete")?.toLowerCase() ?? "";
-    const placeholder = target.getAttribute("placeholder")?.toLowerCase() ?? "";
-    const label = target.getAttribute("aria-label")?.toLowerCase() ?? "";
-    const fieldHint = `${name} ${type} ${autocomplete} ${placeholder} ${label}`;
-
-    if (type === "password" || fieldHint.includes("password")) {
-      setCharState("peekaboo");
-      return;
-    }
-
-    if (type === "email" || fieldHint.includes("email") || fieldHint.includes("identifier")) {
-      setCharState("looking");
-      setEmailPreview(target.value.trim().slice(0, 42));
-      return;
-    }
-
-    setCharState("looking");
-  };
-
-  // ---- Form field focus detection ----
-  useEffect(() => {
-    const onFocusIn = (e: FocusEvent) => {
-      updateAuthReaction(e.target as HTMLElement);
-    };
-    const onInput = (e: Event) => {
-      updateAuthReaction(e.target as HTMLElement);
-    };
-    const onFocusOut = () => {
-      window.setTimeout(() => {
-        if (
-          document.activeElement instanceof HTMLInputElement ||
-          document.activeElement instanceof HTMLTextAreaElement
-        ) {
-          updateAuthReaction(document.activeElement);
-          return;
-        }
-
-        setCharState("idle");
-      }, 0);
-    };
-
-    document.addEventListener("focusin",  onFocusIn);
-    document.addEventListener("input", onInput);
-    document.addEventListener("focusout", onFocusOut);
-    return () => {
-      document.removeEventListener("focusin",  onFocusIn);
-      document.removeEventListener("input", onInput);
-      document.removeEventListener("focusout", onFocusOut);
-    };
-  }, []);
-
-  useEffect(() => {
-    let timeoutId: number;
-
-    const scheduleBlink = () => {
-      timeoutId = window.setTimeout(() => {
-        setIsBlinking(true);
-        window.setTimeout(() => setIsBlinking(false), 135);
-        scheduleBlink();
-      }, 2200 + Math.random() * 3600);
-    };
-
-    scheduleBlink();
-    return () => window.clearTimeout(timeoutId);
-  }, []);
-
-  // ---- Head-tracking rAF (only active when not peekaboo) ----
-  useEffect(() => {
-    let rafId: number;
-    const emailProgress = Math.min(emailPreview.length / 32, 1);
-    let targetRY = charState === "looking" ? -4 + emailProgress * 8 : 0;
-    let targetRX = charState === "looking" ? 4 : 0;
-    let targetTX = 0, targetTY = 0;
-    let currentRY = 0, currentRX = 0, currentTX = 0, currentTY = 0;
-
-    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-    const tick = () => {
-      currentRY = lerp(currentRY, targetRY, 0.045);
-      currentRX = lerp(currentRX, targetRX, 0.045);
-      currentTX = lerp(currentTX, targetTX, 0.05);
-      currentTY = lerp(currentTY, targetTY, 0.05);
-      if (headRef.current) {
-        headRef.current.style.transform =
-          `perspective(1100px) translate3d(${currentTX}px, ${currentTY}px, 0) rotateY(${currentRY}deg) rotateX(${currentRX}deg) scale(1.018)`;
-      }
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (charState === "peekaboo") { targetRY = 0; targetRX = 0; targetTX = 0; targetTY = 0; return; }
-      const normX =  (e.clientX / window.innerWidth)  * 2 - 1;
-      const normY = (e.clientY / window.innerHeight) * 2 - 1;
-      if (charState === "looking") {
-        targetRY = -4 + emailProgress * 8 + normX * 1.8;
-        targetRX = 4 - normY * 1.2;
-        targetTX = normX * 3.8;
-        targetTY = normY * 2.4;
-        return;
-      }
-      targetRY = normX * 6.5;
-      targetRX = -normY * 4.8;
-      targetTX = normX * 4.5;
-      targetTY = normY * 3.2;
-    };
-    window.addEventListener("mousemove", onMouseMove);
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (charState === "peekaboo") return;
-      const t = e.touches[0];
-      const normX =  (t.clientX / window.innerWidth)  * 2 - 1;
-      const normY = (t.clientY / window.innerHeight) * 2 - 1;
-      targetRY = charState === "looking" ? -4 + emailProgress * 8 + normX * 1.4 : normX * 5.5;
-      targetRX = charState === "looking" ? 4 - normY * 1.2 : -normY * 4;
-      targetTX = normX * 3.8;
-      targetTY = normY * 2.8;
-    };
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-
-    const onMouseLeave = () => { targetRY = 0; targetRX = 0; targetTX = 0; targetTY = 0; };
-    document.addEventListener("mouseleave", onMouseLeave);
-
-    const onDeviceOrientation = (e: DeviceOrientationEvent) => {
-      if (charState === "peekaboo") return;
-      targetRY = ((e.gamma ?? 0) / 45) * 5;
-      targetRX = (((e.beta ?? 45) - 45) / 45) * -4;
-      targetTX = ((e.gamma ?? 0) / 45) * 3.5;
-      targetTY = (((e.beta ?? 45) - 45) / 45) * 2.8;
-    };
-    window.addEventListener("deviceorientation", onDeviceOrientation);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("touchmove", onTouchMove);
-      document.removeEventListener("mouseleave", onMouseLeave);
-      window.removeEventListener("deviceorientation", onDeviceOrientation);
-    };
-  }, [charState, emailPreview]);
 
 
 
@@ -557,121 +354,7 @@ function AuthPageLayout({ children, mode }: { children: React.ReactNode; mode: "
     </div>
   );
 
-  // Three-state character: idle / looking (email) / peekaboo (password)
-  const imgStyle = { filter: "brightness(0.9) contrast(1.05) saturate(0.92)" };
-  const expressionOpacity = charState === "peekaboo" ? 0 : charState === "looking" ? 0.42 : 0.58;
-  const characterLayer = (
-    <div className="absolute inset-0">
-      {/* === BASE IMAGE: idle (always rendered, fades when not active) === */}
-      <img
-        src={`${basePath}/char_idle.png`}
-        alt="Character"
-        className="auth-human-body absolute inset-0 h-full w-full object-cover object-top"
-        style={{
-          ...imgStyle,
-          opacity: charState === "idle" ? 1 : 0,
-          transition: "opacity 0.45s cubic-bezier(0.4,0,0.2,1)",
-        }}
-      />
 
-      {/* === LOOKING: head tilted down, tracking email field === */}
-      <img
-        src={`${basePath}/char_looking.png`}
-        alt=""
-        aria-hidden
-        className="auth-human-body absolute inset-0 h-full w-full object-cover object-top"
-        style={{
-          ...imgStyle,
-          opacity: charState === "looking" ? 1 : 0,
-          transition: "opacity 0.4s cubic-bezier(0.4,0,0.2,1)",
-        }}
-      />
-
-      {/* === PEEKABOO: hands covering eyes for password === */}
-      <img
-        src={`${basePath}/char_peekaboo.png`}
-        alt=""
-        aria-hidden
-        className="auth-human-body absolute inset-0 h-full w-full object-cover object-top"
-        style={{
-          ...imgStyle,
-          opacity: charState === "peekaboo" ? 1 : 0,
-          transition: "opacity 0.4s cubic-bezier(0.4,0,0.2,1)",
-        }}
-      />
-
-      {/* === HEAD ROTATION LAYER: only visible for idle+looking (not peekaboo) === */}
-      <div
-        ref={headRef}
-        className="absolute inset-0 will-change-transform"
-        style={{
-          transformOrigin: "50% 27%",
-          WebkitMaskImage: "radial-gradient(ellipse 18% 22% at 50% 25%, #000 52%, rgba(0,0,0,0.78) 64%, transparent 80%)",
-          maskImage: "radial-gradient(ellipse 18% 22% at 50% 25%, #000 52%, rgba(0,0,0,0.78) 64%, transparent 80%)",
-          opacity: charState === "peekaboo" ? 0 : 1,
-          transition: "opacity 0.35s ease, filter 0.35s ease",
-          pointerEvents: "none",
-          backfaceVisibility: "hidden",
-        }}
-      >
-        <img
-          src={`${basePath}/${charState === "looking" ? "char_looking" : "char_idle"}.png`}
-          alt=""
-          aria-hidden
-          className="h-full w-full object-cover object-top"
-          style={imgStyle}
-        />
-      </div>
-
-      <div
-        className="pointer-events-none absolute inset-0 z-20 transition-opacity duration-300"
-        aria-hidden
-        style={{ opacity: expressionOpacity }}
-      >
-        <div
-          className="absolute left-[44.3%] top-[23.4%] h-[0.72%] w-[1.15%] rounded-full bg-white/80 blur-[0.2px] auth-eye-light"
-          style={{
-            transform: charState === "looking" ? "translate3d(2px, 1px, 0) scale(0.86)" : undefined,
-            transition: "transform 0.35s ease",
-          }}
-        />
-        <div
-          className="absolute left-[53.8%] top-[23.45%] h-[0.72%] w-[1.15%] rounded-full bg-white/75 blur-[0.2px] auth-eye-light"
-          style={{
-            transform: charState === "looking" ? "translate3d(2px, 1px, 0) scale(0.86)" : undefined,
-            transition: "transform 0.35s ease",
-          }}
-        />
-      </div>
-
-      <div
-        className="pointer-events-none absolute inset-0 z-30 transition-opacity duration-75"
-        aria-hidden
-        style={{ opacity: isBlinking && charState !== "peekaboo" ? 0.82 : 0 }}
-      >
-        <div className="absolute left-[42.2%] top-[22.85%] h-[2.1%] w-[5.2%] rounded-full bg-black/80 blur-[0.5px]" />
-        <div className="absolute left-[52.0%] top-[22.9%] h-[2.1%] w-[5.2%] rounded-full bg-black/80 blur-[0.5px]" />
-      </div>
-
-      <div
-        className="pointer-events-none absolute left-[45.3%] top-[33.7%] z-20 h-[1.6%] w-[9.8%] rounded-full bg-rose-100/10 blur-md transition-opacity duration-500"
-        aria-hidden
-        style={{ opacity: charState === "idle" ? 0.34 : charState === "looking" ? 0.18 : 0 }}
-      />
-
-      <div
-        className={[
-          "absolute left-1/2 top-[62%] z-20 w-[min(76%,360px)] -translate-x-1/2 rounded-md border border-amber-300/20 bg-black/45 px-4 py-3 text-center shadow-[0_14px_45px_rgba(0,0,0,0.45)] backdrop-blur-md transition-all duration-300",
-          charState === "looking" && emailPreview ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
-        ].join(" ")}
-        aria-hidden
-      >
-        <p className="truncate font-mono text-[12px] font-bold tracking-wide text-amber-100/90">
-          {emailPreview}<span className="auth-cursor text-amber-300">|</span>
-        </p>
-      </div>
-    </div>
-  );
 
 
 
@@ -763,169 +446,6 @@ function AuthPageLayout({ children, mode }: { children: React.ReactNode; mode: "
               </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* ===================== MOBILE LAYOUT (< lg) ===================== */}
-      <div className="hidden">
-        {/* Full-screen background character */}
-        <div className="absolute inset-0 overflow-hidden">
-          {/* Ambient glow */}
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_30%,rgba(100,60,200,0.15),transparent)] z-10" />
-
-          {characterLayer}
-
-          {/* Top gradient (sky fade) */}
-          <div className="absolute left-0 right-0 top-0 h-36 bg-gradient-to-b from-[#050408] via-[#050408]/40 to-transparent z-10" />
-
-          {/* Bottom gradient into the sheet */}
-          <div className="absolute bottom-0 left-0 right-0 h-[55%] bg-gradient-to-t from-[#050408] via-[#050408]/90 to-transparent z-10" />
-
-          {/* Scan line */}
-          <div className="auth-scan left-0 right-0 h-[1px] z-10 opacity-15"
-            style={{ background: "linear-gradient(90deg,transparent,rgba(160,100,255,0.9),transparent)" }}
-          />
-
-          {/* Glow behind char */}
-          <div className="auth-glow absolute left-1/2 top-[35%] h-[340px] w-[340px] -translate-x-1/2 -translate-y-1/2 rounded-full z-10"
-            style={{ background: "radial-gradient(circle, rgba(130,70,255,0.18) 0%, transparent 70%)" }}
-          />
-        </div>
-
-        {particlesLayer}
-
-        {/* Mobile top header (logo + tagline) */}
-        <div className="auth-mobile-hdr relative z-30 flex flex-col items-center pt-14 pb-0">
-          <div className="relative mb-2">
-            <div className="absolute inset-0 blur-xl opacity-50"
-              style={{ background: "radial-gradient(circle, rgba(212,175,55,0.7), transparent)" }}
-            />
-            <img src={`${basePath}/logo.svg`} alt="Arcadia" className="relative h-11 w-11 drop-shadow-lg" />
-          </div>
-          <p className="text-[9px] font-black uppercase tracking-[0.45em] text-amber-400/70 mt-1">ARCADIA ROLEPLAY</p>
-          <h1 className="mt-2 text-3xl font-black text-white leading-none text-center drop-shadow-[0_2px_16px_rgba(0,0,0,0.9)]">
-            Enter the{" "}
-            <span
-              className="text-transparent bg-clip-text"
-              style={{ backgroundImage: "linear-gradient(135deg, #d4af37, #a855f7, #60a5fa)" }}
-            >
-              Arcadia
-            </span>
-          </h1>
-          <p className="mt-1.5 text-[11px] text-white/40 font-medium text-center">
-            Forge your legend<span className="auth-cursor text-amber-400">|</span>
-          </p>
-        </div>
-
-        {/* Spacer — pushes sheet to bottom */}
-        <div className="flex-1" />
-
-        {/* Bottom glass sheet — form */}
-        <div className="auth-mobile-sheet relative z-30 rounded-t-[28px] border-t border-white/10 bg-[#050408]/85 backdrop-blur-2xl px-5 pt-6 pb-8 shadow-[0_-20px_60px_rgba(0,0,0,0.7)]">
-          {/* Sheet drag handle */}
-          <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-white/20" />
-
-          {/* Mode label */}
-          <p className="mb-4 text-center text-[9px] font-black uppercase tracking-[0.4em] text-purple-400/80">
-            {mode === "sign-in" ? "— Welcome Back —" : "— New Legend —"}
-          </p>
-
-          {/* Clerk form */}
-          <div className="w-full">
-            {null}
-          </div>
-
-          <p className="mt-6 text-center text-[9px] font-bold tracking-widest text-white/15 uppercase">
-            © 2025 Arcadia Roleplay
-          </p>
-        </div>
-      </div>
-
-      {/* ===================== DESKTOP LAYOUT (≥ lg) ===================== */}
-      <div className="hidden">
-        {/* Ambient background */}
-        <div className="pointer-events-none absolute inset-0 z-0">
-          <div className="absolute left-0 top-0 h-full w-1/2 bg-[radial-gradient(ellipse_60%_80%_at_20%_50%,rgba(120,80,220,0.12),transparent)]" />
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(ellipse_60%_80%_at_80%_50%,rgba(40,20,80,0.3),transparent)]" />
-        </div>
-
-        {particlesLayer}
-
-        {/* LEFT — Character panel */}
-        <div className="auth-char-panel relative flex w-[58%] flex-col">
-          <div className="relative h-full w-full overflow-hidden">
-            {characterLayer}
-
-            {/* Right edge fade */}
-            <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-[#050408] via-[#050408]/55 to-transparent" />
-            {/* Bottom fade */}
-            <div className="absolute bottom-0 left-0 right-0 h-52 bg-gradient-to-t from-[#050408] to-transparent" />
-            {/* Top fade */}
-            <div className="absolute left-0 right-0 top-0 h-32 bg-gradient-to-b from-[#050408] to-transparent" />
-
-            {/* Glow */}
-            <div className="auth-glow absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full"
-              style={{ background: "radial-gradient(circle, rgba(140,80,255,0.13) 0%, transparent 70%)" }}
-            />
-
-            {/* Scan line */}
-            <div className="auth-scan left-0 right-0 h-[2px] opacity-18"
-              style={{ background: "linear-gradient(90deg,transparent,rgba(160,100,255,0.8),transparent)" }}
-            />
-
-            {/* Corner ornaments */}
-            <div className="absolute top-8 left-8 w-12 h-12 border-t-2 border-l-2 border-amber-400/30" />
-            <div className="absolute top-8 right-10 w-12 h-12 border-t-2 border-r-2 border-purple-400/30" />
-
-            {/* Character info */}
-            <div className="auth-title absolute bottom-16 left-10 z-20">
-              <p className="text-[10px] font-black uppercase tracking-[0.42em] text-amber-400/70 mb-2">ARCADIA ROLEPLAY</p>
-              <h1 className="text-5xl font-black text-white leading-none drop-shadow-[0_2px_20px_rgba(0,0,0,0.9)]">
-                Enter the
-                <br />
-                <span
-                  className="text-transparent bg-clip-text"
-                  style={{ backgroundImage: "linear-gradient(135deg, #d4af37, #a855f7, #60a5fa)" }}
-                >
-                  Arcadia
-                </span>
-              </h1>
-              <p className="auth-subtitle mt-3 text-sm text-white/50 font-medium max-w-[280px] leading-relaxed">
-                Forge your legend. Claim your territory.<br />
-                Your story begins here<span className="auth-cursor text-amber-400">|</span>
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT — Auth form panel */}
-        <div className="auth-form-panel relative flex flex-1 flex-col items-center justify-center px-10 py-12">
-          {/* Separator */}
-          <div className="absolute left-0 top-[15%] h-[70%] w-px"
-            style={{ background: "linear-gradient(to bottom, transparent, rgba(160,100,255,0.25), transparent)" }}
-          />
-
-          {/* Logo */}
-          <div className="auth-title mb-6 flex flex-col items-center gap-2">
-            <div className="relative">
-              <div className="absolute inset-0 rounded-full blur-xl opacity-45"
-                style={{ background: "radial-gradient(circle, rgba(212,175,55,0.65), transparent)" }}
-              />
-              <img src={`${basePath}/logo.svg`} alt="Arcadia" className="relative h-12 w-12" />
-            </div>
-            <p className="text-[10px] font-black uppercase tracking-[0.35em] text-purple-400/80">
-              {mode === "sign-in" ? "Welcome Back" : "New Legend"}
-            </p>
-          </div>
-
-          {/* Clerk form */}
-          <div className="w-full max-w-[420px]">
-            {null}
-          </div>
-
-          <p className="mt-8 text-center text-[10px] font-bold tracking-widest text-white/20 uppercase">
-            © 2025 Arcadia Roleplay — All Rights Reserved
-          </p>
         </div>
       </div>
     </div>
