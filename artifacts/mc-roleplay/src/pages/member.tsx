@@ -3853,6 +3853,7 @@ function MusicTab() {
   const [categories, setCategories] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentTrack, setCurrentTrack] = useState<any | null>(null);
+  const [audioSrc, setAudioSrc] = useState("");
   const [playingPlaylistTracks, setPlayingPlaylistTracks] = useState<any[]>([]);
   const [activePlaylist, setActivePlaylist] = useState("All Tracks");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -3881,6 +3882,8 @@ function MusicTab() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminMessage, setAdminMessage] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const pendingAutoPlayRef = useRef(false);
+  const prewarmedTrackIdsRef = useRef<Set<string | number>>(new Set());
 
   const MUSIC_TYPES = ["Global Charts", "Rilis Hari Ini", "Lofi & Chill", "Pop Hits", "Synthwave Hits", "Lobby Favorites", "Combat & Adventure", "Tavern Classics", "Hip Hop", "EDM", "R&B", "Indie", "K-Pop", "OST"];
 
@@ -3927,16 +3930,34 @@ function MusicTab() {
   useEffect(() => {
     try {
       const s = window.localStorage.getItem("arcadia_music_favorites");
-      if (s) { const p = JSON.parse(s); setFavoriteTracks(p); setLikedTracks(Object.fromEntries(Object.keys(p).map(k => [k, true]))); }
+      if (s) {
+        const p = JSON.parse(s);
+        Object.values(p).forEach((track: any) => {
+          if (track?.file?.startsWith?.("/api/music/tracks/stream")) track.file = "";
+        });
+        setFavoriteTracks(p);
+        setLikedTracks(Object.fromEntries(Object.keys(p).map(k => [k, true])));
+      }
     } catch {}
   }, []);
 
-  useEffect(() => { window.localStorage.setItem("arcadia_music_favorites", JSON.stringify(favoriteTracks)); }, [favoriteTracks]);
+  const stripTransientStream = (track: any) => {
+    if (!track) return track;
+    const copy = { ...track };
+    if (copy.file?.startsWith?.("/api/music/tracks/stream")) copy.file = "";
+    return copy;
+  };
+
+  useEffect(() => {
+    const sanitized = Object.fromEntries(Object.entries(favoriteTracks).map(([id, track]) => [id, stripTransientStream(track)]));
+    window.localStorage.setItem("arcadia_music_favorites", JSON.stringify(sanitized));
+  }, [favoriteTracks]);
   useEffect(() => { if (audioRef.current) audioRef.current.volume = isMuted ? 0 : volume; }, [volume, isMuted]);
   useEffect(() => { if (audioRef.current) audioRef.current.loop = isLooping; }, [isLooping]);
 
   useEffect(() => {
     if (!currentTrack?.file || !audioRef.current) return;
+    setAudioSrc(currentTrack.file);
     audioRef.current.src = currentTrack.file;
     audioRef.current.load();
     if (isPlaying) audioRef.current.play().catch(() => setIsPlaying(false));
@@ -3977,55 +3998,161 @@ function MusicTab() {
   const playlistSubtext = searchQuery.trim() ? `Ditemukan ${displayTracks.length} lagu di Spotify` : `Spotify Library · ${displayTracks.length} lagu`;
 
   const fmt = (s: number) => { if (!s || isNaN(s)) return "0:00"; return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; };
+  const parseDuration = (value: any) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value !== "string") return 0;
+    const parts = value.split(":").map((p) => Number(p));
+    if (parts.some((p) => !Number.isFinite(p))) return 0;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return 0;
+  };
+  const getTrackDuration = (track: any) => parseDuration(track?.duration) || (Number(track?.durationMs) > 0 ? Number(track.durationMs) / 1000 : 0);
+  const describeAudioError = (err: any) => {
+    const mediaError = audioRef.current?.error;
+    const mediaDetail = mediaError ? ` media=${mediaError.code}` : "";
+    return `${err?.name || "AudioError"}${err?.message ? `: ${err.message}` : ""}${mediaDetail}`;
+  };
+  const getPlayableUrl = (track: any) => {
+    if (track?.file && !track.file.startsWith?.("/api/music/tracks/stream")) return track.file;
+    const trackDuration = getTrackDuration(track);
+    const params = new URLSearchParams({
+      title: String(track?.title || ""),
+      artist: String(track?.artist || ""),
+      _: String(Date.now()),
+    });
+    if (trackDuration) params.set("duration", String(Math.round(trackDuration)));
+    return `/api/music/tracks/play?${params.toString()}`;
+  };
+  const prewarmTrack = (track: any) => {
+    if (!track || track.file) return;
+    if (prewarmedTrackIdsRef.current.has(track.id)) return;
+    prewarmedTrackIdsRef.current.add(track.id);
+    const trackDuration = getTrackDuration(track);
+    const durationQuery = trackDuration ? `&duration=${encodeURIComponent(String(Math.round(trackDuration)))}` : "";
+    fetch(`/api/music/tracks/resolve?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}${durationQuery}`).catch(() => {});
+  };
+
+  useEffect(() => {
+    displayTracks.slice(0, 1).forEach((track) => prewarmTrack(track));
+  }, [playlistTitle, displayTracks.length]);
 
   const playTrack = async (track: any, playlist: any[]) => {
-    if (!track.file) {
-      setIsStreamLoading(true);
-      setLoadingTrackId(track.id);
-      try {
-        const res = await fetch(`/api/music/tracks/resolve?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`);
-        if (!res.ok) throw new Error("Gagal memuat stream audio.");
-        const data = await res.json();
-        track.file = data.streamUrl;
-        
-        // Update track file path in the local states so we don't resolve it again
-        const updateItem = (item: any) => {
-          if (item && item.id === track.id) {
-            item.file = data.streamUrl;
-          }
-        };
-        tracks.forEach(updateItem);
-        newReleases.forEach(updateItem);
-        searchResults.forEach(updateItem);
-        Object.values(favoriteTracks).forEach(updateItem);
-      } catch (err: any) {
-        toast({ title: "Error", description: err.message || "Gagal memuat audio.", variant: "destructive" });
-        setIsStreamLoading(false);
-        setLoadingTrackId(null);
-        return;
-      }
-      setIsStreamLoading(false);
-      setLoadingTrackId(null);
-    }
+    const playableUrl = getPlayableUrl(track);
     setCurrentTrack(track);
     setPlayingPlaylistTracks(playlist);
     setCurrentTime(0);
-    setDuration(0);
-    setIsPlaying(true);
+    setDuration(getTrackDuration(track));
+    setAudioSrc(playableUrl);
+    setIsStreamLoading(!track.file || track.file.startsWith?.("/api/music/tracks/stream"));
+    setLoadingTrackId(track.id);
+    if (audioRef.current) {
+      pendingAutoPlayRef.current = true;
+      audioRef.current.src = playableUrl;
+      audioRef.current.muted = false;
+      audioRef.current.volume = volume || 0.8;
+      audioRef.current.load();
+      try {
+        await audioRef.current.play();
+        pendingAutoPlayRef.current = false;
+        setIsMuted(false);
+        setIsPlaying(true);
+        setIsStreamLoading(false);
+        setLoadingTrackId(null);
+      } catch (err: any) {
+        setIsPlaying(false);
+        // Keep pendingAutoPlayRef on; browsers can reject while the proxied stream is still resolving.
+        console.warn("Initial audio play failed, waiting for canplay", describeAudioError(err));
+      }
+    } else {
+      setIsPlaying(true);
+    }
   };
 
-  const handlePlayPause = () => {
+  const handlePlayPause = async () => {
     if (!audioRef.current) return;
-    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-    else { audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {}); }
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      return;
+    }
+
+    const audioHasSource = Boolean(audioRef.current.currentSrc || audioRef.current.src || audioSrc);
+    if (!audioHasSource && currentTrack) {
+      await playTrack(currentTrack, playingPlaylistTracks.length ? playingPlaylistTracks : displayTracks);
+      return;
+    }
+
+    try {
+      audioRef.current.muted = false;
+      audioRef.current.volume = volume || 0.8;
+      await audioRef.current.play();
+      pendingAutoPlayRef.current = false;
+      setIsMuted(false);
+      setIsPlaying(true);
+    } catch (err: any) {
+      if (currentTrack) {
+        await playTrack(currentTrack, playingPlaylistTracks.length ? playingPlaylistTracks : displayTracks);
+      } else {
+        toast({ title: "Audio belum bisa diputar", description: describeAudioError(err), variant: "destructive" });
+      }
+    }
   };
   const handleTimeUpdate = () => { if (audioRef.current) setCurrentTime(audioRef.current.currentTime); };
-  const handleLoadedMetadata = () => { if (audioRef.current) setDuration(audioRef.current.duration); };
+  const handleLoadedMetadata = () => {
+    if (!audioRef.current) return;
+    const audioDuration = audioRef.current.duration;
+    const fallbackDuration = getTrackDuration(currentTrack);
+    if (fallbackDuration && (!Number.isFinite(audioDuration) || Math.abs(audioDuration - fallbackDuration) > 20)) {
+      setDuration(fallbackDuration);
+      return;
+    }
+    setDuration(Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : fallbackDuration);
+  };
+  const handleAudioError = () => {
+    pendingAutoPlayRef.current = false;
+    setIsPlaying(false);
+    setIsStreamLoading(false);
+    setLoadingTrackId(null);
+    const mediaError = audioRef.current?.error;
+    toast({ title: "Audio gagal diputar", description: mediaError ? `Media error code ${mediaError.code}` : "Coba klik lagu itu lagi untuk refresh stream.", variant: "destructive" });
+  };
+  const handleAudioWaiting = () => {
+    if (currentTrack) {
+      setIsStreamLoading(true);
+      setLoadingTrackId(currentTrack.id);
+    }
+  };
+  const handleAudioPlaying = () => {
+    pendingAutoPlayRef.current = false;
+    setIsPlaying(true);
+    setIsStreamLoading(false);
+    setLoadingTrackId(null);
+  };
+  const handleCanPlay = async () => {
+    if (!pendingAutoPlayRef.current || !audioRef.current) return;
+    try {
+      audioRef.current.muted = false;
+      audioRef.current.volume = volume || 0.8;
+      await audioRef.current.play();
+      pendingAutoPlayRef.current = false;
+      setIsMuted(false);
+      setIsPlaying(true);
+      setIsStreamLoading(false);
+      setLoadingTrackId(null);
+    } catch (err: any) {
+      pendingAutoPlayRef.current = false;
+      setIsPlaying(false);
+      setIsStreamLoading(false);
+      setLoadingTrackId(null);
+      toast({ title: "Audio belum bisa diputar", description: describeAudioError(err), variant: "destructive" });
+    }
+  };
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => { const t = parseFloat(e.target.value); setCurrentTime(t); if (audioRef.current) audioRef.current.currentTime = t; };
   const handleNext = () => { if (!playingPlaylistTracks.length || !currentTrack) return; const i = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id); playTrack(playingPlaylistTracks[isShuffling ? Math.floor(Math.random() * playingPlaylistTracks.length) : (i + 1) % playingPlaylistTracks.length], playingPlaylistTracks); };
   const handlePrevious = () => { if (!playingPlaylistTracks.length || !currentTrack) return; const i = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id); playTrack(playingPlaylistTracks[(i - 1 + playingPlaylistTracks.length) % playingPlaylistTracks.length], playingPlaylistTracks); };
   const handleEnded = () => { if (isLooping && audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); } else { handleNext(); } };
-  const toggleLike = (track: any) => { const id = track.id; setLikedTracks(p => ({ ...p, [id]: !p[id] })); setFavoriteTracks(p => { if (p[id]) { const n = { ...p }; delete n[id]; return n; } return { ...p, [id]: track }; }); };
+  const toggleLike = (track: any) => { const id = track.id; setLikedTracks(p => ({ ...p, [id]: !p[id] })); setFavoriteTracks(p => { if (p[id]) { const n = { ...p }; delete n[id]; return n; } return { ...p, [id]: stripTransientStream(track) }; }); };
 
   const handleAdminAdd = async () => {
     if (!adminForm.title || !adminForm.artist || !adminForm.file || !adminForm.cover || !adminForm.duration) { setAdminMessage("Semua field wajib diisi."); return; }
@@ -4116,7 +4243,7 @@ function MusicTab() {
 
   return (
     <div className="flex flex-col rounded-3xl overflow-hidden bg-[#121212] border border-[#282828] text-slate-300 font-sans shadow-2xl relative">
-      <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded} src={currentTrack?.file || ""} />
+      <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onDurationChange={handleLoadedMetadata} onLoadStart={handleAudioWaiting} onWaiting={handleAudioWaiting} onPlaying={handleAudioPlaying} onCanPlay={handleCanPlay} onError={handleAudioError} onEnded={handleEnded} src={audioSrc} />
 
       {isAdmin && (
         <div className="px-4 pt-3 pb-3 flex items-center gap-3 border-b border-[#282828] flex-wrap">
@@ -4317,7 +4444,7 @@ function MusicTab() {
                     const isHov = hoveredTrackId === track.id;
                     const isLiked = likedTracks[track.id] || false;
                     return (
-                      <tr key={track.id} onMouseEnter={() => setHoveredTrackId(track.id)} onMouseLeave={() => setHoveredTrackId(null)}
+                      <tr key={track.id} onMouseEnter={() => { setHoveredTrackId(track.id); prewarmTrack(track); }} onMouseLeave={() => setHoveredTrackId(null)}
                         onDoubleClick={() => playTrack(track, displayTracks)}
                         className={`group text-xs font-semibold text-slate-400 hover:bg-white/5 border-b border-[#1a1a1a]/50 transition-all cursor-pointer ${isCur ? "bg-white/[0.02]" : ""}`}>
                         <td className="py-3 text-center">

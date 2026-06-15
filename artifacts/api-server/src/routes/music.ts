@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, musicTable } from "@workspace/db";
-import { eq, ilike, or, gte, desc } from "drizzle-orm";
+import { and, eq, ilike, or, gte, desc } from "drizzle-orm";
 import { getAuth } from "../lib/auth";
 import { usersTable } from "@workspace/db";
 import multer from "multer";
@@ -15,6 +15,7 @@ const execFileAsync = promisify(execFile);
 
 // ─── Stream Cache for Audio Proxying ─────────────────────────────────────────
 const streamCache = new Map<string, { url: string; expires: number; key?: string }>();
+const streamResolvePromises = new Map<string, Promise<{ url: string; duration: number | null; title: string }>>();
 
 // ─── Spotify Token Cache ─────────────────────────────────────────────────────
 let spotifyTokenCache: { token: string; expiresAt: number } | null = null;
@@ -100,6 +101,223 @@ function formatMsToMinSec(ms: number) {
   return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
 }
 
+function getYtDlpCommand(): string {
+  if (process.platform !== "win32") return "yt-dlp";
+
+  const possiblePaths = [
+    path.resolve(process.cwd(), "yt-dlp.exe"),
+    path.resolve(import.meta.dirname, "yt-dlp.exe"),
+    path.resolve(import.meta.dirname, "../yt-dlp.exe"),
+    path.resolve(import.meta.dirname, "../../yt-dlp.exe"),
+    path.resolve(import.meta.dirname, "../../../yt-dlp.exe"),
+    path.resolve(import.meta.dirname, "../../../../yt-dlp.exe"),
+  ];
+
+  return possiblePaths.find((p) => fs.existsSync(p)) || "yt-dlp.exe";
+}
+
+function normalizeLimit(value: unknown, fallback = 10, max = 50): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.floor(parsed), max);
+}
+
+function normalizeExpectedDuration(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  if (parsed > 10_000) return Math.round(parsed / 1000);
+  return Math.round(parsed);
+}
+
+function mapSpotifyTrack(t: any, type = "Global Charts") {
+  return {
+    id: t.id,
+    title: t.name,
+    artist: Array.isArray(t.artists) ? t.artists.map((a: any) => a.name).join(", ") : "Unknown Artist",
+    album: t.album?.name || "",
+    cover: t.album?.images?.[0]?.url || "/village.png",
+    duration: formatMsToMinSec(Number(t.duration_ms) || 0),
+    file: "",
+    type,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function mapSpotifyAdminTrack(t: any) {
+  return {
+    spotifyId: t.id,
+    title: t.name,
+    artist: Array.isArray(t.artists) ? t.artists.map((a: any) => a.name).join(", ") : "Unknown Artist",
+    album: t.album?.name || "",
+    cover: t.album?.images?.[0]?.url || "",
+    durationMs: t.duration_ms,
+    duration: formatMsToMinSec(Number(t.duration_ms) || 0),
+    spotifyUrl: t.external_urls?.spotify || "",
+    previewUrl: t.preview_url,
+  };
+}
+
+async function searchSpotifyTracks(token: string, q: string, limit = 10) {
+  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=${normalizeLimit(limit, 10, 50)}`;
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!resp.ok) {
+    const detail = await resp.text();
+    throw Object.assign(new Error("Spotify search gagal"), { status: resp.status, detail });
+  }
+  const data = (await resp.json()) as { tracks?: { items?: any[] } };
+  return data.tracks?.items || [];
+}
+
+async function getLocalTracks(query = "", type = "", limit = 50) {
+  const filters = [];
+  if (query) {
+    const like = `%${query}%`;
+    filters.push(or(
+      ilike(musicTable.title, like),
+      ilike(musicTable.artist, like),
+      ilike(musicTable.album, like),
+    ));
+  }
+  if (type && type !== "All Tracks") {
+    filters.push(eq(musicTable.type, type));
+  }
+
+  const where = filters.length ? and(...filters) : undefined;
+  const builder = db.select().from(musicTable);
+  const rows = where
+    ? await builder.where(where).orderBy(desc(musicTable.createdAt)).limit(limit)
+    : await builder.orderBy(desc(musicTable.createdAt)).limit(limit);
+
+  return rows;
+}
+
+async function resolveYoutubeAudioUrl(ytDlpCmd: string, searchQuery: string, expectedDuration: number | null) {
+  const { stdout } = await execFileAsync(ytDlpCmd, [
+    "--flat-playlist",
+    "--dump-single-json",
+    "ytsearch5:" + searchQuery,
+  ], { timeout: 20_000, maxBuffer: 1024 * 512 });
+
+  let searchData: any = null;
+  try {
+    searchData = JSON.parse(stdout);
+  } catch {
+    searchData = null;
+  }
+
+  const candidates = (searchData?.entries || [])
+    .map((item: any) => ({
+      url: item.url?.startsWith?.("http") ? item.url : item.id ? `https://www.youtube.com/watch?v=${item.id}` : item.webpage_url,
+      title: String(item.title || ""),
+      duration: Number(item.duration) || 0,
+      viewCount: Number(item.view_count) || 0,
+    }))
+    .filter((item: any) => item.url);
+
+  if (candidates.length === 0) {
+    candidates.push({
+      url: "ytsearch1:" + searchQuery,
+      title: searchQuery,
+      duration: expectedDuration || 0,
+      viewCount: 0,
+    });
+  }
+
+  const scored = candidates
+    .map((item: any) => {
+      const durationDiff = expectedDuration && item.duration ? Math.abs(item.duration - expectedDuration) : 0;
+      const tooLongPenalty = expectedDuration && item.duration > expectedDuration * 2 ? 10_000 : 0;
+      const durationPenalty = expectedDuration && item.duration ? durationDiff * 10 : 250;
+      const audioWordBonus = /\b(audio|lyrics?|official|topic)\b/i.test(item.title) ? -25 : 0;
+      const popularityBonus = item.viewCount ? -Math.min(Math.log10(item.viewCount), 8) : 0;
+      return { ...item, score: durationPenalty + tooLongPenalty + audioWordBonus + popularityBonus };
+    })
+    .sort((a: any, b: any) => a.score - b.score);
+
+  const best = scored[0];
+  const { stdout: directUrl } = await execFileAsync(ytDlpCmd, [
+    "-g",
+    "-f", "140/bestaudio[ext=m4a]/bestaudio",
+    "--no-playlist",
+    best.url,
+  ], { timeout: 45_000 });
+
+  const url = directUrl.split(/\r?\n/).find((line) => line.startsWith("http")) || "";
+  if (!url) {
+    throw new Error("Gagal mengambil URL audio YouTube.");
+  }
+
+  return { url, duration: best.duration || expectedDuration || null, title: best.title };
+}
+
+async function getCachedResolvedAudio(cacheKey: string, searchQuery: string, expectedDuration: number | null) {
+  const cachedEntry = Array.from(streamCache.entries()).find(([_, entry]) => entry.key === cacheKey);
+  if (cachedEntry && Date.now() < cachedEntry[1].expires) {
+    return { url: cachedEntry[1].url, duration: null, title: "" };
+  }
+
+  const pending = streamResolvePromises.get(cacheKey);
+  if (pending) return pending;
+
+  const promise = (async () => {
+    const ytDlpCmd = getYtDlpCommand();
+    const resolved = await resolveYoutubeAudioUrl(ytDlpCmd, searchQuery, expectedDuration);
+    const cacheId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    streamCache.set(cacheId, {
+      url: resolved.url,
+      expires: Date.now() + 30 * 60 * 1000,
+      key: cacheKey,
+    });
+    return resolved;
+  })();
+
+  streamResolvePromises.set(cacheKey, promise);
+  try {
+    return await promise;
+  } finally {
+    streamResolvePromises.delete(cacheKey);
+  }
+}
+
+async function proxyAudioUrl(req: any, res: any, audioUrl: string) {
+  const headers: Record<string, string> = {};
+  if (req.headers.range) {
+    headers["Range"] = req.headers.range;
+  }
+
+  const fetchResp = await fetch(audioUrl, {
+    headers: {
+      ...headers,
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    },
+  });
+
+  if (!fetchResp.ok && fetchResp.status !== 206) {
+    const detail = await fetchResp.text().catch(() => "");
+    req.log?.warn({ status: fetchResp.status, detail }, "Upstream audio stream failed");
+    res.status(502).send("Audio stream upstream failed.");
+    return;
+  }
+
+  const responseHeaders: Record<string, string> = {
+    "Content-Type": fetchResp.headers.get("content-type") || "audio/mp4",
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "no-store",
+  };
+  const contentLength = fetchResp.headers.get("content-length");
+  const contentRange = fetchResp.headers.get("content-range");
+  if (contentLength) responseHeaders["Content-Length"] = contentLength;
+  if (contentRange) responseHeaders["Content-Range"] = contentRange;
+
+  res.writeHead(fetchResp.status || 200, responseHeaders);
+
+  if (fetchResp.body) {
+    Readable.fromWeb(fetchResp.body as any).pipe(res);
+  } else {
+    res.end();
+  }
+}
+
 // ─── Multer setup ────────────────────────────────────────────────────────────
 
 const audioStorage = multer.diskStorage({
@@ -128,101 +346,64 @@ const uploadCover = multer({ storage: coverStorage, limits: { fileSize: 5 * 1024
 router.get("/music/tracks", async (req, res): Promise<void> => {
   const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const type = typeof req.query.type === "string" ? req.query.type.trim() : "";
-  
-  const token = await getSpotifyAccessToken();
-  if (!token) {
-    res.status(503).json({ message: "Spotify API tidak tersedia. Set SPOTIFY_CLIENT_ID dan SPOTIFY_CLIENT_SECRET di .env" });
-    return;
-  }
+  const limit = normalizeLimit(req.query.limit, 10, 50);
 
   try {
+    const token = await getSpotifyAccessToken();
     let spotifyQuery = query || type || "Global Charts";
     if (spotifyQuery === "All Tracks") {
       spotifyQuery = "Global Top Hits";
     }
 
-    const limit = 10;
-    const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(spotifyQuery)}&type=track&limit=${limit}`;
-    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!resp.ok) {
-      const err = await resp.text();
-      res.status(resp.status).json({ message: "Spotify search gagal", detail: err });
-      return;
+    if (token) {
+      try {
+        const items = await searchSpotifyTracks(token, spotifyQuery, limit);
+        if (items.length > 0) {
+          res.json(items.map((t) => mapSpotifyTrack(t, type || "Global Charts")));
+          return;
+        }
+      } catch (error: any) {
+        req.log?.warn({ err: error }, "Spotify search failed, falling back to local tracks");
+      }
     }
-    const data = (await resp.json()) as {
-      tracks?: {
-        items: Array<{
-          id: string;
-          name: string;
-          artists: Array<{ name: string }>;
-          album: { name: string; images: Array<{ url: string }> };
-          duration_ms: number;
-          external_urls: { spotify: string };
-          preview_url: string | null;
-        }>;
-      };
-    };
 
-    const items = data.tracks?.items || [];
-    const results = items.map((t) => ({
-      id: t.id,
-      title: t.name,
-      artist: t.artists.map((a) => a.name).join(", "),
-      album: t.album.name,
-      cover: t.album.images[0]?.url || "/village.png",
-      duration: formatMsToMinSec(t.duration_ms),
-      file: "",
-      type: type || "Global Charts",
-      createdAt: new Date().toISOString(),
-    }));
-
-    res.json(results);
+    res.json(await getLocalTracks(query, type, limit));
   } catch (error: any) {
-    req.log?.error({ err: error }, "Spotify search failed");
-    res.status(500).json({ message: "Spotify search gagal.", detail: error?.message || String(error) });
+    req.log?.error({ err: error }, "Music tracks lookup failed");
+    res.status(500).json({ message: "Gagal memuat daftar musik.", detail: error?.message || String(error) });
   }
 });
 
 /** GET /api/music/tracks/new-releases — tracks added in last 7 days OR type="Rilis Hari Ini" */
 router.get("/music/tracks/new-releases", async (req, res): Promise<void> => {
-  const token = await getSpotifyAccessToken();
-  if (!token) {
-    res.status(503).json({ message: "Spotify API tidak tersedia." });
-    return;
-  }
-
   try {
-    const url = `https://api.spotify.com/v1/search?q=tag:new&type=track&limit=10`;
-    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    let data;
-    if (!resp.ok) {
-      const fallbackUrl = `https://api.spotify.com/v1/search?q=New%20Releases&type=track&limit=10`;
-      const fallbackResp = await fetch(fallbackUrl, { headers: { Authorization: `Bearer ${token}` } });
-      if (!fallbackResp.ok) {
-        res.status(fallbackResp.status).json({ message: "Spotify search failed" });
-        return;
+    const token = await getSpotifyAccessToken();
+    if (token) {
+      for (const spotifyQuery of ["tag:new", "new releases", "today top hits"]) {
+        try {
+          const items = await searchSpotifyTracks(token, spotifyQuery, 10);
+          if (items.length > 0) {
+            res.json(items.map((t) => mapSpotifyTrack(t, "Rilis Hari Ini")));
+            return;
+          }
+        } catch (error: any) {
+          req.log?.warn({ err: error, spotifyQuery }, "Spotify new releases lookup failed");
+        }
       }
-      data = await fallbackResp.json();
-    } else {
-      data = await resp.json();
     }
 
-    const items = (data as any).tracks?.items || [];
-    const results = items.map((t: any) => ({
-      id: t.id,
-      title: t.name,
-      artist: t.artists.map((a: any) => a.name).join(", "),
-      album: t.album.name,
-      cover: t.album.images[0]?.url || "/village.png",
-      duration: formatMsToMinSec(t.duration_ms),
-      file: "",
-      type: "Rilis Hari Ini",
-      createdAt: new Date().toISOString(),
-    }));
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const rows = await db
+      .select()
+      .from(musicTable)
+      .where(or(eq(musicTable.type, "Rilis Hari Ini"), gte(musicTable.createdAt, sevenDaysAgo)))
+      .orderBy(desc(musicTable.createdAt))
+      .limit(10);
 
-    res.json(results);
+    res.json(rows);
   } catch (error: any) {
-    res.status(500).json({ message: "Failed to fetch new releases from Spotify.", detail: error?.message || String(error) });
+    req.log?.error({ err: error }, "Failed to fetch new releases");
+    res.status(500).json({ message: "Gagal memuat rilis terbaru.", detail: error?.message || String(error) });
   }
 });
 
@@ -398,8 +579,7 @@ router.post("/music/admin/download", async (req, res): Promise<void> => {
   const outputPath = path.join(musicDir, filename);
 
   try {
-    // Try yt-dlp first, fallback to youtube-dl
-    const ytDlpCmd = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+    const ytDlpCmd = getYtDlpCommand();
     await execFileAsync(ytDlpCmd, [
       "-x",
       "--audio-format", "mp3",
@@ -496,39 +676,8 @@ router.get("/music/spotify/search", async (req, res): Promise<void> => {
   }
 
   try {
-    const limit = Number(req.query.limit) || 10;
-    const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=${Math.min(limit, 10)}`;
-    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!resp.ok) {
-      const err = await resp.text();
-      res.status(resp.status).json({ message: "Spotify search gagal", detail: err });
-      return;
-    }
-    const data = (await resp.json()) as {
-      tracks: {
-        items: Array<{
-          id: string;
-          name: string;
-          artists: Array<{ name: string }>;
-          album: { name: string; images: Array<{ url: string }> };
-          duration_ms: number;
-          external_urls: { spotify: string };
-          preview_url: string | null;
-        }>;
-      };
-    };
-
-    const results = data.tracks.items.map((t) => ({
-      spotifyId: t.id,
-      title: t.name,
-      artist: t.artists.map((a) => a.name).join(", "),
-      album: t.album.name,
-      cover: t.album.images[0]?.url || "",
-      durationMs: t.duration_ms,
-      duration: formatMsToMinSec(t.duration_ms),
-      spotifyUrl: t.external_urls.spotify,
-      previewUrl: t.preview_url,
-    }));
+    const limit = normalizeLimit(req.query.limit, 10, 10);
+    const results = (await searchSpotifyTracks(token, q, limit)).map(mapSpotifyAdminTrack);
 
     res.json(results);
   } catch (error: any) {
@@ -555,7 +704,7 @@ router.post("/music/spotify/download", async (req, res): Promise<void> => {
   const ytSearchQuery = `${String(artist)} - ${String(title)} (audio)`;
 
   try {
-    const ytDlpCmd = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+    const ytDlpCmd = getYtDlpCommand();
 
     // If spotifyId is provided, try downloading from Spotify URL first (yt-dlp supports some Spotify URLs)
     // Otherwise, search YouTube using the track metadata
@@ -644,7 +793,7 @@ router.post("/music/spotify/download-url", async (req, res): Promise<void> => {
   const outputPath = path.join(musicDir, filename);
 
   try {
-    const ytDlpCmd = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+    const ytDlpCmd = getYtDlpCommand();
     await execFileAsync(ytDlpCmd, [
       "-x",
       "--audio-format", "mp3",
@@ -711,13 +860,14 @@ router.post("/music/spotify/download-url", async (req, res): Promise<void> => {
 router.get("/music/tracks/resolve", async (req, res): Promise<void> => {
   const title = typeof req.query.title === "string" ? req.query.title.trim() : "";
   const artist = typeof req.query.artist === "string" ? req.query.artist.trim() : "";
+  const expectedDuration = normalizeExpectedDuration(req.query.duration);
 
   if (!title || !artist) {
     res.status(400).json({ message: "title and artist are required." });
     return;
   }
 
-  const cacheKey = `resolve:${artist} - ${title}`;
+  const cacheKey = `track:${artist} - ${title}:${expectedDuration || "any"}`;
   // Look up if we already resolved it recently
   const cachedEntry = Array.from(streamCache.entries()).find(([_, entry]) => entry.key === cacheKey);
   
@@ -727,42 +877,17 @@ router.get("/music/tracks/resolve", async (req, res): Promise<void> => {
   }
 
   try {
-    const possiblePaths = [
-      path.resolve(import.meta.dirname, "yt-dlp.exe"),
-      path.resolve(import.meta.dirname, "../yt-dlp.exe"),
-      path.resolve(import.meta.dirname, "../../yt-dlp.exe"),
-      path.resolve(import.meta.dirname, "../../../yt-dlp.exe"),
-      path.resolve(import.meta.dirname, "../../../../yt-dlp.exe"),
-    ];
-    let ytDlpCmd = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        ytDlpCmd = p;
-        break;
-      }
-    }
-
     const ytSearchQuery = `${artist} - ${title}`;
-    const { stdout } = await execFileAsync(ytDlpCmd, [
-      "-g",
-      "-f", "ba[ext=m4a]",
-      `ytsearch1:${ytSearchQuery}`
-    ], { timeout: 30_000 });
+    const resolved = await getCachedResolvedAudio(cacheKey, ytSearchQuery, expectedDuration);
 
-    const youtubeStreamUrl = stdout.trim();
-    if (!youtubeStreamUrl.startsWith("http")) {
-      res.status(500).json({ message: "Gagal mencari stream audio." });
-      return;
-    }
+    const cachedEntry = Array.from(streamCache.entries()).find(([_, entry]) => entry.key === cacheKey);
+    const cacheId = cachedEntry?.[0];
 
-    const cacheId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    streamCache.set(cacheId, {
-      url: youtubeStreamUrl,
-      expires: Date.now() + 30 * 60 * 1000,
-      key: cacheKey,
+    res.json({
+      streamUrl: `/api/music/tracks/stream?cacheId=${cacheId}`,
+      duration: resolved.duration,
+      sourceTitle: resolved.title,
     });
-
-    res.json({ streamUrl: `/api/music/tracks/stream?cacheId=${cacheId}` });
   } catch (error: any) {
     req.log?.error({ err: error }, "Stream URL resolution failed");
     res.status(500).json({ message: "Gagal memuat stream audio." });
@@ -770,6 +895,28 @@ router.get("/music/tracks/resolve", async (req, res): Promise<void> => {
 });
 
 /** GET /api/music/tracks/stream — stream from cacheId */
+router.get("/music/tracks/play", async (req, res): Promise<void> => {
+  const title = typeof req.query.title === "string" ? req.query.title.trim() : "";
+  const artist = typeof req.query.artist === "string" ? req.query.artist.trim() : "";
+  const expectedDuration = normalizeExpectedDuration(req.query.duration);
+
+  if (!title || !artist) {
+    res.status(400).send("title and artist are required.");
+    return;
+  }
+
+  try {
+    const cacheKey = `track:${artist} - ${title}:${expectedDuration || "any"}`;
+    const resolved = await getCachedResolvedAudio(cacheKey, `${artist} - ${title}`, expectedDuration);
+    await proxyAudioUrl(req, res, resolved.url);
+  } catch (error: any) {
+    req.log?.error({ err: error }, "Direct audio play failed");
+    if (!res.headersSent) {
+      res.status(500).send("Gagal memuat audio.");
+    }
+  }
+});
+
 router.get("/music/tracks/stream", async (req, res): Promise<void> => {
   const cacheId = typeof req.query.cacheId === "string" ? req.query.cacheId.trim() : "";
 
@@ -784,33 +931,8 @@ router.get("/music/tracks/stream", async (req, res): Promise<void> => {
     return;
   }
 
-  const youtubeStreamUrl = cached.url;
-
-  const headers: Record<string, string> = {};
-  if (req.headers.range) {
-    headers["Range"] = req.headers.range;
-  }
-
   try {
-    const fetchResp = await fetch(youtubeStreamUrl, {
-      headers: {
-        ...headers,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    });
-
-    res.writeHead(fetchResp.status || 200, {
-      "Content-Type": fetchResp.headers.get("content-type") || "audio/mp4",
-      "Content-Length": fetchResp.headers.get("content-length") || "",
-      "Content-Range": fetchResp.headers.get("content-range") || "",
-      "Accept-Ranges": "bytes",
-    });
-
-    if (fetchResp.body) {
-      Readable.fromWeb(fetchResp.body as any).pipe(res);
-    } else {
-      res.end();
-    }
+    await proxyAudioUrl(req, res, cached.url);
   } catch (err: any) {
     req.log?.error({ err }, "Proxy stream failed");
     if (!res.headersSent) {
