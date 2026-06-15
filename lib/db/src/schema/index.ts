@@ -11,4 +11,4 @@ export * from "./credits";
 export * from "./badges";
 export * from "./cosmetics";
 export * from "./wallet";
-
+export * from "./music";

@@ -74,6 +74,7 @@ const ROLE_LABELS: Record<string, string> = {
   staff: "Staff",
   dev: "Dev",
   dev_website: "Dev Website",
+  ai: "Meta AI",
 };
 
 const ROLE_BADGE_CLASSES: Record<string, string> = {
@@ -82,6 +83,7 @@ const ROLE_BADGE_CLASSES: Record<string, string> = {
   staff: "bg-sky-50 text-sky-600 border border-sky-100",
   dev: "bg-emerald-50 text-emerald-600 border border-emerald-100",
   dev_website: "bg-fuchsia-50 text-fuchsia-600 border border-fuchsia-100",
+  ai: "bg-blue-50 text-[#2563eb] border border-blue-100 font-extrabold tracking-wide",
 };
 
 function JitsiCall({
@@ -582,7 +584,22 @@ export default function MessagesPage() {
     }
   }
 
-  const filteredFriends = friends.filter((f) => {
+  const metaAiFromConv = conversations.find(c => c.type === "dm" && c.otherUsername === "metaai");
+  const metaAiId = metaAiFromConv?.otherUserId;
+
+  const aiFriendObj = metaAiId ? {
+    id: metaAiId,
+    username: "metaai",
+    displayName: "Meta AI",
+    userTag: "#000",
+    avatarUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128",
+    role: "ai",
+    equippedBorder: "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]",
+  } : null;
+
+  const allDmAvailable = aiFriendObj ? [aiFriendObj, ...friends] : friends;
+
+  const filteredFriends = allDmAvailable.filter((f) => {
     const q = dmSearch.toLowerCase();
     return (
       f.username.toLowerCase().includes(q) ||

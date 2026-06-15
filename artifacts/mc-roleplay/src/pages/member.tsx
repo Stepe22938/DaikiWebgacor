@@ -3822,240 +3822,18 @@ function WalletTab() {
   );
 }
 
-// â”€â”€ Spotify Client Credentials Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// ── YouTube Data API v3 Config ─────────────────────────────────────
-const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || "";
-
-async function searchYouTubeVideoId(artist: string, title: string): Promise<string | null> {
-  if (!YOUTUBE_API_KEY) return null;
-  try {
-    const query = `${artist} ${title} official audio`;
-    const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=1&key=${YOUTUBE_API_KEY}&videoCategoryId=10`
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.items?.[0]?.id?.videoId || null;
-  } catch {
-    return null;
-  }
-}
-
-async function searchYouTubeTracks(query: string): Promise<any[]> {
-  if (!YOUTUBE_API_KEY) return [];
-  try {
-    const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=25&key=${YOUTUBE_API_KEY}&videoCategoryId=10`
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.items || [])
-      .filter((item: any) => item?.id?.videoId)
-      .map((item: any) => ({
-        id: `youtube-${item.id.videoId}`,
-        title: item.snippet?.title || "YouTube Track",
-        artist: item.snippet?.channelTitle || "YouTube Music",
-        file: "",
-        cover: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.default?.url || "/village.png",
-        duration: "Full",
-        type: "YouTube Music",
-        isSpotify: false,
-        isYouTube: true,
-        youtubeVideoId: item.id.videoId,
-      }));
-  } catch {
-    return [];
-  }
-}
-
-async function searchSpotify(query: string): Promise<any[]> {
-  try {
-    const res = await fetch(
-      `/api/music/spotify/search?q=${encodeURIComponent(query)}&market=ID`
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.tracks || [];
-    return (data.tracks?.items || []).map((item: any) => ({
-      id: item.id,
-      title: item.name,
-      artist: item.artists?.map((a: any) => a.name).join(", ") || "Unknown",
-      file: "",
-      previewUrl: item.preview_url,
-      cover: item.album?.images?.[0]?.url || "/village.png",
-      duration: formatMsToMinSecStatic(item.duration_ms),
-      type: "Spotify Â· " + (item.album?.name || "Album"),
-      isSpotify: true,
-      spotifyUrl: item.external_urls?.spotify,
-      spotifyEmbedUrl: `https://open.spotify.com/embed/track/${item.id}`,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-function formatMsToMinSecStatic(ms: number) {
-  if (!ms) return "3:00";
-  const totalSecs = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSecs / 60);
-  const seconds = totalSecs % 60;
-  return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-}
-
-// Local RPG Tracks (always available offline)
-const LOCAL_TRACKS = [
-    {
-      id: 1,
-      title: "Town Square Melodies",
-      artist: "Lobby Ambient",
-      file: "/music/lobby_ambient.mp3",
-      cover: "/village.png",
-      duration: "6:12",
-      type: "Lobby Favorites"
-    },
-    {
-      id: 2,
-      title: "Quest of the Forest",
-      artist: "Adventure Theme",
-      file: "/music/adventure_theme.mp3",
-      cover: "/dungeon.png",
-      duration: "7:05",
-      type: "Combat & Adventure"
-    },
-    {
-      id: 3,
-      title: "The Drunken Dragon Inn",
-      artist: "Tavern Theme",
-      file: "/music/tavern_theme.mp3",
-      cover: "/lobby.png",
-      duration: "5:44",
-      type: "Tavern Classics"
-    },
-    {
-      id: 4,
-      title: "Valor & Iron",
-      artist: "Castle Theme",
-      file: "/music/castle_siege.mp3",
-      cover: "/login_bg.png",
-      duration: "5:02",
-      type: "Combat & Adventure"
-    },
-    {
-      id: 5,
-      title: "Echoes of the Nether",
-      artist: "Nether Ambient",
-      file: "/music/nether_echoes.mp3",
-      cover: "/char_idle.png",
-      duration: "6:02",
-      type: "Combat & Adventure"
-    },
-    {
-      id: 6,
-      title: "Starlight Oasis",
-      artist: "Desert Ambient",
-      file: "/music/starlight_oasis.mp3",
-      cover: "/char_looking.png",
-      duration: "7:38",
-      type: "Lobby Favorites"
-    },
-    {
-      id: 7,
-      title: "Ancient Ruins",
-      artist: "Dungeon Ambient",
-      file: "/music/ancient_ruins.mp3",
-      cover: "/char_peekaboo.png",
-      duration: "5:30",
-      type: "Combat & Adventure"
-    },
-    {
-      id: 8,
-      title: "Dragon's Lair",
-      artist: "Boss Battle",
-      file: "/music/dragons_lair.mp3",
-      cover: "/login_character.png",
-      duration: "5:18",
-      type: "Combat & Adventure"
-    },
-    {
-      id: 9,
-      title: "Whispering Woods",
-      artist: "Forest Ambient",
-      file: "/music/whispering_woods.mp3",
-      cover: "/opengraph.jpg",
-      duration: "6:35",
-      type: "Lobby Favorites"
-    },
-    {
-      id: 10,
-      title: "Shadow Dungeon",
-      artist: "Dungeon Ambient",
-      file: "/music/shadow_dungeon.mp3",
-      cover: "/dungeon.png",
-      duration: "8:47",
-      type: "Combat & Adventure"
-    },
-    {
-      id: 11,
-      title: "Fallen Kingdom",
-      artist: "Castle Theme",
-      file: "/music/fallen_kingdom.mp3",
-      cover: "/login_bg.png",
-      duration: "9:11",
-      type: "Combat & Adventure"
-    },
-    {
-      id: 12,
-      title: "The Golden Chalice",
-      artist: "Tavern Theme",
-      file: "/music/golden_chalice.mp3",
-      cover: "/lobby.png",
-      duration: "8:33",
-      type: "Tavern Classics"
-    },
-    {
-      id: 13,
-      title: "Eldritch Whispers",
-      artist: "Nether Ambient",
-      file: "/music/eldritch_whispers.mp3",
-      cover: "/char_peekaboo.png",
-      duration: "7:50",
-      type: "Combat & Adventure"
-    },
-    {
-      id: 14,
-      title: "Elven Sanctuary",
-      artist: "Forest Ambient",
-      file: "/music/elven_sanctuary.mp3",
-      cover: "/char_idle.png",
-      duration: "8:36",
-      type: "Lobby Favorites"
-    },
-    {
-      id: 15,
-      title: "Oceanic Voyage",
-      artist: "Adventure Theme",
-      file: "/music/oceanic_voyage.mp3",
-      cover: "/char_looking.png",
-      duration: "7:18",
-      type: "Combat & Adventure"
-    },
-    {
-      id: 16,
-      title: "Volcanic Depths",
-      artist: "Nether Ambient",
-      file: "/music/volcanic_depths.mp3",
-      cover: "/login_character.png",
-      duration: "8:03",
-      type: "Combat & Adventure"
-    }
-];
-
+// ─── MusicTab Component ───────────────────────────────────────────────────────────
 function MusicTab() {
-  const [tracks, setTracks] = useState<any[]>(LOCAL_TRACKS);
-  const [isLoadingSpotify, setIsLoadingSpotify] = useState(true);
+  const { data: me } = useGetMe();
+  const { toast } = useToast();
+  const isAdmin = (me as any)?.role === "admin";
 
-  const [currentTrack, setCurrentTrack] = useState<any>(LOCAL_TRACKS[0]);
-  const [playingPlaylistTracks, setPlayingPlaylistTracks] = useState<any[]>(LOCAL_TRACKS);
+  const [tracks, setTracks] = useState<any[]>([]);
+  const [newReleases, setNewReleases] = useState<any[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentTrack, setCurrentTrack] = useState<any | null>(null);
+  const [playingPlaylistTracks, setPlayingPlaylistTracks] = useState<any[]>([]);
   const [activePlaylist, setActivePlaylist] = useState("All Tracks");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -4067,1007 +3845,560 @@ function MusicTab() {
   const [hoveredTrackId, setHoveredTrackId] = useState<string | number | null>(null);
   const [likedTracks, setLikedTracks] = useState<Record<string | number, boolean>>({});
   const [favoriteTracks, setFavoriteTracks] = useState<Record<string | number, any>>({});
-
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [searchSource, setSearchSource] = useState<"youtube" | "spotify" | "itunes" | "none">("none");
-  const [spotifyModalTrack, setSpotifyModalTrack] = useState<any | null>(null);
-  const [ytModalTrack, setYtModalTrack] = useState<any | null>(null);
-  const [ytVideoId, setYtVideoId] = useState<string | null>(null);
-  const [ytVideoLoading, setYtVideoLoading] = useState(false);
-  const [spotifyReplayKey, setSpotifyReplayKey] = useState(0);
-  const [spotifyPlayer, setSpotifyPlayer] = useState<any | null>(null);
-  const [spotifyDeviceId, setSpotifyDeviceId] = useState<string | null>(null);
-  const [spotifyConnected, setSpotifyConnected] = useState(false);
-  const [spotifyError, setSpotifyError] = useState("");
-
+  const [isStreamLoading, setIsStreamLoading] = useState(false);
+  const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [adminTab, setAdminTab] = useState<"add" | "download" | "spotify" | "manage">("add");
+  const [adminForm, setAdminForm] = useState({ title: "", artist: "", album: "", file: "", cover: "", duration: "", type: "Global Charts", releaseDate: "" });
+  const [downloadForm, setDownloadForm] = useState({ url: "", title: "", artist: "", album: "", cover: "", type: "Global Charts", releaseDate: "" });
+  const [spotifySearchQuery, setSpotifySearchQuery] = useState("");
+  const [spotifyResults, setSpotifyResults] = useState<any[]>([]);
+  const [spotifySearching, setSpotifySearching] = useState(false);
+  const [spotifyDownloadingId, setSpotifyDownloadingId] = useState<string | null>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminMessage, setAdminMessage] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const spotifyPlayerRef = useRef<any | null>(null);
 
-  const parseDurationToSeconds = (value?: string) => {
-    if (!value) return 0;
-    const parts = value.split(":").map((part) => Number(part));
-    if (parts.some((part) => Number.isNaN(part))) return 0;
-    return parts.reduce((total, part) => total * 60 + part, 0);
+  const MUSIC_TYPES = ["Global Charts", "Rilis Hari Ini", "Lofi & Chill", "Pop Hits", "Synthwave Hits", "Lobby Favorites", "Combat & Adventure", "Tavern Classics", "Hip Hop", "EDM", "R&B", "Indie", "K-Pop", "OST"];
+
+  const refreshTracks = () => {
+    const typeQuery = activePlaylist === "All Tracks" ? "" : activePlaylist;
+    fetch(`/api/music/tracks?type=${encodeURIComponent(typeQuery)}`).then(r => r.ok ? r.json() : []).then(d => { if (Array.isArray(d)) setTracks(d); });
+    fetch("/api/music/tracks/new-releases").then(r => r.ok ? r.json() : []).then(d => { if (Array.isArray(d)) setNewReleases(d); });
+    fetch("/api/music/categories").then(r => r.ok ? r.json() : []).then(d => { if (Array.isArray(d)) setCategories(d); });
   };
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("arcadia_music_favorites");
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as Record<string | number, any>;
-      setFavoriteTracks(parsed);
-      setLikedTracks(
-        Object.fromEntries(Object.keys(parsed).map((trackId) => [trackId, true]))
-      );
-    } catch {
-      setFavoriteTracks({});
-      setLikedTracks({});
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("arcadia_music_favorites", JSON.stringify(favoriteTracks));
-  }, [favoriteTracks]);
-
-  const getSpotifyUserToken = async () => {
-    const response = await fetch("/api/music/spotify/token");
-    if (!response.ok) return null;
-    const data = await response.json();
-    return typeof data.accessToken === "string" ? data.accessToken : null;
-  };
-
-  const loadSpotifySdk = () =>
-    new Promise<void>((resolve) => {
-      if (window.Spotify) {
-        resolve();
-        return;
-      }
-
-      const existingScript = document.querySelector<HTMLScriptElement>("script[src='https://sdk.scdn.co/spotify-player.js']");
-      window.onSpotifyWebPlaybackSDKReady = () => resolve();
-
-      if (!existingScript) {
-        const script = document.createElement("script");
-        script.src = "https://sdk.scdn.co/spotify-player.js";
-        script.async = true;
-        document.body.appendChild(script);
-      }
-    });
-
-  const connectSpotifyPlayer = async () => {
-    setSpotifyError("");
-    const token = await getSpotifyUserToken();
-    if (!token) {
-      window.location.href = `/api/music/spotify/login?returnTo=${encodeURIComponent("/member?tab=music")}`;
-      return null;
-    }
-
-    await loadSpotifySdk();
-
-    if (spotifyPlayerRef.current && spotifyDeviceId) {
-      return { player: spotifyPlayerRef.current, deviceId: spotifyDeviceId };
-    }
-
-    const player = new window.Spotify.Player({
-      name: "Arcadia Music Player",
-      getOAuthToken: async (callback: (token: string) => void) => {
-        const freshToken = await getSpotifyUserToken();
-        if (freshToken) callback(freshToken);
-      },
-      volume,
-    });
-
-    player.addListener("ready", ({ device_id }: { device_id: string }) => {
-      setSpotifyDeviceId(device_id);
-      setSpotifyConnected(true);
-      setSpotifyError("");
-    });
-    player.addListener("not_ready", () => setSpotifyConnected(false));
-    player.addListener("account_error", ({ message }: { message: string }) => setSpotifyError(message || "Spotify Premium diperlukan."));
-    player.addListener("authentication_error", ({ message }: { message: string }) => setSpotifyError(message || "Spotify login gagal."));
-    player.addListener("playback_error", ({ message }: { message: string }) => setSpotifyError(message || "Spotify playback gagal."));
-    player.addListener("player_state_changed", (state: any) => {
-      if (!state) return;
-      setIsPlaying(!state.paused);
-      setCurrentTime(Math.floor((state.position || 0) / 1000));
-      setDuration(Math.floor((state.duration || 0) / 1000));
-    });
-
-    const connected = await player.connect();
-    if (!connected) {
-      setSpotifyError("Spotify player gagal connect.");
-      return null;
-    }
-
-    spotifyPlayerRef.current = player;
-    setSpotifyPlayer(player);
-    await player.setVolume(volume);
-
-    return new Promise<{ player: any; deviceId: string } | null>((resolve) => {
-      const timeout = window.setTimeout(() => resolve(null), 8000);
-      player.addListener("ready", ({ device_id }: { device_id: string }) => {
-        window.clearTimeout(timeout);
-        resolve({ player, deviceId: device_id });
-      });
-    });
-  };
-
-  useEffect(() => {
-    if (spotifyPlayerRef.current) {
-      void spotifyPlayerRef.current.setVolume(isMuted ? 0 : volume);
-    }
-  }, [volume, isMuted]);
-
-  // Fetch YouTube video ID when modal opens
-  useEffect(() => {
-    if (!ytModalTrack) { setYtVideoId(null); return; }
-    if (ytModalTrack.youtubeVideoId) {
-      setYtVideoId(ytModalTrack.youtubeVideoId);
-      setYtVideoLoading(false);
-      return;
-    }
-    setYtVideoLoading(true);
-    setYtVideoId(null);
-    searchYouTubeVideoId(ytModalTrack.artist, ytModalTrack.title)
-      .then((id) => { setYtVideoId(id); setYtVideoLoading(false); })
-      .catch(() => setYtVideoLoading(false));
-  }, [ytModalTrack]);
-
-
-  // â”€â”€ Auto-load Spotify tracks into All Tracks on mount â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  useEffect(() => {
-    const GENRE_QUERIES = [
-      { term: "top hits 2024", genre: "Global Charts" },
-      { term: "indonesia pop 2024", genre: "Global Charts" },
-      { term: "hip hop rap", genre: "Global Charts" },
-      { term: "r&b soul", genre: "Global Charts" },
-      { term: "pop hits", genre: "Global Charts" },
-      { term: "EDM electronic", genre: "Global Charts" },
-      { term: "K-pop", genre: "Global Charts" },
-      { term: "rock classic hits", genre: "Global Charts" },
-      { term: "viral tiktok 2024", genre: "Global Charts" },
-      { term: "acoustic indie", genre: "Global Charts" },
-      { term: "jazz chill", genre: "Global Charts" },
-      { term: "latin reggaeton", genre: "Global Charts" },
-    ];
-
     let cancelled = false;
-
     (async () => {
       try {
-        const seenIds = new Set<string | number>();
-        const allItems: any[] = [];
-
-        await Promise.all(
-          GENRE_QUERIES.map(async ({ term, genre }) => {
-            try {
-              const spotifyTracks = await searchSpotify(term);
-              for (const item of spotifyTracks) {
-                if (!item?.id || seenIds.has(item.id)) continue;
-                seenIds.add(item.id);
-                allItems.push({ ...item, type: genre, isSpotify: true });
-              }
-            } catch (_) {}
-          })
-        );
-
+        const [r2, r3] = await Promise.all([fetch("/api/music/tracks/new-releases"), fetch("/api/music/categories")]);
+        const [nr, cats] = await Promise.all([r2.ok ? r2.json() : [], r3.ok ? r3.json() : []]);
         if (!cancelled) {
-          setTracks([...LOCAL_TRACKS, ...allItems]);
-          setIsLoadingSpotify(false);
+          setNewReleases(Array.isArray(nr) ? nr : []);
+          setCategories(Array.isArray(cats) ? cats : []);
         }
-      } catch {
-        if (!cancelled) setIsLoadingSpotify(false);
-      }
+      } catch {}
     })();
-
     return () => { cancelled = true; };
   }, []);
 
-
-  // Filter tracks by selected playlist
-  const filteredTracks = activePlaylist === "All Tracks"
-    ? tracks
-    : activePlaylist === "Favorites"
-    ? Object.values(favoriteTracks)
-    : activePlaylist === "Global Charts"
-    ? tracks.filter((t: any) => t.isSpotify === true)
-    : tracks.filter((t: any) => t.type === activePlaylist);
-
-  // Tracks to display in the main content pane
-  const displayTracks = searchQuery.trim() !== "" ? searchResults : filteredTracks;
-
-  const formatMsToMinSec = (ms: number) => {
-    if (!ms) return "3:00";
-    const totalSecs = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSecs / 60);
-    const seconds = totalSecs % 60;
-    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-  };
-
-  // Debounced search: try Spotify first, fallback to iTunes
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      setIsSearching(false);
-      setSearchSource("none");
-      return;
-    }
-
-    setIsSearching(true);
-    const delayDebounceFn = setTimeout(async () => {
-      // 1. Spotify stays as the primary music source.
-      try {
-        const spotifyResults = await searchSpotify(searchQuery);
-        if (spotifyResults.length > 0) {
-          setSearchResults(spotifyResults);
-          setSearchSource("spotify");
-          setIsSearching(false);
-          return;
+    if (activePlaylist === "Favorites" || activePlaylist === "Rilis Hari Ini") return;
+    let cancelled = false;
+    setIsLoading(true);
+    const typeQuery = activePlaylist === "All Tracks" ? "" : activePlaylist;
+    fetch(`/api/music/tracks?type=${encodeURIComponent(typeQuery)}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => {
+        if (!cancelled && Array.isArray(d)) {
+          setTracks(d);
+          if (d.length > 0 && !currentTrack) setCurrentTrack(d[0]);
+          setIsLoading(false);
         }
-      } catch (e) {
-        console.error("Spotify search error:", e);
-      }
+      })
+      .catch(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
+  }, [activePlaylist]);
 
-      setSearchResults([]);
-      setSearchSource("spotify");
+  useEffect(() => {
+    try {
+      const s = window.localStorage.getItem("arcadia_music_favorites");
+      if (s) { const p = JSON.parse(s); setFavoriteTracks(p); setLikedTracks(Object.fromEntries(Object.keys(p).map(k => [k, true]))); }
+    } catch {}
+  }, []);
+
+  useEffect(() => { window.localStorage.setItem("arcadia_music_favorites", JSON.stringify(favoriteTracks)); }, [favoriteTracks]);
+  useEffect(() => { if (audioRef.current) audioRef.current.volume = isMuted ? 0 : volume; }, [volume, isMuted]);
+  useEffect(() => { if (audioRef.current) audioRef.current.loop = isLooping; }, [isLooping]);
+
+  useEffect(() => {
+    if (!currentTrack?.file || !audioRef.current) return;
+    audioRef.current.src = currentTrack.file;
+    audioRef.current.load();
+    if (isPlaying) audioRef.current.play().catch(() => setIsPlaying(false));
+  }, [currentTrack?.file]);
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator) || !currentTrack) return;
+    const c = currentTrack.cover?.startsWith("http") ? currentTrack.cover : `${window.location.origin}${currentTrack.cover || "/village.png"}`;
+    navigator.mediaSession.metadata = new MediaMetadata({ title: currentTrack.title || "Unknown", artist: currentTrack.artist || "Unknown", album: currentTrack.album || currentTrack.type || "Arcadia", artwork: [{ src: c, sizes: "512x512", type: "image/png" }] });
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+  }, [currentTrack, isPlaying]);
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.setActionHandler("play", () => handlePlayPause());
+    navigator.mediaSession.setActionHandler("pause", () => handlePlayPause());
+    navigator.mediaSession.setActionHandler("previoustrack", () => handlePrevious());
+    navigator.mediaSession.setActionHandler("nexttrack", () => handleNext());
+    return () => { ["play", "pause", "previoustrack", "nexttrack"].forEach(a => navigator.mediaSession.setActionHandler(a as any, null)); };
+  }, [currentTrack, playingPlaylistTracks, isShuffling, isLooping]);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchResults([]); setIsSearching(false); return; }
+    setIsSearching(true);
+    const t = setTimeout(async () => {
+      try { const r = await fetch(`/api/music/tracks?q=${encodeURIComponent(searchQuery)}`); const d = r.ok ? await r.json() : []; setSearchResults(Array.isArray(d) ? d : []); }
+      catch { setSearchResults([]); }
       setIsSearching(false);
-    }, 500);
-
-    return () => clearTimeout(delayDebounceFn);
+    }, 400);
+    return () => clearTimeout(t);
   }, [searchQuery]);
 
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : volume;
-    }
-  }, [volume, isMuted]);
+  const filteredTracks = activePlaylist === "All Tracks" ? tracks : activePlaylist === "Favorites" ? Object.values(favoriteTracks) : activePlaylist === "Rilis Hari Ini" ? newReleases : tracks.filter(t => t.type === activePlaylist);
+  const displayTracks = searchQuery.trim() ? searchResults : filteredTracks;
+  const visualDuration = duration || 100;
+  const playlistCover = displayTracks[0]?.cover || currentTrack?.cover || "/village.png";
+  const playlistTitle = searchQuery.trim() ? `Hasil Pencarian "${searchQuery}"` : activePlaylist;
+  const playlistSubtext = searchQuery.trim() ? `Ditemukan ${displayTracks.length} lagu di Spotify` : `Spotify Library · ${displayTracks.length} lagu`;
 
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.loop = isLooping;
-    }
-  }, [isLooping]);
-
-  useEffect(() => {
-    if (audioRef.current && currentTrack.file) {
-      audioRef.current.src = currentTrack.file;
-      audioRef.current.load();
-      if (isPlaying) {
-        audioRef.current.play().catch(err => {
-          console.log("Playback failed:", err);
-          setIsPlaying(false);
-        });
-      }
-    }
-  }, [currentTrack.file]);
-
-  useEffect(() => {
-    if (!isPlaying || (!currentTrack.isSpotify && !currentTrack.isYouTube)) return;
-
-    const totalSeconds = parseDurationToSeconds(currentTrack.duration);
-    if (!totalSeconds) return;
-
-    const timer = window.setInterval(() => {
-      setCurrentTime((previousTime) => {
-        const nextTime = previousTime + 1;
-        if (nextTime >= totalSeconds) {
-          if (isLooping) {
-            if (currentTrack.isSpotify) {
-              setSpotifyReplayKey((key) => key + 1);
-            }
-            return 0;
-          }
-          setIsPlaying(false);
-          return totalSeconds;
-        }
-        return nextTime;
-      });
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-  }, [currentTrack.duration, currentTrack.isSpotify, currentTrack.isYouTube, isLooping, isPlaying]);
-
-  const handlePlayPause = () => {
-    if (currentTrack.isSpotify) {
-      audioRef.current?.pause();
-      if (!spotifyPlayerRef.current) {
-        void playTrack(currentTrack, playingPlaylistTracks);
-        return;
-      }
-      void spotifyPlayerRef.current.togglePlay();
-      return;
-    }
-    if (currentTrack.isYouTube) {
-      audioRef.current?.pause();
-      setIsPlaying((playing) => !playing);
-      return;
-    }
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-      }).catch(err => {
-        console.log("Playback failed:", err);
-      });
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
-    }
-  };
-
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration);
-    }
-  };
-
-  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value);
-    setCurrentTime(time);
-    if (audioRef.current && !currentTrack.isSpotify && !currentTrack.isYouTube) {
-      audioRef.current.currentTime = time;
-    }
-  };
-
-  const handleNext = () => {
-    if (playingPlaylistTracks.length === 0) return;
-    const activeIndex = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id);
-    if (isShuffling) {
-      const randomIndex = Math.floor(Math.random() * playingPlaylistTracks.length);
-      void playTrack(playingPlaylistTracks[randomIndex], playingPlaylistTracks);
-    } else {
-      const nextIndex = (activeIndex + 1) % playingPlaylistTracks.length;
-      void playTrack(playingPlaylistTracks[nextIndex], playingPlaylistTracks);
-    }
-  };
-
-  const handlePrevious = () => {
-    if (playingPlaylistTracks.length === 0) return;
-    const activeIndex = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id);
-    const prevIndex = (activeIndex - 1 + playingPlaylistTracks.length) % playingPlaylistTracks.length;
-    void playTrack(playingPlaylistTracks[prevIndex], playingPlaylistTracks);
-  };
-
-  const handleEnded = () => {
-    if (isLooping) {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(err => console.log(err));
-      }
-    } else {
-      handleNext();
-    }
-  };
-
-  const toggleLike = (track: any) => {
-    const trackId = track.id;
-    setLikedTracks(prev => ({
-      ...prev,
-      [trackId]: !prev[trackId]
-    }));
-    setFavoriteTracks(prev => {
-      if (prev[trackId]) {
-        const next = { ...prev };
-        delete next[trackId];
-        return next;
-      }
-      return { ...prev, [trackId]: track };
-    });
-  };
+  const fmt = (s: number) => { if (!s || isNaN(s)) return "0:00"; return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; };
 
   const playTrack = async (track: any, playlist: any[]) => {
-    if (track.isYouTube) {
-      audioRef.current?.pause();
-      setCurrentTrack(track);
-      setPlayingPlaylistTracks(playlist);
-      setCurrentTime(0);
-      setDuration(0);
-      setSpotifyReplayKey(0);
-      setIsPlaying(true);
-      return;
-    }
-
-    if (track.isSpotify) {
-      audioRef.current?.pause();
-      setCurrentTrack(track);
-      setPlayingPlaylistTracks(playlist);
-      setCurrentTime(0);
-      setDuration(0);
-      setSpotifyReplayKey(0);
-      const connection = await connectSpotifyPlayer();
-      if (!connection) return;
+    if (!track.file) {
+      setIsStreamLoading(true);
+      setLoadingTrackId(track.id);
       try {
-        const response = await fetch("/api/music/spotify/play", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deviceId: connection.deviceId, uri: track.spotifyUri || `spotify:track:${track.id}` }),
-        });
-        if (!response.ok) {
-          throw new Error(`Spotify playback failed: ${response.status}`);
-        }
-        await connection.player.setVolume(isMuted ? 0 : volume);
-        setIsPlaying(true);
-      } catch (error) {
-        setSpotifyError(error instanceof Error ? error.message : "Spotify playback gagal.");
+        const res = await fetch(`/api/music/tracks/resolve?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`);
+        if (!res.ok) throw new Error("Gagal memuat stream audio.");
+        const data = await res.json();
+        track.file = data.streamUrl;
+        
+        // Update track file path in the local states so we don't resolve it again
+        const updateItem = (item: any) => {
+          if (item && item.id === track.id) {
+            item.file = data.streamUrl;
+          }
+        };
+        tracks.forEach(updateItem);
+        newReleases.forEach(updateItem);
+        searchResults.forEach(updateItem);
+        Object.values(favoriteTracks).forEach(updateItem);
+      } catch (err: any) {
+        toast({ title: "Error", description: err.message || "Gagal memuat audio.", variant: "destructive" });
+        setIsStreamLoading(false);
+        setLoadingTrackId(null);
+        return;
       }
-      return;
+      setIsStreamLoading(false);
+      setLoadingTrackId(null);
     }
-
     setCurrentTrack(track);
     setPlayingPlaylistTracks(playlist);
+    setCurrentTime(0);
+    setDuration(0);
     setIsPlaying(true);
   };
 
-  const formatTime = (secs: number) => {
-    if (isNaN(secs)) return "0:00";
-    const minutes = Math.floor(secs / 60);
-    const seconds = Math.floor(secs % 60);
-    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+  const handlePlayPause = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+    else { audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {}); }
+  };
+  const handleTimeUpdate = () => { if (audioRef.current) setCurrentTime(audioRef.current.currentTime); };
+  const handleLoadedMetadata = () => { if (audioRef.current) setDuration(audioRef.current.duration); };
+  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => { const t = parseFloat(e.target.value); setCurrentTime(t); if (audioRef.current) audioRef.current.currentTime = t; };
+  const handleNext = () => { if (!playingPlaylistTracks.length || !currentTrack) return; const i = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id); playTrack(playingPlaylistTracks[isShuffling ? Math.floor(Math.random() * playingPlaylistTracks.length) : (i + 1) % playingPlaylistTracks.length], playingPlaylistTracks); };
+  const handlePrevious = () => { if (!playingPlaylistTracks.length || !currentTrack) return; const i = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id); playTrack(playingPlaylistTracks[(i - 1 + playingPlaylistTracks.length) % playingPlaylistTracks.length], playingPlaylistTracks); };
+  const handleEnded = () => { if (isLooping && audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); } else { handleNext(); } };
+  const toggleLike = (track: any) => { const id = track.id; setLikedTracks(p => ({ ...p, [id]: !p[id] })); setFavoriteTracks(p => { if (p[id]) { const n = { ...p }; delete n[id]; return n; } return { ...p, [id]: track }; }); };
+
+  const handleAdminAdd = async () => {
+    if (!adminForm.title || !adminForm.artist || !adminForm.file || !adminForm.cover || !adminForm.duration) { setAdminMessage("Semua field wajib diisi."); return; }
+    setAdminLoading(true); setAdminMessage("");
+    try {
+      const r = await fetch("/api/music/admin/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(adminForm) });
+      const d = await r.json();
+      if (r.ok) { setAdminMessage(`Berhasil menambahkan "${d.title}"!`); setAdminForm({ title: "", artist: "", album: "", file: "", cover: "", duration: "", type: "Global Charts", releaseDate: "" }); refreshTracks(); }
+      else { setAdminMessage(`Error: ${d.message}`); }
+    } catch { setAdminMessage("Gagal menghubungi server."); }
+    setAdminLoading(false);
   };
 
-  // Get active cover representing active playlist
-  const playlistCover = searchQuery.trim() !== "" && displayTracks[0]?.cover
-    ? displayTracks[0].cover
-    : (filteredTracks[0]?.cover || "/village.png");
+  const handleAdminDownload = async () => {
+    if (!downloadForm.url || !downloadForm.title || !downloadForm.artist) { setAdminMessage("URL, title, dan artist wajib diisi."); return; }
+    setAdminLoading(true); setAdminMessage("Mengunduh audio... harap tunggu (bisa 1-3 menit)");
+    try {
+      const r = await fetch("/api/music/admin/download", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(downloadForm) });
+      const d = await r.json();
+      if (r.ok && d.ok) { setAdminMessage(`Berhasil download "${d.track.title}"!`); setDownloadForm({ url: "", title: "", artist: "", album: "", cover: "", type: "Global Charts", releaseDate: "" }); refreshTracks(); }
+      else { setAdminMessage(`Error: ${d.message}${d.detail ? " - " + d.detail : ""}`); }
+    } catch { setAdminMessage("Gagal menghubungi server."); }
+    setAdminLoading(false);
+  };
 
-  const playlistTitle = searchQuery.trim() !== ""
-    ? `Search Results for "${searchQuery}"`
-    : activePlaylist;
+  const handleAdminDelete = async (track: any) => {
+    if (!confirm(`Hapus "${track.title}"?`)) return;
+    try {
+      const r = await fetch(`/api/music/admin/track/${track.id}`, { method: "DELETE" });
+      if (r.ok) { setAdminMessage(`"${track.title}" dihapus.`); refreshTracks(); if (currentTrack?.id === track.id) setCurrentTrack(null); }
+      else { const d = await r.json(); setAdminMessage(`Error: ${d.message}`); }
+    } catch { setAdminMessage("Gagal menghubungi server."); }
+  };
 
-  const playlistSubtext = searchQuery.trim() !== ""
-    ? searchSource === "youtube"
-      ? `YouTube Music Catalog - Found ${displayTracks.length} full songs`
-      : searchSource === "spotify"
-      ? `Spotify Catalog - Found ${displayTracks.length} tracks`
-      : `Spotify Catalog - Found ${displayTracks.length} tracks`
-    : `Created by Arcadia Realm Lords Â· ${displayTracks.length} tracks`;
+  const handleSpotifySearch = async () => {
+    if (!spotifySearchQuery.trim()) { setAdminMessage("Masukkan kata kunci pencarian."); return; }
+    setSpotifySearching(true); setAdminMessage("Mencari di Spotify...");
+    try {
+      const r = await fetch(`/api/music/spotify/search?q=${encodeURIComponent(spotifySearchQuery)}&limit=10`);
+      const d = await r.json();
+      if (r.ok && Array.isArray(d)) { setSpotifyResults(d); setAdminMessage(`Ditemukan ${d.length} lagu di Spotify.`); }
+      else { setAdminMessage(`Error: ${d.message || "Spotify search gagal."}`); setSpotifyResults([]); }
+    } catch { setAdminMessage("Gagal menghubungi server."); }
+    setSpotifySearching(false);
+  };
 
-  const playlistCategoryLabel = searchQuery.trim() !== ""
-    ? searchSource === "youtube" ? "YOUTUBE MUSIC" : "SPOTIFY SEARCH"
-    : "PUBLIC PLAYLIST";
+  const handleSpotifyDownload = async (track: any) => {
+    setSpotifyDownloadingId(track.spotifyId);
+    setAdminMessage(`Mengunduh "${track.title}" dari YouTube...`);
+    try {
+      const r = await fetch("/api/music/spotify/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          spotifyId: track.spotifyId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          cover: track.cover,
+          durationMs: track.durationMs,
+          type: "Global Charts",
+        }),
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) { setAdminMessage(`Berhasil download "${d.track.title}"!`); refreshTracks(); }
+      else { setAdminMessage(`Error: ${d.message}${d.detail ? " - " + d.detail : ""}`); }
+    } catch { setAdminMessage("Gagal menghubungi server."); }
+    setSpotifyDownloadingId(null);
+  };
 
-  const visualDuration = currentTrack.isSpotify || currentTrack.isYouTube
-    ? parseDurationToSeconds(currentTrack.duration) || 100
-    : duration || 100;
+  const sidebarPlaylists = [
+    { name: "All Tracks", icon: <ListMusic className="w-4 h-4" /> },
+    { name: "Rilis Hari Ini", icon: <Sparkles className="w-4 h-4" />, badge: newReleases.length > 0 ? newReleases.length : undefined },
+    { name: "Favorites", icon: <Heart className="w-4 h-4" /> },
+    ...categories.filter(c => c !== "Rilis Hari Ini").map(c => ({ name: c, icon: <Music className="w-4 h-4" /> })),
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-400 font-bold">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-[#1db954] border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm">Memuat musik dari Spotify...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col rounded-3xl overflow-hidden bg-[#121212] border border-[#282828] text-slate-300 font-sans shadow-2xl relative">
-      {/* Hidden Audio element */}
-      <audio
-        ref={audioRef}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={handleEnded}
-      />
+      <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded} src={currentTrack?.file || ""} />
 
-      {/* Main UI body */}
-      <div className="flex flex-col lg:flex-row h-[520px] min-h-[400px]">
-        {/* === SIDEBAR (Library) === */}
-        <aside className="w-full lg:w-60 bg-black p-4 flex flex-col justify-between shrink-0 border-b lg:border-b-0 lg:border-r border-[#282828] text-xs">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2.5 px-3 py-1 font-bold text-white text-sm justify-between">
-              <div className="flex items-center gap-2.5">
-                <Library className="w-5 h-5 text-[#1db954]" />
-                <span>Your Library</span>
+      {isAdmin && (
+        <div className="px-4 pt-3 pb-3 flex items-center gap-3 border-b border-[#282828] flex-wrap">
+          <button onClick={() => { setShowAdminPanel(!showAdminPanel); setAdminMessage(""); }}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-black tracking-wider uppercase transition-all cursor-pointer flex items-center gap-1.5 ${showAdminPanel ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-[#282828] text-slate-400 hover:text-white border border-transparent"}`}>
+            <Settings className="w-3 h-3" /> Admin Music Panel
+          </button>
+          {adminMessage && <span className={`text-[10px] font-bold ${adminMessage.startsWith("Berhasil") ? "text-[#1db954]" : adminMessage.startsWith("Mengunduh") ? "text-amber-400 animate-pulse" : "text-red-400"}`}>{adminMessage}</span>}
+        </div>
+      )}
+
+      {isAdmin && showAdminPanel && (
+        <div className="bg-[#0a0a0a] border-b border-[#282828] p-4">
+          <div className="flex gap-1 mb-4 flex-wrap">
+            {(["add", "download", "spotify", "manage"] as const).map(tab => (
+              <button key={tab} onClick={() => { setAdminTab(tab); setAdminMessage(""); }}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all ${adminTab === tab ? (tab === "spotify" ? "bg-[#1db954] text-black" : "bg-purple-500 text-white") : "bg-[#1a1a1a] text-slate-400 hover:text-white"}`}>
+                {tab === "add" ? "Tambah Manual" : tab === "download" ? "Download URL" : tab === "spotify" ? "Spotify" : "Kelola Lagu"}
+              </button>
+            ))}
+          </div>
+
+          {adminTab === "add" && (
+            <div className="grid grid-cols-2 gap-2 max-w-2xl">
+              <input placeholder="Judul *" value={adminForm.title} onChange={e => setAdminForm(f => ({ ...f, title: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:border-purple-500/50 focus:outline-none placeholder-slate-600" />
+              <input placeholder="Artis *" value={adminForm.artist} onChange={e => setAdminForm(f => ({ ...f, artist: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <input placeholder="Album" value={adminForm.album} onChange={e => setAdminForm(f => ({ ...f, album: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <input placeholder="Durasi (3:30) *" value={adminForm.duration} onChange={e => setAdminForm(f => ({ ...f, duration: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <input placeholder="URL Audio * (https:// atau /music/file.mp3)" value={adminForm.file} onChange={e => setAdminForm(f => ({ ...f, file: e.target.value }))} className="col-span-2 bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:border-purple-500/50 focus:outline-none placeholder-slate-600" />
+              <input placeholder="URL Cover * (https:// atau /covers/file.jpg)" value={adminForm.cover} onChange={e => setAdminForm(f => ({ ...f, cover: e.target.value }))} className="col-span-2 bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <select value={adminForm.type} onChange={e => setAdminForm(f => ({ ...f, type: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none">
+                {MUSIC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <input placeholder="Tanggal Rilis (opsional)" value={adminForm.releaseDate} onChange={e => setAdminForm(f => ({ ...f, releaseDate: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <button onClick={handleAdminAdd} disabled={adminLoading} className="col-span-2 mt-1 py-2.5 bg-purple-500 hover:bg-purple-400 disabled:opacity-50 text-white text-xs font-black rounded-lg transition-colors cursor-pointer">
+                {adminLoading ? "Menyimpan..." : "Simpan ke Database"}
+              </button>
+            </div>
+          )}
+
+          {adminTab === "download" && (
+            <div className="grid grid-cols-2 gap-2 max-w-2xl">
+              <div className="col-span-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 text-[10px] text-amber-400 font-bold">
+                Perlu yt-dlp di server. Audio disimpan ke /public/music/
               </div>
-              {isLoadingSpotify && (
-                <span className="flex items-center gap-1 text-[9px] text-[#1db954] font-black animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#1db954] inline-block animate-ping" />
-                  Loading
-                </span>
+              <input placeholder="URL YouTube/SoundCloud *" value={downloadForm.url} onChange={e => setDownloadForm(f => ({ ...f, url: e.target.value }))} className="col-span-2 bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:border-amber-500/50 focus:outline-none placeholder-slate-600" />
+              <input placeholder="Judul *" value={downloadForm.title} onChange={e => setDownloadForm(f => ({ ...f, title: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <input placeholder="Artis *" value={downloadForm.artist} onChange={e => setDownloadForm(f => ({ ...f, artist: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <input placeholder="Album (opsional)" value={downloadForm.album} onChange={e => setDownloadForm(f => ({ ...f, album: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <input placeholder="URL Cover (opsional)" value={downloadForm.cover} onChange={e => setDownloadForm(f => ({ ...f, cover: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <select value={downloadForm.type} onChange={e => setDownloadForm(f => ({ ...f, type: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none">
+                {MUSIC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <input placeholder="Tanggal Rilis (opsional)" value={downloadForm.releaseDate} onChange={e => setDownloadForm(f => ({ ...f, releaseDate: e.target.value }))} className="bg-[#1a1a1a] text-white text-xs px-3 py-2 rounded-lg border border-[#282828] focus:outline-none placeholder-slate-600" />
+              <button onClick={handleAdminDownload} disabled={adminLoading} className="col-span-2 mt-1 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black text-xs font-black rounded-lg transition-colors cursor-pointer">
+                {adminLoading ? "Mengunduh... harap tunggu" : "Download & Simpan ke Database"}
+              </button>
+            </div>
+          )}
+
+          {adminTab === "spotify" && (
+            <div className="max-w-2xl">
+              <div className="bg-[#1db954]/10 border border-[#1db954]/20 rounded-lg px-3 py-2 text-[10px] text-[#1db954] font-bold mb-3">
+                Cari lagu dari Spotify, download audio dari YouTube, simpan ke database. Perlu SPOTIFY_CLIENT_ID & SPOTIFY_CLIENT_SECRET di .env
+              </div>
+              <div className="flex gap-2 mb-3">
+                <input
+                  placeholder="Cari lagu, artis, atau album di Spotify..."
+                  value={spotifySearchQuery}
+                  onChange={e => setSpotifySearchQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleSpotifySearch(); }}
+                  className="flex-1 bg-[#1a1a1a] text-white text-xs px-3 py-2.5 rounded-lg border border-[#282828] focus:border-[#1db954]/50 focus:outline-none placeholder-slate-600"
+                />
+                <button onClick={handleSpotifySearch} disabled={spotifySearching}
+                  className="px-4 py-2.5 bg-[#1db954] hover:bg-[#1ed760] disabled:opacity-50 text-black text-xs font-black rounded-lg transition-colors cursor-pointer shrink-0">
+                  {spotifySearching ? "Mencari..." : "Cari"}
+                </button>
+              </div>
+
+              {spotifyResults.length > 0 && (
+                <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+                  {spotifyResults.map((track: any) => (
+                    <div key={track.spotifyId} className="flex items-center gap-3 bg-[#1a1a1a] hover:bg-[#242424] rounded-lg px-3 py-2.5 group transition-colors">
+                      <img src={track.cover || "/village.png"} alt="" className="w-10 h-10 rounded object-cover bg-black shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-white text-xs font-bold block truncate">{track.title}</span>
+                        <span className="text-slate-500 text-[10px] font-bold block truncate">{track.artist} · {track.album} · {track.duration}</span>
+                      </div>
+                      <button
+                        onClick={() => handleSpotifyDownload(track)}
+                        disabled={spotifyDownloadingId === track.spotifyId}
+                        className="text-[#1db954] hover:text-[#1ed760] disabled:opacity-50 text-[10px] font-black opacity-0 group-hover:opacity-100 transition-all cursor-pointer shrink-0 px-2 py-1.5 rounded hover:bg-[#1db954]/10 border border-transparent hover:border-[#1db954]/20"
+                      >
+                        {spotifyDownloadingId === track.spotifyId ? "Downloading..." : "Download"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {spotifyResults.length === 0 && !spotifySearching && spotifySearchQuery && (
+                <p className="text-slate-500 text-xs py-4 text-center">Tidak ada hasil. Coba kata kunci lain.</p>
               )}
             </div>
+          )}
 
-            <nav className="space-y-1">
-              {[
-                { name: "All Tracks", icon: <ListMusic className="w-4 h-4" /> },
-                { name: "Favorites", icon: <Heart className="w-4 h-4" /> },
-                { name: "Global Charts", icon: <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg> },
-                { name: "Lobby Favorites", icon: <Music className="w-4 h-4" /> },
-                { name: "Combat & Adventure", icon: <Hammer className="w-4 h-4" /> },
-                { name: "Tavern Classics", icon: <Home className="w-4 h-4" /> },
-              ].map((p) => {
-                const isActive = activePlaylist === p.name && searchQuery.trim() === "";
+          {adminTab === "manage" && (
+            <div className="max-w-2xl max-h-72 overflow-y-auto space-y-1 pr-1">
+              {tracks.length === 0 ? <p className="text-slate-500 text-xs py-4 text-center">Belum ada lagu.</p> : tracks.map(track => (
+                <div key={track.id} className="flex items-center gap-3 bg-[#1a1a1a] hover:bg-[#242424] rounded-lg px-3 py-2 group transition-colors">
+                  <img src={track.cover} alt="" className="w-8 h-8 rounded object-cover bg-black shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-white text-xs font-bold block truncate">{track.title}</span>
+                    <span className="text-slate-500 text-[10px] font-bold">{track.artist} · {track.type} · {track.duration}</span>
+                  </div>
+                  <button onClick={() => handleAdminDelete(track)} className="text-red-500 hover:text-red-300 text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0 px-2 py-1 rounded hover:bg-red-500/10">
+                    Hapus
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-col lg:flex-row h-[520px] min-h-[400px]">
+        <aside className="w-full lg:w-60 bg-black p-4 flex flex-col justify-between shrink-0 border-b lg:border-b-0 lg:border-r border-[#282828] text-xs">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2.5 px-3 py-1 font-bold text-white text-sm">
+              <Library className="w-5 h-5 text-[#1db954]" />
+              <span>Your Library</span>
+            </div>
+            <nav className="space-y-1 overflow-y-auto max-h-80 pr-1">
+              {sidebarPlaylists.map(p => {
+                const isActive = activePlaylist === p.name && !searchQuery.trim();
+                const isNew = p.name === "Rilis Hari Ini";
                 return (
-                  <button
-                    key={p.name}
-                    onClick={() => {
-                      setActivePlaylist(p.name);
-                      setSearchQuery("");
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-black tracking-wide text-left transition-all ${
-                      isActive
-                        ? "bg-[#282828] text-white"
-                        : "text-slate-400 hover:text-white hover:bg-[#1a1a1a]"
-                    }`}
-                  >
-                    {p.icon}
-                    <span>{p.name}</span>
+                  <button key={p.name} onClick={() => { setActivePlaylist(p.name); setSearchQuery(""); }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-black tracking-wide text-left transition-all ${isActive ? "bg-[#282828] text-white" : isNew ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10" : "text-slate-400 hover:text-white hover:bg-[#1a1a1a]"}`}>
+                    <span className={isNew && !isActive ? "text-amber-400" : ""}>{p.icon}</span>
+                    <span className="flex-1 truncate">{p.name}</span>
+                    {(p as any).badge && <span className="bg-[#1db954] text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shrink-0">{(p as any).badge}</span>}
                   </button>
                 );
               })}
             </nav>
           </div>
-
           <div className="hidden lg:block p-3 bg-[#181818]/60 border border-white/5 rounded-xl mt-4 space-y-1">
-            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">ACTIVE PLAYLIST</span>
+            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">PLAYLIST AKTIF</span>
             <span className="text-white font-bold truncate block">{playlistTitle}</span>
+            <span className="text-[9px] text-slate-600 font-bold block">{displayTracks.length} lagu</span>
           </div>
         </aside>
 
-        {/* === MAIN CONTENT (Playlist Detail & Songs Table) === */}
         <div className="flex-1 flex flex-col bg-[#121212] overflow-y-auto relative">
-          {/* Top Bar with Search Input */}
           <div className="p-4 bg-black/40 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between border-b border-white/5 gap-4">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search millions of songs & artists..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-10 py-2 rounded-full bg-[#242424] text-white text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-white/20 transition-all placeholder-slate-500 border border-transparent focus:border-white/10"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold"
-                >
-                  âœ•
-                </button>
-              )}
+              <input type="text" placeholder="Cari lagu, artis, atau album..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2 rounded-full bg-[#242424] text-white text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-white/20 transition-all placeholder-slate-500 border border-transparent focus:border-white/10" />
+              {searchQuery && <button onClick={() => setSearchQuery("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold cursor-pointer">✕</button>}
             </div>
-            {isSearching && (
-              <span className="text-[10px] text-[#1db954] font-bold animate-pulse">Searching...</span>
-            )}
-            {!isSearching && searchSource === "youtube" && searchQuery && (
-              <span className="text-[9px] font-black text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                <svg className="w-2.5 h-2.5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-                Via YouTube
-              </span>
-            )}
-            {!isSearching && searchSource === "spotify" && searchQuery && (
-              <span className="text-[9px] font-black text-[#1db954] bg-[#1db954]/10 border border-[#1db954]/30 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                <svg className="w-2.5 h-2.5 fill-[#1db954]" viewBox="0 0 24 24"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-                Via Spotify
-              </span>
-            )}
+            {isSearching && <span className="text-[10px] text-[#1db954] font-bold animate-pulse shrink-0">Mencari...</span>}
+            {!isSearching && searchQuery && <span className="text-[9px] font-black text-[#1db954] bg-[#1db954]/10 border border-[#1db954]/30 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1"><Activity className="w-2.5 h-2.5" /> Spotify API</span>}
           </div>
 
-          {/* Decorative Playlist Banner */}
-          <div className="p-6 bg-gradient-to-b from-[#3b0764]/50 to-[#121212]/90 flex items-center gap-6 border-b border-white/5">
-            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-lg overflow-hidden shadow-2xl bg-black shrink-0 relative group">
-              <img src={playlistCover} alt="" className="w-full h-full object-cover" />
+          <div className={`p-6 flex items-center gap-6 border-b border-white/5 ${activePlaylist === "Rilis Hari Ini" ? "bg-gradient-to-b from-amber-900/30 to-[#121212]/90" : "bg-gradient-to-b from-[#3b0764]/50 to-[#121212]/90"}`}>
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-lg overflow-hidden shadow-2xl bg-black shrink-0">
+              <img src={playlistCover} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
             </div>
-
             <div className="space-y-1 sm:space-y-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#1db954]">{playlistCategoryLabel}</span>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-none">
-                {playlistTitle}
-              </h1>
-              <p className="text-[11px] text-slate-400 font-semibold">
-                {playlistSubtext}
-              </p>
+              <span className={`text-[10px] font-black uppercase tracking-[0.25em] ${activePlaylist === "Rilis Hari Ini" ? "text-amber-400" : "text-[#1db954]"}`}>
+                {activePlaylist === "Rilis Hari Ini" ? "NEW RELEASES" : searchQuery ? "SEARCH RESULTS" : "PLAYLIST"}
+              </span>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-none">{playlistTitle}</h1>
+              <p className="text-[11px] text-slate-400 font-semibold">{playlistSubtext}</p>
             </div>
           </div>
 
-          {/* Table list */}
           <div className="p-6">
             {displayTracks.length === 0 ? (
               <div className="text-center py-12 text-slate-500 font-bold border border-dashed border-[#282828] rounded-xl">
-                {isSearching
-                  ? "Searching Spotify..."
-                  : searchQuery.trim()
-                  ? "Spotify tidak menemukan track yang sesuai."
-                  : activePlaylist === "Favorites"
-                  ? "Belum ada lagu favorite."
-                  : "No songs available."}
+                {isSearching ? "Mencari..." : searchQuery.trim() ? "Tidak ada lagu yang cocok." : activePlaylist === "Favorites" ? "Belum ada favorit." : activePlaylist === "Rilis Hari Ini" ? "Belum ada rilis baru." : "Belum ada lagu di kategori ini."}
               </div>
             ) : (
-              <div className="w-full">
-                <table className="w-full border-collapse text-left">
-                  <thead>
-                    <tr className="border-b border-[#282828] text-[10px] uppercase text-slate-500 font-black tracking-wider">
-                      <th className="py-2.5 w-10 text-center">#</th>
-                      <th className="py-2.5">Title</th>
-                      <th className="py-2.5 hidden sm:table-cell">Category / Genre</th>
-                      <th className="py-2.5 w-16 text-center"><Clock className="w-4 h-4 mx-auto" /></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayTracks.map((track, fIndex) => {
-                      const isCurrentTrack = track.id === currentTrack.id;
-                      const isHovered = hoveredTrackId === track.id;
-                      const isLiked = likedTracks[track.id] || false;
-
-                      return (
-                        <tr
-                          key={track.id}
-                          onMouseEnter={() => setHoveredTrackId(track.id)}
-                          onMouseLeave={() => setHoveredTrackId(null)}
-                          onDoubleClick={() => {
-                            void playTrack(track, displayTracks);
-                          }}
-                          className={`group text-xs font-semibold text-slate-400 hover:bg-white/5 border-b border-[#1a1a1a]/50 transition-all cursor-pointer ${
-                            isCurrentTrack ? "bg-white/[0.02]" : ""
-                          }`}
-                        >
-                          {/* Play / Index Cell */}
-                          <td className="py-3 text-center">
-                            {isHovered ? (
-                              <button
-                                onClick={() => {
-                                  if (isCurrentTrack) {
-                                    handlePlayPause();
-                                  } else {
-                                    void playTrack(track, displayTracks);
-                                  }
-                                }}
-                                className="text-white hover:scale-110 transition-transform cursor-pointer"
-                              >
-                                {isCurrentTrack && isPlaying ? (
-                                  <Pause className="w-4 h-4 fill-current mx-auto" />
-                                ) : (
-                                  <Play className="w-4 h-4 fill-current mx-auto" />
-                                )}
-                              </button>
-                            ) : (
-                              <span className={isCurrentTrack ? "text-[#1db954] font-black" : ""}>
-                                {isCurrentTrack && isPlaying ? (
-                                  <div className="flex gap-0.5 items-end justify-center h-3">
-                                    <span className="w-0.5 bg-[#1db954] h-2 rounded-full animate-pulse" />
-                                    <span className="w-0.5 bg-[#1db954] h-3 rounded-full animate-pulse" style={{ animationDelay: '0.15s' }} />
-                                    <span className="w-0.5 bg-[#1db954] h-1.5 rounded-full animate-pulse" style={{ animationDelay: '0.3s' }} />
-                                  </div>
-                                ) : (
-                                  fIndex + 1
-                                )}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Cover & Title */}
-                          <td className="py-2.5 pr-4">
-                            <div className="flex items-center gap-3">
-                              <img src={track.cover} alt="" className="w-9 h-9 rounded object-cover shadow-sm bg-black shrink-0" />
-                              <div className="min-w-0">
-                                <span className={`block truncate text-sm transition-colors ${
-                                  isCurrentTrack ? "text-[#1db954] font-black" : "text-white"
-                                }`}>
-                                  {track.title}
-                                </span>
-                                <span className="text-[10px] text-slate-500 font-bold block mt-0.5">{track.artist}</span>
-                              </div>
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-[#282828] text-[10px] uppercase text-slate-500 font-black tracking-wider">
+                    <th className="py-2.5 w-10 text-center">#</th>
+                    <th className="py-2.5">Judul</th>
+                    <th className="py-2.5 hidden sm:table-cell">Kategori</th>
+                    <th className="py-2.5 w-16 text-center"><Clock className="w-4 h-4 mx-auto" /></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayTracks.map((track, idx) => {
+                    const isCur = currentTrack?.id === track.id;
+                    const isHov = hoveredTrackId === track.id;
+                    const isLiked = likedTracks[track.id] || false;
+                    return (
+                      <tr key={track.id} onMouseEnter={() => setHoveredTrackId(track.id)} onMouseLeave={() => setHoveredTrackId(null)}
+                        onDoubleClick={() => playTrack(track, displayTracks)}
+                        className={`group text-xs font-semibold text-slate-400 hover:bg-white/5 border-b border-[#1a1a1a]/50 transition-all cursor-pointer ${isCur ? "bg-white/[0.02]" : ""}`}>
+                        <td className="py-3 text-center">
+                          {loadingTrackId === track.id ? (
+                            <div className="w-3.5 h-3.5 border-2 border-[#1db954] border-t-transparent rounded-full animate-spin mx-auto" />
+                          ) : isHov ? (
+                            <button onClick={() => isCur ? handlePlayPause() : playTrack(track, displayTracks)} className="text-white hover:scale-110 transition-transform cursor-pointer">
+                              {isCur && isPlaying ? <Pause className="w-4 h-4 fill-current mx-auto" /> : <Play className="w-4 h-4 fill-current mx-auto" />}
+                            </button>
+                          ) : (
+                            <span className={isCur ? "text-[#1db954] font-black" : ""}>
+                              {isCur && isPlaying ? (
+                                <div className="flex gap-0.5 items-end justify-center h-3">
+                                  <span className="w-0.5 bg-[#1db954] h-2 rounded-full animate-pulse" />
+                                  <span className="w-0.5 bg-[#1db954] h-3 rounded-full animate-pulse" style={{ animationDelay: "0.15s" }} />
+                                  <span className="w-0.5 bg-[#1db954] h-1.5 rounded-full animate-pulse" style={{ animationDelay: "0.3s" }} />
+                                </div>
+                              ) : idx + 1}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <div className="flex items-center gap-3">
+                            <img src={track.cover} alt="" className="w-9 h-9 rounded object-cover shadow-sm bg-black shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
+                            <div className="min-w-0">
+                              <span className={`block truncate text-sm transition-colors ${isCur ? "text-[#1db954] font-black" : "text-white"}`}>{track.title}</span>
+                              <span className="text-[10px] text-slate-500 font-bold block mt-0.5">{track.artist}{track.album ? ` · ${track.album}` : ""}</span>
                             </div>
-                          </td>
-
-                          {/* Category */}
-                          <td className="py-3 hidden sm:table-cell text-slate-500 font-bold">
-                            {track.type}
-                          </td>
-
-                          {/* Duration / Like / YT */}
-                          <td className="py-3 text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleLike(track);
-                                }}
-                                className={`transition-colors cursor-pointer ${
-                                  isLiked
-                                    ? "text-[#1db954]"
-                                    : "text-slate-600 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                                }`}
-                              >
-                                <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-current' : ''}`} />
-                              </button>
-                              {track.isSpotify && track.spotifyUrl && (
-                                <button
-                                  title="Open Spotify"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    window.open(track.spotifyUrl, "_blank", "noopener,noreferrer");
-                                  }}
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity text-[#1db954] hover:text-[#1ed760] cursor-pointer"
-                                >
-                                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-                                </button>
-                              )}
-                              {track.isYouTube && (
-                                <button
-                                  title="Full Song on YouTube"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setYtModalTrack(track);
-                                  }}
-                                  className={`${track.isYouTube ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity text-red-400 hover:text-red-300 cursor-pointer`}
-                                >
-                                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-                                </button>
-                              )}
-                              <span className="text-[10px] text-slate-500 font-bold tracking-wider">{track.duration}</span>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                        </td>
+                        <td className="py-3 hidden sm:table-cell">
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-white/5 text-slate-500">{track.type}</span>
+                        </td>
+                        <td className="py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button onClick={e => { e.stopPropagation(); toggleLike(track); }} className={`transition-colors cursor-pointer ${isLiked ? "text-[#1db954]" : "text-slate-600 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"}`}>
+                              <Heart className={`w-3.5 h-3.5 ${isLiked ? "fill-current" : ""}`} />
+                            </button>
+                            <span className="text-[10px] text-slate-500 font-bold tracking-wider">{track.duration}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
       </div>
 
-      {/* === SPOTIFY TRACK MODAL === */}
-      {spotifyModalTrack && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          onClick={() => {
-            setSpotifyModalTrack(null);
-          }}
-        >
-          <div
-            className="bg-[#121212] border border-[#282828] rounded-2xl shadow-2xl overflow-hidden w-full max-w-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#282828]">
-              <div className="min-w-0">
-                <p className="text-white font-black text-sm truncate">{spotifyModalTrack.title}</p>
-                <p className="text-slate-400 text-[11px] font-bold truncate">{spotifyModalTrack.artist}</p>
-              </div>
-              <button
-                onClick={() => {
-                  setSpotifyModalTrack(null);
-                }}
-                className="text-slate-400 hover:text-white transition-colors ml-4 shrink-0 text-lg leading-none cursor-pointer"
-              >x</button>
-            </div>
-            <div className="bg-black p-4">
-              {spotifyModalTrack.spotifyEmbedUrl ? (
-                <iframe
-                  className="h-[352px] w-full rounded-xl"
-                  src={`${spotifyModalTrack.spotifyEmbedUrl}?utm_source=generator&theme=0`}
-                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                  loading="lazy"
-                  title={spotifyModalTrack.title}
-                />
-              ) : (
-                <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-xl border border-[#282828] bg-[#181818] px-6 text-center">
-                  <p className="text-white text-sm font-black">Spotify embed belum tersedia untuk track ini.</p>
-                  <p className="text-slate-400 text-xs font-bold">Buka langsung di Spotify untuk lanjut dengerin.</p>
-                </div>
-              )}
-            </div>
-            <div className="px-5 py-3 flex items-center justify-between">
-              <p className="text-[10px] text-slate-500 font-bold">Diputar lewat Spotify embed. Login Spotify bisa diperlukan untuk playback penuh.</p>
-              {spotifyModalTrack.spotifyUrl && (
-                <a
-                  href={spotifyModalTrack.spotifyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] text-[#1db954] hover:text-[#1ed760] font-black transition-colors shrink-0 ml-2"
-                >Open Spotify</a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* === YOUTUBE FULL SONG MODAL === */}
-      {ytModalTrack && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          onClick={() => setYtModalTrack(null)}
-        >
-          <div
-            className="bg-[#121212] border border-[#282828] rounded-2xl shadow-2xl overflow-hidden w-full max-w-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#282828]">
-              <div className="min-w-0">
-                <p className="text-white font-black text-sm truncate">{ytModalTrack.title}</p>
-                <p className="text-slate-400 text-[11px] font-bold truncate">{ytModalTrack.artist}</p>
-              </div>
-              <button
-                onClick={() => setYtModalTrack(null)}
-                className="text-slate-400 hover:text-white transition-colors ml-4 shrink-0 text-lg leading-none cursor-pointer"
-              >✕</button>
-            </div>
-            {/* YouTube Embed */}
-            <div className="relative bg-black" style={{ paddingBottom: "56.25%" }}>
-              {ytVideoLoading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black">
-                  <div className="w-8 h-8 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
-                  <p className="text-slate-400 text-xs font-bold">Finding on YouTube...</p>
-                </div>
-              )}
-              {!ytVideoLoading && ytVideoId && (
-                <iframe
-                  key={ytVideoId}
-                  className="absolute inset-0 w-full h-full"
-                  src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&rel=0&modestbranding=1`}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  title={ytModalTrack.title}
-                />
-              )}
-              {!ytVideoLoading && !ytVideoId && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black px-6 text-center">
-                  <p className="text-white text-sm font-black">Video tidak ketemu dari API.</p>
-                  <p className="text-slate-400 text-xs font-bold">Coba buka pencarian YouTube Music langsung.</p>
-                </div>
-              )}
-            </div>
-            <div className="px-5 py-3 flex items-center justify-between">
-              <p className="text-[10px] text-slate-500 font-bold">🎵 Full song via YouTube · Preview (30s) still playing in background</p>
-              <a
-                href={`https://music.youtube.com/search?q=${encodeURIComponent(ytModalTrack.artist + ' ' + ytModalTrack.title)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[10px] text-red-400 hover:text-red-300 font-black transition-colors shrink-0 ml-2"
-              >Open YouTube Music ↗</a>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* === BOTTOM PLAYBACK CONTROLLER BAR === */}
       <footer className="bg-[#181818] border-t border-[#282828] px-4 py-3.5 flex items-center justify-between z-25 rounded-b-3xl">
-        {/* Left: Active Song details */}
         <div className="flex items-center gap-3.5 min-w-[120px] max-w-[30%]">
-          <img src={currentTrack.cover} alt="" className="w-13 h-13 rounded-lg object-cover bg-black shadow-lg shrink-0" />
+          <img src={currentTrack?.cover || "/village.png"} alt="" className="w-13 h-13 rounded-lg object-cover bg-black shadow-lg shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
           <div className="min-w-0">
-            <span className="text-white text-[13px] font-black tracking-wide truncate block hover:underline cursor-pointer">
-              {currentTrack.title}
-            </span>
+            <span className="text-white text-[13px] font-black tracking-wide truncate block">{currentTrack?.title || "—"}</span>
             <span className="text-[10px] text-slate-400 font-bold truncate block mt-0.5">
-              {currentTrack.artist}
-            </span>
-          </div>
-          <button
-            onClick={() => toggleLike(currentTrack)}
-            className={`cursor-pointer transition-colors ${
-              likedTracks[currentTrack.id] ? "text-[#1db954]" : "text-slate-500 hover:text-white"
-            }`}
-          >
-            <Heart className={`w-4 h-4 ${likedTracks[currentTrack.id] ? 'fill-current' : ''}`} />
-          </button>
-        </div>
-
-        {/* Center: Controls & Timeline Slider */}
-        <div className="flex flex-col items-center gap-1.5 flex-1 max-w-[45%]">
-          {/* Playback Buttons */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setIsShuffling(!isShuffling)}
-              className={`transition-colors cursor-pointer ${
-                isShuffling ? "text-[#1db954]" : "text-slate-500 hover:text-white"
-              }`}
-              title="Shuffle"
-            >
-              <Shuffle className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={handlePrevious}
-              className="text-slate-300 hover:text-white transition-colors cursor-pointer"
-              title="Previous"
-            >
-              <SkipBack className="w-4.5 h-4.5 fill-current" />
-            </button>
-
-            <button
-              onClick={handlePlayPause}
-              className="w-8 h-8 rounded-full bg-white hover:scale-105 transition-transform flex items-center justify-center text-black shadow-md cursor-pointer active:scale-95 shrink-0"
-              title={isPlaying ? "Pause" : "Play"}
-            >
-              {isPlaying ? (
-                <Pause className="w-4.5 h-4.5 fill-current" />
+              {isStreamLoading ? (
+                <span className="text-amber-400 animate-pulse flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                  Memuat audio...
+                </span>
               ) : (
-                <Play className="w-4.5 h-4.5 fill-current ml-0.5" />
+                currentTrack?.artist || "Pilih lagu untuk mulai"
               )}
-            </button>
-
-            <button
-              onClick={handleNext}
-              className="text-slate-300 hover:text-white transition-colors cursor-pointer"
-              title="Next"
-            >
-              <SkipForward className="w-4.5 h-4.5 fill-current" />
-            </button>
-
-            <button
-              onClick={() => {
-                setIsLooping(!isLooping);
-                if ((currentTrack.isSpotify || currentTrack.isYouTube) && currentTime >= visualDuration) {
-                  setCurrentTime(0);
-                }
-              }}
-              className={`transition-colors cursor-pointer ${
-                isLooping ? "text-[#1db954]" : "text-slate-500 hover:text-white"
-              }`}
-              title="Repeat"
-            >
-              <Repeat className="w-4 h-4" />
-            </button>
+            </span>
           </div>
-
-          {/* Timeline track */}
-          <div className="w-full flex items-center gap-3">
-            <span className="text-[9px] text-slate-500 font-bold min-w-[28px] text-right">{formatTime(currentTime)}</span>
-            <input
-              type="range"
-              min={0}
-              max={visualDuration}
-              value={currentTime}
-              onChange={handleScrub}
-              className="w-full h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer hover:bg-slate-700 transition-colors"
-              style={{
-                background: `linear-gradient(to right, rgb(29, 185, 84) 0%, rgb(29, 185, 84) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40, 40, 40) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40, 40, 40) 100%)`
-              }}
-            />
-            <span className="text-[9px] text-slate-500 font-bold min-w-[28px]">{currentTrack.isSpotify || currentTrack.isYouTube ? currentTrack.duration : formatTime(duration)}</span>
-          </div>
-          {currentTrack.isSpotify && !spotifyConnected && (
-            <button
-              type="button"
-              onClick={() => void connectSpotifyPlayer()}
-              className="mt-1 rounded-full border border-[#1db954]/30 bg-[#1db954]/10 px-3 py-1 text-[10px] font-black text-[#1db954] hover:bg-[#1db954]/15 transition-colors"
-            >
-              Connect Spotify Premium
+          {currentTrack && (
+            <button onClick={() => toggleLike(currentTrack)} className={`cursor-pointer transition-colors shrink-0 ${likedTracks[currentTrack.id] ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}>
+              <Heart className={`w-4 h-4 ${likedTracks[currentTrack.id] ? "fill-current" : ""}`} />
             </button>
           )}
-          {spotifyError && <p className="mt-1 text-[10px] font-bold text-red-400">{spotifyError}</p>}
         </div>
 
-        {/* Right: Volume slider */}
-        <div className="flex items-center gap-2 min-w-[100px] justify-end max-w-[25%] text-slate-400">
-          <button
-            onClick={() => setIsMuted(!isMuted)}
-            className="hover:text-white transition-colors cursor-pointer"
-          >
-            {isMuted ? (
-              <VolumeX className="w-4 h-4 text-[#1db954]" />
-            ) : volume < 0.4 ? (
-              <Volume1 className="w-4 h-4" />
-            ) : (
-              <Volume2 className="w-4 h-4" />
-            )}
-          </button>
+        <div className="flex flex-col items-center gap-1.5 flex-1 max-w-[45%]">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setIsShuffling(!isShuffling)} className={`transition-colors cursor-pointer ${isShuffling ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Shuffle className="w-4 h-4" /></button>
+            <button onClick={handlePrevious} className="text-slate-300 hover:text-white transition-colors cursor-pointer"><SkipBack className="w-4.5 h-4.5 fill-current" /></button>
+            <button onClick={handlePlayPause} disabled={!currentTrack} className="w-8 h-8 rounded-full bg-white hover:scale-105 transition-transform flex items-center justify-center text-black shadow-md cursor-pointer active:scale-95 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">
+              {isPlaying ? <Pause className="w-4.5 h-4.5 fill-current" /> : <Play className="w-4.5 h-4.5 fill-current ml-0.5" />}
+            </button>
+            <button onClick={handleNext} className="text-slate-300 hover:text-white transition-colors cursor-pointer"><SkipForward className="w-4.5 h-4.5 fill-current" /></button>
+            <button onClick={() => setIsLooping(!isLooping)} className={`transition-colors cursor-pointer ${isLooping ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Repeat className="w-4 h-4" /></button>
+          </div>
+          <div className="w-full flex items-center gap-3">
+            <span className="text-[9px] text-slate-500 font-bold min-w-[28px] text-right">{fmt(currentTime)}</span>
+            <input type="range" min={0} max={visualDuration} value={currentTime} onChange={handleScrub} className="w-full h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer"
+              style={{ background: `linear-gradient(to right, rgb(29,185,84) 0%, rgb(29,185,84) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40,40,40) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40,40,40) 100%)` }} />
+            <span className="text-[9px] text-slate-500 font-bold min-w-[28px]">{fmt(duration)}</span>
+          </div>
+        </div>
 
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={volume}
-            onChange={(e) => {
-              setVolume(parseFloat(e.target.value));
-              setIsMuted(false);
-            }}
-            className="w-20 sm:w-24 h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer"
-            style={{
-              background: `linear-gradient(to right, rgb(29, 185, 84) 0%, rgb(29, 185, 84) ${volume * 100}%, rgb(40, 40, 40) ${volume * 100}%, rgb(40, 40, 40) 100%)`
-            }}
-          />
-          {currentTrack.isSpotify && !spotifyConnected && (
-            <span className="hidden sm:inline text-[9px] font-bold text-slate-500">
-              Connect
-            </span>
-          )}
+        <div className="flex items-center gap-2 min-w-[100px] justify-end max-w-[25%] text-slate-400">
+          <button onClick={() => setIsMuted(!isMuted)} className="hover:text-white transition-colors cursor-pointer">
+            {isMuted ? <VolumeX className="w-4 h-4 text-[#1db954]" /> : volume < 0.4 ? <Volume1 className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+          <input type="range" min={0} max={1} step={0.05} value={volume} onChange={e => { setVolume(parseFloat(e.target.value)); setIsMuted(false); }} className="w-20 sm:w-24 h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer"
+            style={{ background: `linear-gradient(to right, rgb(29,185,84) 0%, rgb(29,185,84) ${volume * 100}%, rgb(40,40,40) ${volume * 100}%, rgb(40,40,40) 100%)` }} />
         </div>
       </footer>
     </div>
   );
 }
+

@@ -30,6 +30,119 @@ async function getDbUser(clerkId: string) {
   return db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, clerkId) });
 }
 
+async function ensureMetaAiUser() {
+  let user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, "clerk_meta_ai") });
+  if (!user) {
+    [user] = await db.insert(usersTable).values({
+      clerkId: "clerk_meta_ai",
+      username: "metaai",
+      userTag: "#000",
+      displayName: "Meta AI",
+      avatarUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128",
+      role: "ai" as any,
+      messagePrivacy: "everyone",
+    }).returning();
+  }
+  return user;
+}
+
+async function generateAiResponse(conversationId: number, userDbId: number, userMessageContent: string, convType: string) {
+  const aiUser = await ensureMetaAiUser();
+  if (!aiUser) return;
+
+  // If group, make sure Meta AI is a member of the group
+  if (convType === "group") {
+    await db.insert(conversationMembersTable).values({
+      conversationId,
+      userId: aiUser.id
+    }).onConflictDoNothing();
+  }
+
+  // Get last 10 messages for history context
+  const historyRows = await db
+    .select({
+      senderId: messagesTable.senderId,
+      content: messagesTable.content,
+      senderUsername: usersTable.username,
+    })
+    .from(messagesTable)
+    .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+    .where(eq(messagesTable.conversationId, conversationId))
+    .orderBy(desc(messagesTable.createdAt))
+    .limit(10);
+
+  // Reverse to get chronological order
+  historyRows.reverse();
+
+  const systemPrompt = "You are Meta AI, a helpful AI assistant integrated into the Arcadia Minecraft Roleplay Server chat system. " +
+    "You respond concisely, naturally, and helpfully like a human chatting in WhatsApp. " +
+    "Use casual, friendly language. You can use emojis. " +
+    "Speak the user's language (Indonesian or English depending on their message). " +
+    "If in group chats, address users by their username (e.g. @username). Keep responses relatively brief and formatted for instant messaging.";
+
+  const chatMessages = [
+    { role: "system", content: systemPrompt },
+    ...historyRows.map((msg) => {
+      const isAi = msg.senderId === aiUser.id;
+      if (isAi) {
+        return { role: "assistant", content: msg.content || "" };
+      } else {
+        return { role: "user", content: `[${msg.senderUsername || "user"}]: ${msg.content || ""}` };
+      }
+    })
+  ];
+
+  const apiKey = process.env.NINEROUTER_API_KEY || "not_needed_for_local";
+  const baseUrl = process.env.NINEROUTER_BASE_URL || "http://127.0.0.1:20128/v1";
+  const model = process.env.NINEROUTER_MODEL || "gpt-4o";
+
+  try {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: chatMessages,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`9Router API error (${res.status}):`, errText);
+      return;
+    }
+
+    const responseData = (await res.json()) as {
+      choices?: Array<{
+        message?: {
+          content?: string;
+        };
+      }>;
+    };
+
+    const aiReply = responseData.choices?.[0]?.message?.content || "";
+    if (aiReply.trim()) {
+      // Insert AI message into database
+      await db.insert(messagesTable).values({
+        conversationId,
+        senderId: aiUser.id,
+        content: aiReply.trim(),
+      });
+
+      // Update conversation timestamp
+      await db
+        .update(conversationsTable)
+        .set({ updatedAt: new Date() })
+        .where(eq(conversationsTable.id, conversationId));
+    }
+  } catch (err) {
+    console.error("Failed to generate AI response via 9Router:", err);
+  }
+}
+
 async function isMember(conversationId: number, userId: number) {
   const m = await db.query.conversationMembersTable.findFirst({
     where: and(
@@ -80,18 +193,22 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
       name = other.displayName ?? other.username;
       iconUrl = other.avatarUrl ?? null;
 
-      const equipped = await db
-        .select({ value: cosmeticsTable.value })
-        .from(userCosmeticsTable)
-        .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
-        .where(
-          and(
-            eq(userCosmeticsTable.userId, other.userId),
-            eq(userCosmeticsTable.isEquipped, true),
-            eq(cosmeticsTable.type, "border")
-          )
-        );
-      otherUserEquippedBorder = equipped[0]?.value ?? null;
+      if (other.username === "metaai") {
+        otherUserEquippedBorder = "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]";
+      } else {
+        const equipped = await db
+          .select({ value: cosmeticsTable.value })
+          .from(userCosmeticsTable)
+          .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+          .where(
+            and(
+              eq(userCosmeticsTable.userId, other.userId),
+              eq(userCosmeticsTable.isEquipped, true),
+              eq(cosmeticsTable.type, "border")
+            )
+          );
+        otherUserEquippedBorder = equipped[0]?.value ?? null;
+      }
     }
   }
 
@@ -122,12 +239,57 @@ router.get("/conversations", async (req, res): Promise<void> => {
   const user = await getDbUser(auth.userId);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
+  // Ensure Meta AI user exists
+  const aiUser = await ensureMetaAiUser();
+
   const memberships = await db
     .select({ conversationId: conversationMembersTable.conversationId })
     .from(conversationMembersTable)
     .where(eq(conversationMembersTable.userId, user.id));
 
   const ids = memberships.map((m) => m.conversationId);
+  
+  // Check if there is an existing DM with Meta AI
+  let hasAiDm = false;
+  if (ids.length > 0) {
+    const aiDmMemberships = await db
+      .select({ conversationId: conversationMembersTable.conversationId })
+      .from(conversationMembersTable)
+      .innerJoin(
+        conversationsTable,
+        and(
+          eq(conversationMembersTable.conversationId, conversationsTable.id),
+          eq(conversationsTable.type, "dm"),
+        ),
+      )
+      .where(
+        and(
+          inArray(conversationMembersTable.conversationId, ids),
+          eq(conversationMembersTable.userId, aiUser.id),
+        ),
+      );
+    if (aiDmMemberships.length > 0) {
+      hasAiDm = true;
+    }
+  }
+
+  if (!hasAiDm) {
+    // Automatically create a DM conversation with Meta AI
+    const [newConv] = await db.insert(conversationsTable).values({ type: "dm" }).returning();
+    await db.insert(conversationMembersTable).values([
+      { conversationId: newConv.id, userId: user.id },
+      { conversationId: newConv.id, userId: aiUser.id },
+    ]);
+    // Insert welcome message
+    await db.insert(messagesTable).values({
+      conversationId: newConv.id,
+      senderId: aiUser.id,
+      content: "Halo! Saya Meta AI. Tanyakan apa saja kepada saya di sini, atau sebut @Meta AI di obrolan grup untuk memanggil saya. 😊",
+    });
+    // Add to ids list
+    ids.push(newConv.id);
+  }
+
   if (ids.length === 0) { res.json([]); return; }
 
   const convs = await db
@@ -395,7 +557,9 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
     const serialized = serializeDates(r);
     return {
       ...serialized,
-      senderEquippedBorder: r.senderId ? (bordersMap.get(r.senderId) ?? null) : null,
+      senderEquippedBorder: r.senderUsername === "metaai"
+        ? "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]"
+        : r.senderId ? (bordersMap.get(r.senderId) ?? null) : null,
     };
   });
 
@@ -429,6 +593,26 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     .update(conversationsTable)
     .set({ updatedAt: new Date() })
     .where(eq(conversationsTable.id, id));
+
+  // Trigger AI Response in background if it's a DM with Meta AI or mentions the AI
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
+  if (conv) {
+    const aiUser = await ensureMetaAiUser();
+    const isDmWithAi = conv.type === "dm" && (
+      await db.query.conversationMembersTable.findFirst({
+        where: and(eq(conversationMembersTable.conversationId, id), eq(conversationMembersTable.userId, aiUser.id))
+      })
+    );
+    const mentionsAi = parsed.data.content?.toLowerCase().includes("@metaai") || 
+                       parsed.data.content?.toLowerCase().includes("@meta ai") ||
+                       parsed.data.content?.toLowerCase().includes("@ai");
+
+    if (isDmWithAi || mentionsAi) {
+      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type).catch((err) => {
+        console.error("Failed to generate AI response:", err);
+      });
+    }
+  }
 
   const userBorder = await db
     .select({ value: cosmeticsTable.value })
