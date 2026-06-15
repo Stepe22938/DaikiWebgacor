@@ -29,6 +29,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { Link } from "wouter";
 import {
@@ -67,9 +75,18 @@ import {
   Plus,
   Trash2,
   Settings,
+  FolderPlus,
+  Minimize2,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
+
+interface VoiceMember {
+  id: number;
+  username: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+}
 
 interface Channel {
   id: number;
@@ -79,6 +96,7 @@ interface Channel {
   type: "text" | "voice";
   position: number;
   createdAt: string;
+  members?: VoiceMember[];
 }
 
 interface ChannelCategory {
@@ -872,6 +890,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     manageRoles: false,
     manageMessages: false,
     kickMembers: false,
+    inviteMembers: false,
   });
   const [messageText, setMessageText] = useState("");
   const [showNewDm, setShowNewDm] = useState(false);
@@ -879,6 +898,20 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [showMembers, setShowMembers] = useState(false);
   const [showCall, setShowCall] = useState(false);
   const [callType, setCallType] = useState<"voice" | "video" | null>(null);
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
+  const [callContext, setCallContext] = useState<{
+    conversationId: number;
+    conversationName: string;
+    channelId: number | null;
+    channelName: string | null;
+  } | null>(null);
+  const [showEditChannelModal, setShowEditChannelModal] = useState(false);
+  const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
+  const [editChannelName, setEditChannelName] = useState("");
+  const [editChannelCategoryId, setEditChannelCategoryId] = useState<number | null>(null);
+  const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<ChannelCategory | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
   const [showAkiraCall, setShowAkiraCall] = useState(false);
   const [showEditGroup, setShowEditGroup] = useState(false);
   const [editGroupName, setEditGroupName] = useState("");
@@ -899,6 +932,169 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [aiTyping, setAiTyping] = useState(false);
+  const [activeJoinedVoiceChannel, setActiveJoinedVoiceChannel] = useState<{ conversationId: number; channelId: number } | null>(null);
+
+  useEffect(() => {
+    // If showCall becomes false, but we have an active joined voice channel, we leave it
+    if (!showCall && activeJoinedVoiceChannel) {
+      const { conversationId, channelId } = activeJoinedVoiceChannel;
+      fetch(`/api/conversations/${conversationId}/channels/${channelId}/leave`, {
+        method: "POST",
+      }).catch((e) => console.error("Error leaving voice channel:", e));
+      setActiveJoinedVoiceChannel(null);
+    }
+  }, [showCall, activeJoinedVoiceChannel]);
+
+  useEffect(() => {
+    // Handle beforeunload to notify backend we are leaving
+    const handleUnload = () => {
+      if (activeJoinedVoiceChannel) {
+        const { conversationId, channelId } = activeJoinedVoiceChannel;
+        fetch(`/api/conversations/${conversationId}/channels/${channelId}/leave`, {
+          method: "POST",
+          keepalive: true,
+        }).catch(() => {});
+      }
+    };
+
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleUnload);
+    };
+  }, [activeJoinedVoiceChannel]);
+
+  const handleJoinVoice = async (conversationId: number, channelId: number) => {
+    const ch = channels.find((c) => c.id === channelId);
+    setCallContext({
+      conversationId,
+      conversationName: selectedName,
+      channelId,
+      channelName: ch?.name ?? "Voice Channel",
+    });
+    try {
+      await fetch(`/api/conversations/${conversationId}/channels/${channelId}/join`, {
+        method: "POST",
+      });
+      setActiveJoinedVoiceChannel({ conversationId, channelId });
+    } catch (e) {
+      console.error("Failed to join voice channel on backend:", e);
+    }
+    setShowCall(true);
+    setCallType("voice");
+    setIsCallMinimized(false);
+  };
+
+  const handleHangUp = () => {
+    setShowCall(false);
+    setCallType(null);
+    setIsCallMinimized(false);
+    setCallContext(null);
+  };
+
+  const handleRestoreCall = () => {
+    setIsCallMinimized(false);
+    if (callContext) {
+      setSelectedId(callContext.conversationId);
+      if (callContext.channelId) {
+        setSelectedChannelId(callContext.channelId);
+      }
+    }
+  };
+
+  const handleOpenEditCategory = (cat: ChannelCategory) => {
+    setEditingCategory(cat);
+    setEditCategoryName(cat.name);
+    setShowEditCategoryModal(true);
+  };
+
+  const handleOpenEditChannel = (ch: Channel) => {
+    setEditingChannel(ch);
+    setEditChannelName(ch.name);
+    setEditChannelCategoryId(ch.categoryId);
+    setShowEditChannelModal(true);
+  };
+
+  const handleSaveCategory = async () => {
+    if (!editingCategory || !selectedId || !editCategoryName.trim()) return;
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/categories/${editingCategory.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editCategoryName.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      await queryClient.invalidateQueries({ queryKey: ["channel-categories", selectedId] });
+      await queryClient.invalidateQueries({ queryKey: ["channels", selectedId] });
+      setShowEditCategoryModal(false);
+      setEditingCategory(null);
+      toast({ title: "Category updated!" });
+    } catch {
+      toast({ title: "Failed to update category", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!editingCategory || !selectedId) return;
+    if (!confirm(`Delete category "${editingCategory.name}"? Channels inside will become uncategorized.`)) return;
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/categories/${editingCategory.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error();
+      await queryClient.invalidateQueries({ queryKey: ["channel-categories", selectedId] });
+      await queryClient.invalidateQueries({ queryKey: ["channels", selectedId] });
+      setShowEditCategoryModal(false);
+      setEditingCategory(null);
+      toast({ title: "Category deleted!" });
+    } catch {
+      toast({ title: "Failed to delete category", variant: "destructive" });
+    }
+  };
+
+  const handleSaveChannel = async () => {
+    if (!editingChannel || !selectedId || !editChannelName.trim()) return;
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/channels/${editingChannel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editChannelName.trim(),
+          categoryId: editChannelCategoryId,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      await queryClient.invalidateQueries({ queryKey: ["channels", selectedId] });
+      setShowEditChannelModal(false);
+      setEditingChannel(null);
+      toast({ title: "Channel updated!" });
+    } catch {
+      toast({ title: "Failed to update channel", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteChannel = async () => {
+    if (!editingChannel || !selectedId) return;
+    if (!confirm(`Delete channel "${editingChannel.name}"? This action cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/channels/${editingChannel.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Delete failed");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["channels", selectedId] });
+      if (selectedChannelId === editingChannel.id) {
+        setSelectedChannelId(null);
+      }
+      setShowEditChannelModal(false);
+      setEditingChannel(null);
+      toast({ title: "Channel deleted!" });
+    } catch (err: any) {
+      toast({ title: "Failed to delete channel", description: err.message, variant: "destructive" });
+    }
+  };
+
   const prevMsgCountRef = useRef<number>(0);
 
   // Mention autocomplete
@@ -990,6 +1186,21 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     enabled: isGroup && selectedId !== null,
   });
 
+  // Fetch current user's permissions in the selected group
+  const { data: myPerms = { isOwner: false, permissions: {} } } = useQuery<{
+    isOwner: boolean;
+    permissions: Record<string, boolean>;
+  }>({
+    queryKey: ["my-permissions", selectedId],
+    queryFn: async () => {
+      const res = await fetch(`/api/conversations/${selectedId}/my-permissions`);
+      if (!res.ok) return { isOwner: false, permissions: {} };
+      return res.json();
+    },
+    enabled: isGroup && selectedId !== null,
+    refetchInterval: 10000,
+  });
+
   const createDm = useCreateOrGetDm();
   const createGroup = useCreateGroup();
   const deleteConv = useDeleteConversation();
@@ -1000,11 +1211,18 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   const selectedChannel = channels.find((c) => c.id === selectedChannelId) ?? null;
 
-  // Auto-select first text channel when group is selected
+  // Auto-select first text channel when group is selected, or if selected channel is deleted
   useEffect(() => {
-    if (isGroup && channels.length > 0 && !selectedChannelId) {
-      const firstText = channels.find((c) => c.type === "text");
-      if (firstText) setSelectedChannelId(firstText.id);
+    if (isGroup && channels.length > 0) {
+      const hasSelected = channels.some((c) => c.id === selectedChannelId);
+      if (!hasSelected) {
+        const firstText = channels.find((c) => c.type === "text");
+        if (firstText) {
+          setSelectedChannelId(firstText.id);
+        } else {
+          setSelectedChannelId(channels[0].id);
+        }
+      }
     }
     if (!isGroup) setSelectedChannelId(null);
   }, [isGroup, channels, selectedChannelId]);
@@ -1015,17 +1233,19 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       const lastMsg = activeMessages[activeMessages.length - 1];
       if (lastMsg && lastMsg.senderRole === "ai") {
         setAiTyping(false);
+        // Invalidate channels and categories to update the layout immediately (e.g. GAMING AREA setup)
+        queryClient.invalidateQueries({ queryKey: ["channels", selectedId] });
+        queryClient.invalidateQueries({ queryKey: ["channel-categories", selectedId] });
       }
     }
     prevMsgCountRef.current = activeMessages.length;
-  }, [activeMessages, aiTyping]);
+  }, [activeMessages, aiTyping, queryClient, selectedId]);
 
   // Auto-clear typing after 30s (safety timeout)
   useEffect(() => {
-    if (aiTyping) {
-      const timer = setTimeout(() => setAiTyping(false), 30000);
-      return () => clearTimeout(timer);
-    }
+    if (!aiTyping) return;
+    const timer = setTimeout(() => setAiTyping(false), 30000);
+    return () => clearTimeout(timer);
   }, [aiTyping]);
 
   // Lock body scroll on mobile to prevent keyboard push issues
@@ -1623,6 +1843,43 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
       {/* ── Main Content Area ────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+        {/* Active Call Notification Bar (when minimized) */}
+        {showCall && isCallMinimized && callContext && (
+          <div
+            onClick={handleRestoreCall}
+            className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white px-4 py-2.5 flex items-center justify-between cursor-pointer hover:from-violet-700 hover:to-indigo-700 transition-all duration-200 shrink-0 shadow-md animate-in slide-in-from-top duration-300 z-40"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <Phone className="w-4.5 h-4.5 animate-bounce text-emerald-300 shrink-0" />
+              <p className="text-xs font-bold truncate">
+                Sedang melakukan panggilan di <span className="underline font-extrabold">{callContext.conversationName}</span>
+                {callContext.channelName ? (
+                  <> di voice <span className="underline font-extrabold">#{callContext.channelName}</span></>
+                ) : (
+                  <> (Direct Message)</>
+                )}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[10px] bg-white/20 hover:bg-white/30 text-white font-extrabold px-2.5 py-1 rounded-md transition-colors mr-2">
+                Click to Expand
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 rounded-full bg-red-500 hover:bg-red-600 text-white hover:text-white shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleHangUp();
+                }}
+                title="Hang Up"
+              >
+                <PhoneOff className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
         {/* Top Header Bar */}
         {!embedded && (
           <header className="h-14 md:h-16 bg-white border-b border-[#eae8f5] px-3 sm:px-4 md:px-6 flex items-center justify-between shrink-0">
@@ -1740,22 +1997,24 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               {/* Channel header */}
               <div className="p-3 border-b border-[#1E1F22] flex items-center justify-between shrink-0">
                 <h3 className="font-extrabold text-xs text-[#DCDDDE] uppercase tracking-wider">Channels</h3>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setShowCreateCategory(true)}
-                    className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
-                    title="Create Category"
-                  >
-                    <FolderPlus className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => { setNewChannelCategoryId(categories[0]?.id ?? null); setShowCreateChannel(true); }}
-                    className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
-                    title="Create Channel"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
+                {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setShowCreateCategory(true)}
+                      className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
+                      title="Create Category"
+                    >
+                      <FolderPlus className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => { setNewChannelCategoryId(categories[0]?.id ?? null); setShowCreateChannel(true); }}
+                      className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
+                      title="Create Channel"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
               {/* Channel list grouped by category */}
               <ScrollArea className="flex-1 min-h-0">
@@ -1763,25 +2022,67 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   {categories.length === 0 ? (
                     <>
                       {channels.filter(c => c.type === "text" && !c.categoryId).map((ch) => (
-                        <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
-                          className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                            selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
-                          }`}>
-                          <Hash className="w-4 h-4 shrink-0 opacity-70" />
-                          <span className="truncate">{ch.name}</span>
-                        </button>
+                        <div key={ch.id} className="group relative flex items-center justify-between rounded-md">
+                          <button onClick={() => setSelectedChannelId(ch.id)}
+                            className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
+                              selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                            }`}>
+                            <Hash className="w-4 h-4 shrink-0 opacity-70" />
+                            <span className="truncate">{ch.name}</span>
+                          </button>
+                          {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
+                              className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              title="Edit Channel"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       ))}
                       {channels.filter(c => c.type === "voice" && !c.categoryId).length > 0 && (
                         <div className="pt-2 pb-1"><span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider px-2">Voice Channels</span></div>
                       )}
                       {channels.filter(c => c.type === "voice" && !c.categoryId).map((ch) => (
-                        <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
-                          className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                            selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
-                          }`}>
-                          <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
-                          <span className="truncate">{ch.name}</span>
-                        </button>
+                        <div key={ch.id} className="w-full">
+                          <div className="group relative flex items-center justify-between rounded-md">
+                            <button onClick={() => setSelectedChannelId(ch.id)}
+                              className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
+                                selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                              }`}>
+                              <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
+                              <span className="truncate">{ch.name}</span>
+                            </button>
+                            {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
+                                className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                title="Edit Channel"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Active voice members */}
+                          {ch.members && ch.members.length > 0 && (
+                            <div className="pl-6 pr-2 py-1 space-y-1">
+                              {ch.members.map((member) => (
+                                <div key={member.id} className="flex items-center gap-2 text-xs text-[#949BA4] py-0.5">
+                                  {member.avatarUrl ? (
+                                    <img src={member.avatarUrl} className="w-4.5 h-4.5 rounded-full object-cover" />
+                                  ) : (
+                                    <div className="w-4.5 h-4.5 rounded-full bg-violet-600 flex items-center justify-center text-[9px] text-white font-extrabold">
+                                      {member.username[0].toUpperCase()}
+                                    </div>
+                                  )}
+                                  <span className="truncate font-semibold">{member.displayName || member.username}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       ))}
                     </>
                   ) : (
@@ -1791,33 +2092,86 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       const voiceChannels = catChannels.filter(c => c.type === "voice");
                       return (
                         <div key={cat.id}>
-                          <div className="flex items-center justify-between px-1 pb-1">
+                          <div className="flex items-center justify-between px-1 pb-1 group">
                             <span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider">{cat.name}</span>
-                            <button
-                              onClick={() => { setNewChannelCategoryId(cat.id); setShowCreateChannel(true); }}
-                              className="text-[#949BA4] hover:text-white transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
-                              style={{ opacity: 0.6 }}
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
+                            {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => { setNewChannelCategoryId(cat.id); setShowCreateChannel(true); }}
+                                  className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
+                                  title="Create Channel"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => handleOpenEditCategory(cat)}
+                                  className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
+                                  title="Edit Category"
+                                >
+                                  <Settings className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
                           </div>
                           {textChannels.map((ch) => (
-                            <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
-                              className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                                selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
-                              }`}>
-                              <Hash className="w-4 h-4 shrink-0 opacity-70" />
-                              <span className="truncate">{ch.name}</span>
-                            </button>
+                            <div key={ch.id} className="group relative flex items-center justify-between rounded-md">
+                              <button onClick={() => setSelectedChannelId(ch.id)}
+                                className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
+                                  selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                                }`}>
+                                <Hash className="w-4 h-4 shrink-0 opacity-70" />
+                                <span className="truncate">{ch.name}</span>
+                              </button>
+                              {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
+                                  className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                  title="Edit Channel"
+                                >
+                                  <Settings className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           ))}
                           {voiceChannels.map((ch) => (
-                            <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
-                              className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                                selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
-                              }`}>
-                              <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
-                              <span className="truncate">{ch.name}</span>
-                            </button>
+                            <div key={ch.id} className="w-full">
+                              <div className="group relative flex items-center justify-between rounded-md">
+                                <button onClick={() => setSelectedChannelId(ch.id)}
+                                  className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
+                                    selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                                  }`}>
+                                  <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
+                                  <span className="truncate">{ch.name}</span>
+                                </button>
+                                {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
+                                    className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                    title="Edit Channel"
+                                  >
+                                    <Settings className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Active voice members */}
+                              {ch.members && ch.members.length > 0 && (
+                                <div className="pl-6 pr-2 py-1 space-y-1">
+                                  {ch.members.map((member) => (
+                                    <div key={member.id} className="flex items-center gap-2 text-xs text-[#949BA4] py-0.5">
+                                      {member.avatarUrl ? (
+                                        <img src={member.avatarUrl} className="w-4.5 h-4.5 rounded-full object-cover" />
+                                      ) : (
+                                        <div className="w-4.5 h-4.5 rounded-full bg-violet-600 flex items-center justify-center text-[9px] text-white font-extrabold">
+                                          {member.username[0].toUpperCase()}
+                                        </div>
+                                      )}
+                                      <span className="truncate font-semibold">{member.displayName || member.username}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           ))}
                         </div>
                       );
@@ -1828,13 +2182,44 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     <div>
                       <div className="px-1 pb-1"><span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider">Uncategorized</span></div>
                       {channels.filter(c => !c.categoryId && categories.length > 0).map((ch) => (
-                        <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
-                          className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                            selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
-                          }`}>
-                          {ch.type === "voice" ? <Volume2 className="w-4 h-4 shrink-0 opacity-70" /> : <Hash className="w-4 h-4 shrink-0 opacity-70" />}
-                          <span className="truncate">{ch.name}</span>
-                        </button>
+                        <div key={ch.id} className="w-full">
+                          <div className="group relative flex items-center justify-between rounded-md">
+                            <button onClick={() => setSelectedChannelId(ch.id)}
+                              className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
+                                selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                              }`}>
+                              {ch.type === "voice" ? <Volume2 className="w-4 h-4 shrink-0 opacity-70" /> : <Hash className="w-4 h-4 shrink-0 opacity-70" />}
+                              <span className="truncate">{ch.name}</span>
+                            </button>
+                            {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
+                                className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                title="Edit Channel"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Active voice members */}
+                          {ch.type === "voice" && ch.members && ch.members.length > 0 && (
+                            <div className="pl-6 pr-2 py-1 space-y-1">
+                              {ch.members.map((member) => (
+                                <div key={member.id} className="flex items-center gap-2 text-xs text-[#949BA4] py-0.5">
+                                  {member.avatarUrl ? (
+                                    <img src={member.avatarUrl} className="w-4.5 h-4.5 rounded-full object-cover" />
+                                  ) : (
+                                    <div className="w-4.5 h-4.5 rounded-full bg-violet-600 flex items-center justify-center text-[9px] text-white font-extrabold">
+                                      {member.username[0].toUpperCase()}
+                                    </div>
+                                  )}
+                                  <span className="truncate font-semibold">{member.displayName || member.username}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       ))}
                     </div>
                   )}
@@ -1888,7 +2273,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       <div className="min-w-0 flex-1 text-left">
                         <div className="flex items-center gap-1.5">
                           <p className="font-extrabold text-[13px] sm:text-sm leading-none truncate max-w-[38vw] sm:max-w-none">{selectedName}</p>
-                          {selectedConv.type === "group" && selectedConv.ownerId === me?.id && (
+                          {selectedConv.type === "group" && (selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels || myPerms?.permissions?.manageRoles) && (
                             <button
                               onClick={(e) => { e.stopPropagation(); openEditGroup(); }}
                               className="text-[10px] text-white/60 hover:text-white transition-colors font-bold"
@@ -1919,6 +2304,13 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                         onClick={() => {
                           setCallType("voice");
                           setShowCall(true);
+                          setCallContext({
+                            conversationId: selectedId!,
+                            conversationName: selectedName,
+                            channelId: null,
+                            channelName: null,
+                          });
+                          setIsCallMinimized(false);
                         }}
                         title="Voice Call"
                       >
@@ -2039,8 +2431,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       <p className="text-xs text-[#949BA4]">Voice Channel</p>
                       <Button
                         onClick={() => {
-                          setShowCall(true);
-                          setCallType("voice");
+                          if (selectedId && selectedChannel) {
+                            handleJoinVoice(selectedId, selectedChannel.id);
+                          }
                         }}
                         className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl font-bold px-8 shadow-md"
                       >
@@ -2420,11 +2813,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 const res = await fetch(`/api/conversations/${selectedId}/channels`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ name: newChannelName.trim(), type: newChannelType }),
+                  body: JSON.stringify({
+                    name: newChannelName.trim(),
+                    type: newChannelType,
+                    categoryId: newChannelCategoryId,
+                  }),
                 });
                 if (!res.ok) throw new Error("Failed");
                 await queryClient.invalidateQueries({ queryKey: ["channels", selectedId] });
                 setNewChannelName("");
+                setNewChannelType("text");
+                setNewChannelCategoryId(null);
                 setShowCreateChannel(false);
                 toast({ title: "Channel created!" });
               } catch {
@@ -2439,9 +2838,47 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         </DialogContent>
       </Dialog>
 
+      {/* Create Category Dialog */}
+      <Dialog open={showCreateCategory} onOpenChange={setShowCreateCategory}>
+        <DialogContent className="max-w-md bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-extrabold text-white">Create Category</DialogTitle>
+          </DialogHeader>
+          <Input
+            placeholder="Category name"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            className="mb-4 bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2] rounded-xl font-semibold"
+          />
+          <Button
+            onClick={async () => {
+              if (!newCategoryName.trim() || !selectedId) return;
+              try {
+                const res = await fetch(`/api/conversations/${selectedId}/categories`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: newCategoryName.trim() }),
+                });
+                if (!res.ok) throw new Error("Failed");
+                await queryClient.invalidateQueries({ queryKey: ["channel-categories", selectedId] });
+                setNewCategoryName("");
+                setShowCreateCategory(false);
+                toast({ title: "Category created!" });
+              } catch {
+                toast({ title: "Failed to create category", variant: "destructive" });
+              }
+            }}
+            disabled={!newCategoryName.trim()}
+            className="w-full bg-[#5865F2] text-white hover:bg-[#4752C4] rounded-xl font-bold shadow-md"
+          >
+            Create Category
+          </Button>
+        </DialogContent>
+      </Dialog>
+
       {/* Roles Management Dialog */}
       <Dialog open={showRoles} onOpenChange={(open) => { setShowRoles(open); if (!open) setEditingRole(null); }}>
-        <DialogContent className="max-w-md bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5">
+        <DialogContent className={`${editingRole ? "max-w-2xl" : "max-w-md"} bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5`}>
           <DialogHeader>
             <DialogTitle className="text-sm font-extrabold text-white flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-[#5865F2]" /> Manage Roles
@@ -2466,7 +2903,15 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             setEditingRole(r);
                             setNewRoleName(r.name);
                             setNewRoleColor(r.color);
-                            setNewRolePerms(r.permissions as Record<string, boolean>);
+                            setNewRolePerms({
+                              sendMessages: false,
+                              manageChannels: false,
+                              manageRoles: false,
+                              manageMessages: false,
+                              kickMembers: false,
+                              inviteMembers: false,
+                              ...(r.permissions as Record<string, boolean>),
+                            });
                           }}
                           className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
                         >
@@ -2539,54 +2984,124 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               <button onClick={() => setEditingRole(null)} className="text-xs text-[#949BA4] hover:text-white mb-3 flex items-center gap-1 cursor-pointer">
                 <ArrowLeft className="w-3 h-3" /> Back to roles
               </button>
-              <div className="flex gap-2 mb-3">
-                <input
-                  type="text"
-                  value={newRoleName}
-                  onChange={(e) => setNewRoleName(e.target.value)}
-                  placeholder="Role name"
-                  className="flex-1 px-3 py-2 text-xs rounded-xl bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] focus:ring-2 focus:ring-[#5865F2] outline-none"
-                />
-                <input
-                  type="color"
-                  value={newRoleColor}
-                  onChange={(e) => setNewRoleColor(e.target.value)}
-                  className="w-10 h-9 rounded-lg border border-[#3F4147] bg-transparent cursor-pointer"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Left Column: Role Details & Permissions */}
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider mb-2">Role Settings</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newRoleName}
+                        onChange={(e) => setNewRoleName(e.target.value)}
+                        placeholder="Role name"
+                        maxLength={50}
+                        className="flex-1 px-3 py-2 text-xs rounded-xl bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] focus:ring-2 focus:ring-[#5865F2] outline-none font-semibold"
+                      />
+                      <input
+                        type="color"
+                        value={newRoleColor}
+                        onChange={(e) => setNewRoleColor(e.target.value)}
+                        className="w-10 h-9 rounded-lg border border-[#3F4147] bg-transparent cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Permissions</p>
+                    <ScrollArea className="h-44 pr-1">
+                      <div className="space-y-1">
+                        {Object.entries(newRolePerms).map(([key, val]) => (
+                          <label key={key} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-[#2B2D31] cursor-pointer transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={val}
+                              onChange={(e) => setNewRolePerms(p => ({ ...p, [key]: e.target.checked }))}
+                              className="accent-[#5865F2]"
+                            />
+                            <span className="text-xs font-semibold text-[#DCDDDE] capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      if (!selectedId || !editingRole) return;
+                      try {
+                        await fetch(`/api/conversations/${selectedId}/roles/${editingRole.id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ name: newRoleName.trim(), color: newRoleColor, permissions: newRolePerms }),
+                        });
+                        await queryClient.invalidateQueries({ queryKey: ["roles", selectedId] });
+                        setEditingRole(null);
+                        toast({ title: "Role updated!" });
+                      } catch { toast({ title: "Failed to update role", variant: "destructive" }); }
+                    }}
+                    disabled={!newRoleName.trim()}
+                    className="w-full bg-[#5865F2] text-white hover:bg-[#4752C4] rounded-xl text-xs font-bold py-2 shadow-md"
+                  >
+                    Save Role
+                  </Button>
+                </div>
+                {/* Right Column: Members checklist */}
+                <div className="border-t md:border-t-0 md:border-l border-[#3F4147] pt-4 md:pt-0 md:pl-4 flex flex-col min-h-0">
+                  <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider mb-2">Members in Role</p>
+                  <ScrollArea className="h-64 pr-1 flex-1">
+                    <div className="space-y-2">
+                      {members.map((m) => {
+                        const hasRole = m.roles?.some((gr) => gr.id === editingRole.id) ?? false;
+                        return (
+                          <div key={m.userId} className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-xl bg-[#2B2D31] border border-[#3F4147] hover:border-[#5865F2]/40 transition-colors">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar className="w-6 h-6 border border-[#3F4147]">
+                                <AvatarImage src={m.avatarUrl ?? undefined} />
+                                <AvatarFallback className="text-[9px] font-bold bg-[#35373C] text-[#DCDDDE]">
+                                  {getInitials(m.displayName ?? m.username)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-xs font-bold text-[#DCDDDE] truncate">{m.displayName ?? m.username}</span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={hasRole}
+                              onChange={async (e) => {
+                                if (!selectedId || !m.id) return;
+                                const isChecking = e.target.checked;
+                                try {
+                                  if (isChecking) {
+                                    // Assign role
+                                    const res = await fetch(`/api/conversations/${selectedId}/members/${m.id}/roles`, {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ roleId: editingRole.id }),
+                                    });
+                                    if (!res.ok) throw new Error();
+                                  } else {
+                                    // Remove role
+                                    const res = await fetch(`/api/conversations/${selectedId}/members/${m.id}/roles/${editingRole.id}`, {
+                                      method: "DELETE",
+                                    });
+                                    if (!res.ok) throw new Error();
+                                  }
+                                  // Invalidate members query to update checkbox state instantly
+                                  await queryClient.invalidateQueries({
+                                    queryKey: [`/api/conversations/${selectedId}/members`],
+                                  });
+                                  toast({ title: isChecking ? "Role assigned" : "Role removed" });
+                                } catch {
+                                  toast({ title: "Failed to update member role", variant: "destructive" });
+                                }
+                              }}
+                              className="accent-[#5865F2] cursor-pointer"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </div>
               </div>
-              <div className="space-y-2 mb-4">
-                <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Permissions</p>
-                {Object.entries(newRolePerms).map(([key, val]) => (
-                  <label key={key} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[#2B2D31] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={val}
-                      onChange={(e) => setNewRolePerms(p => ({ ...p, [key]: e.target.checked }))}
-                      className="accent-[#5865F2]"
-                    />
-                    <span className="text-xs font-semibold text-[#DCDDDE] capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
-                  </label>
-                ))}
-              </div>
-              <Button
-                onClick={async () => {
-                  if (!selectedId || !editingRole) return;
-                  try {
-                    await fetch(`/api/conversations/${selectedId}/roles/${editingRole.id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ name: newRoleName.trim(), color: newRoleColor, permissions: newRolePerms }),
-                    });
-                    await queryClient.invalidateQueries({ queryKey: ["roles", selectedId] });
-                    setEditingRole(null);
-                    toast({ title: "Role updated!" });
-                  } catch { toast({ title: "Failed", variant: "destructive" }); }
-                }}
-                disabled={!newRoleName.trim()}
-                className="w-full bg-[#5865F2] text-white hover:bg-[#4752C4] rounded-xl text-xs font-bold"
-              >
-                Save Role
-              </Button>
             </>
           )}
         </DialogContent>
@@ -2608,16 +3123,114 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-bold truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{m.displayName ?? m.username}</p>
-                    {selectedConv?.ownerId === m.userId && (
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Owner</p>
+                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                      <p className={`text-xs font-bold truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{m.displayName ?? m.username}</p>
+                      {m.role && m.role !== "member" && (
+                        <Badge className={`text-[8px] px-1 py-0 h-3 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[m.role] ?? ""}`}>
+                          {ROLE_LABELS[m.role] ?? m.role}
+                        </Badge>
+                      )}
+                      {selectedConv?.ownerId === m.userId && (
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest shrink-0">Owner</p>
+                      )}
+                    </div>
+                    {m.roles && m.roles.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {m.roles.map((gr) => (
+                          <Badge
+                            key={gr.id}
+                            className="text-[8px] px-1 py-0 h-4 font-bold rounded flex items-center gap-0.5 shrink-0"
+                            style={{
+                              backgroundColor: `${gr.color}20`,
+                              color: gr.color,
+                              border: `1px solid ${gr.color}40`,
+                            }}
+                          >
+                            <span>{gr.name}</span>
+                            {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageRoles) && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!selectedId || !m.id) return;
+                                  try {
+                                    const res = await fetch(`/api/conversations/${selectedId}/members/${m.id}/roles/${gr.id}`, {
+                                      method: "DELETE",
+                                    });
+                                    if (!res.ok) throw new Error();
+                                    await queryClient.invalidateQueries({
+                                      queryKey: [`/api/conversations/${selectedId}/members`],
+                                    });
+                                    toast({ title: "Role removed" });
+                                  } catch {
+                                    toast({ title: "Failed to remove role", variant: "destructive" });
+                                  }
+                                }}
+                                className="hover:bg-black/10 rounded-full p-0.5 transition-colors cursor-pointer ml-0.5"
+                              >
+                                <X className="w-1.5 h-1.5" />
+                              </button>
+                            )}
+                          </Badge>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  {selectedConv?.ownerId === me?.id && m.userId !== me?.id && (
+                  {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageRoles) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 rounded-lg hover:bg-slate-100 dark:hover:bg-[#35373C] shrink-0"
+                          title="Assign Role"
+                        >
+                          <Plus className={`w-3.5 h-3.5 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className={isGroupView ? "bg-[#1E1F22] border-[#3F4147] text-white" : "bg-white border-[#eae8f5] text-slate-800"}>
+                        <DropdownMenuLabel className="text-[10px] font-bold text-slate-400">Add Group Role</DropdownMenuLabel>
+                        <DropdownMenuSeparator className={isGroupView ? "bg-[#3F4147]" : "bg-slate-100"} />
+                        {roles.filter(r => !(m.roles || []).some(gr => gr.id === r.id)).length === 0 ? (
+                          <div className="px-2 py-1.5 text-[10px] text-slate-400 italic">No roles available</div>
+                        ) : (
+                          roles.filter(r => !(m.roles || []).some(gr => gr.id === r.id)).map((role) => (
+                            <DropdownMenuItem
+                              key={role.id}
+                              onClick={async () => {
+                                if (!selectedId || !m.id) return;
+                                try {
+                                  const res = await fetch(`/api/conversations/${selectedId}/members/${m.id}/roles`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ roleId: role.id }),
+                                  });
+                                  if (!res.ok) throw new Error();
+                                  await queryClient.invalidateQueries({
+                                    queryKey: [`/api/conversations/${selectedId}/members`],
+                                  });
+                                  toast({ title: "Role assigned" });
+                                } catch {
+                                  toast({ title: "Failed to assign role", variant: "destructive" });
+                                }
+                              }}
+                              className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-[#2B2D31] px-2 py-1"
+                            >
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: role.color }}
+                              />
+                              <span className="font-semibold">{role.name}</span>
+                            </DropdownMenuItem>
+                          ))
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  {m.userId !== selectedConv?.ownerId && m.userId !== me?.id && (selectedConv?.ownerId === me?.id || myPerms?.permissions?.kickMembers) && (
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 px-2 text-[10px] text-slate-400 hover:text-[#ef4444] hover:bg-red-50 rounded-lg font-bold"
+                      className="h-7 px-2 text-[10px] text-slate-400 hover:text-[#ef4444] hover:bg-red-50 rounded-lg font-bold shrink-0"
                       onClick={async () => {
                         if (!selectedId) return;
                         await removeMember.mutateAsync({ id: selectedId, userId: m.userId });
@@ -2633,7 +3246,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               ))}
             </div>
           </ScrollArea>
-          {selectedConv?.ownerId === me?.id && (
+          {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.inviteMembers) && (
             <>
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-2">Add friends:</p>
               <Input
@@ -2700,7 +3313,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   value={editGroupIcon}
                   onChange={(e) => setEditGroupIcon(e.target.value)}
                   placeholder="https://example.com/photo.jpg"
-                  className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"}`}
+                  disabled={selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels}
+                  className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"} ${selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels ? "opacity-60 cursor-not-allowed" : ""}`}
                 />
               </div>
             </div>
@@ -2714,7 +3328,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 onChange={(e) => setEditGroupName(e.target.value)}
                 placeholder="Enter group name"
                 maxLength={100}
-                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"}`}
+                disabled={selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels}
+                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"} ${selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels ? "opacity-60 cursor-not-allowed" : ""}`}
               />
             </div>
 
@@ -2727,21 +3342,24 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 placeholder="What's this group about?"
                 maxLength={500}
                 rows={3}
-                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none resize-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"}`}
+                disabled={selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels}
+                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none resize-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"} ${selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels ? "opacity-60 cursor-not-allowed" : ""}`}
               />
               <p className="text-[10px] text-slate-300 mt-1 text-right">{editGroupDesc.length}/500</p>
             </div>
           </div>
 
           {/* Manage Roles Button */}
-          <button
-            onClick={() => { setShowEditGroup(false); setShowRoles(true); }}
-            className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
-          >
-            <ShieldAlert className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
-            Manage Roles
-            <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>{roles.length} roles</span>
-          </button>
+          {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageRoles) && (
+            <button
+              onClick={() => { setShowEditGroup(false); setShowRoles(true); }}
+              className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
+            >
+              <ShieldAlert className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
+              Manage Roles
+              <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>{roles.length} roles</span>
+            </button>
+          )}
 
           <div className="flex gap-2 mt-4">
             <Button
@@ -2755,7 +3373,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             <Button
               className="flex-1 bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold shadow-md shadow-violet-500/10"
               onClick={handleSaveGroup}
-              disabled={editGroupSaving || !editGroupName.trim()}
+              disabled={editGroupSaving || !editGroupName.trim() || (selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels)}
             >
               {editGroupSaving ? "Saving..." : "Save Changes"}
             </Button>
@@ -2763,83 +3381,143 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCall} onOpenChange={(open) => {
-        setShowCall(open);
+      <Dialog open={showCall && !callType} onOpenChange={(open) => {
         if (!open) {
+          setShowCall(false);
           setCallType(null);
         }
       }}>
-        <DialogContent className={`${callType ? "max-w-3xl h-[80vh]" : "max-w-md"} flex flex-col p-0 gap-0 overflow-hidden bg-white border border-[#eae8f5] rounded-2xl transition-all duration-300`}>
+        <DialogContent className="max-w-md flex flex-col p-0 gap-0 overflow-hidden bg-white border border-[#eae8f5] rounded-2xl transition-all duration-300">
           <DialogHeader className="px-5 pt-5 pb-3 border-b border-[#eae8f5] bg-white">
             <DialogTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
-              {callType === "voice" ? "🎙️ Voice Call" : callType === "video" ? "📹 Video Call" : "📞 Establish Call Connection"}
+              📞 Establish Call Connection
               <span className="text-xs text-slate-400 font-bold">— {selectedName}</span>
             </DialogTitle>
           </DialogHeader>
 
           {showCall && selectedId && (
-            <>
-              {!callType ? (
-                <div className="p-6 space-y-6 text-center">
-                  <div className="space-y-1">
-                    <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                      Choose your call mode. You will connect securely via the Arcadia Studio communications network.
-                    </p>
-                  </div>
+            <div className="p-6 space-y-6 text-center">
+              <div className="space-y-1">
+                <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                  Choose your call mode. You will connect securely via the Arcadia Guild network.
+                </p>
+              </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      onClick={() => setCallType("voice")}
-                      className="flex flex-col items-center justify-center p-5 rounded-2xl border border-[#eae8f5] bg-white hover:bg-violet-50/50 hover:border-violet-200 text-[#110e3d] transition-all duration-200 group cursor-pointer"
-                    >
-                      <div className="w-12 h-12 rounded-2xl bg-violet-50 text-[#6366f1] flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                        <Phone className="w-5 h-5" />
-                      </div>
-                      <span className="font-extrabold text-xs">Voice Call</span>
-                      <span className="text-[10px] text-slate-400 font-semibold mt-1">Audio only</span>
-                    </button>
-
-                    <button
-                      onClick={() => setCallType("video")}
-                      className="flex flex-col items-center justify-center p-5 rounded-2xl border border-[#eae8f5] bg-white hover:bg-violet-50/50 hover:border-violet-200 text-[#110e3d] transition-all duration-200 group cursor-pointer"
-                    >
-                      <div className="w-12 h-12 rounded-2xl bg-violet-50 text-[#6366f1] flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                        <Video className="w-5 h-5" />
-                      </div>
-                      <span className="font-extrabold text-xs">Video Call</span>
-                      <span className="text-[10px] text-slate-400 font-semibold mt-1">Camera & Audio</span>
-                    </button>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    setCallContext({
+                      conversationId: selectedId!,
+                      conversationName: selectedName,
+                      channelId: null,
+                      channelName: null,
+                    });
+                    setCallType("voice");
+                    setIsCallMinimized(false);
+                  }}
+                  className="flex flex-col items-center justify-center p-5 rounded-2xl border border-[#eae8f5] bg-white hover:bg-violet-50/50 hover:border-violet-200 text-[#110e3d] transition-all duration-200 group cursor-pointer"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-violet-50 text-[#6366f1] flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Phone className="w-5 h-5" />
                   </div>
+                  <span className="font-extrabold text-xs">Voice Call</span>
+                  <span className="text-[10px] text-slate-400 font-semibold mt-1">Audio only</span>
+                </button>
 
-                  <div className="flex justify-center pt-2">
-                    <Button variant="ghost" size="sm" onClick={() => setShowCall(false)} className="text-xs font-bold text-slate-400 hover:text-[#110e3d] rounded-xl">
-                      Cancel
-                    </Button>
+                <button
+                  onClick={() => {
+                    setCallContext({
+                      conversationId: selectedId!,
+                      conversationName: selectedName,
+                      channelId: null,
+                      channelName: null,
+                    });
+                    setCallType("video");
+                    setIsCallMinimized(false);
+                  }}
+                  className="flex flex-col items-center justify-center p-5 rounded-2xl border border-[#eae8f5] bg-white hover:bg-violet-50/50 hover:border-violet-200 text-[#110e3d] transition-all duration-200 group cursor-pointer"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-violet-50 text-[#6366f1] flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Video className="w-5 h-5" />
                   </div>
-                </div>
-              ) : (
-                <div className="flex-1 flex overflow-hidden p-4 min-h-0 bg-slate-50">
-                  <JitsiCall
-                    roomName={`arcadia-studio-${selectedConv?.type === "group" ? "group" : "dm"}-${slugify(selectedName)}-${String(selectedId).padStart(3, "0")}`}
-                    displayName={me?.displayName ?? me?.username ?? "Anonymous"}
-                    avatarUrl={me?.avatarUrl}
-                    audioOnly={callType === "voice"}
-                    onClose={() => {
-                      setShowCall(false);
-                      setCallType(null);
-                    }}
-                    subject={
-                      selectedConv?.type === "group"
-                        ? `${selectedName} #${String(selectedId).padStart(3, "0")}`
-                        : selectedName
-                    }
-                  />
-                </div>
-              )}
-            </>
+                  <span className="font-extrabold text-xs">Video Call</span>
+                  <span className="text-[10px] text-slate-400 font-semibold mt-1">Camera & Audio</span>
+                </button>
+              </div>
+
+              <div className="flex justify-center pt-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowCall(false)} className="text-xs font-bold text-slate-400 hover:text-[#110e3d] rounded-xl">
+                  Cancel
+                </Button>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Persistent Call Overlay Container */}
+      {showCall && callType && callContext && (
+        <div
+          className={`${
+            isCallMinimized
+              ? "hidden"
+              : "fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6"
+          }`}
+        >
+          <div className="w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden bg-white border border-[#eae8f5] rounded-3xl shadow-2xl transition-all duration-300">
+            {/* Call Header */}
+            <div className="px-5 py-4 border-b border-[#eae8f5] bg-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">
+                  {callType === "voice" ? "🎙️" : "📹"}
+                </span>
+                <div>
+                  <h3 className="text-sm font-extrabold text-[#110e3d] flex items-center gap-1.5">
+                    {callType === "voice" ? "Voice Call" : "Video Call"}
+                    <span className="text-xs text-slate-400 font-bold">
+                      — {callContext.conversationName}
+                      {callContext.channelName ? ` (${callContext.channelName})` : ""}
+                    </span>
+                  </h3>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {/* Minimize Button */}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-9 w-9 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-900"
+                  onClick={() => setIsCallMinimized(true)}
+                  title="Minimize Call"
+                >
+                  <Minimize2 className="h-5 w-5" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Jitsi Component Container */}
+            <div className="flex-1 flex overflow-hidden p-4 min-h-0 bg-slate-50">
+              <JitsiCall
+                roomName={
+                  callContext.channelId
+                    ? `${slugify(callContext.conversationName)}-${slugify(callContext.channelName ?? "voice")}`
+                    : `arcadia-studio-dm-${slugify(callContext.conversationName)}-${String(callContext.conversationId).padStart(3, "0")}`
+                }
+                displayName={me?.displayName ?? me?.username ?? "Anonymous"}
+                avatarUrl={me?.avatarUrl}
+                audioOnly={callType === "voice"}
+                onClose={handleHangUp}
+                subject={
+                  callContext.channelId
+                    ? `${callContext.conversationName} - ${callContext.channelName}`
+                    : callContext.conversationName
+                }
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Zaidan AI Voice Call Overlay */}
       {showAkiraCall && (
@@ -2848,6 +3526,123 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           username={me?.username ?? "user"}
         />
       )}
+
+      {/* Edit Channel Dialog */}
+      <Dialog open={showEditChannelModal} onOpenChange={setShowEditChannelModal}>
+        <DialogContent className="max-w-sm bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-extrabold text-white flex items-center gap-2">
+              <Settings className="w-4 h-4 text-[#5865F2]" /> Edit Channel
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div>
+              <label className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider block mb-1.5">Channel Name</label>
+              <Input
+                placeholder="Channel name"
+                value={editChannelName}
+                onChange={(e) => setEditChannelName(e.target.value)}
+                className="bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2] rounded-xl font-semibold text-xs animate-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider block mb-1.5">Category</label>
+              <select
+                value={editChannelCategoryId ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEditChannelCategoryId(val ? parseInt(val, 10) : null);
+                }}
+                className="w-full bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] rounded-xl px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-[#5865F2] outline-none"
+              >
+                <option value="">Uncategorized</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-5">
+            <Button
+              variant="outline"
+              className="flex-1 rounded-xl text-xs font-bold border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+              onClick={() => { setShowEditChannelModal(false); setEditingChannel(null); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveChannel}
+              disabled={!editChannelName.trim()}
+              className="flex-1 bg-[#5865F2] text-white hover:bg-[#4752C4] rounded-xl font-bold text-xs"
+            >
+              Save Changes
+            </Button>
+          </div>
+
+          <div className="border-t border-[#3F4147] mt-4 pt-4">
+            <Button
+              variant="destructive"
+              className="w-full rounded-xl text-xs font-bold bg-[#da373c] hover:bg-[#a92b2f] text-white"
+              onClick={handleDeleteChannel}
+            >
+              Delete Channel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Category Dialog */}
+      <Dialog open={showEditCategoryModal} onOpenChange={setShowEditCategoryModal}>
+        <DialogContent className="max-w-sm bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-extrabold text-white flex items-center gap-2">
+              <Settings className="w-4 h-4 text-[#5865F2]" /> Edit Category
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div>
+              <label className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider block mb-1.5">Category Name</label>
+              <Input
+                placeholder="Category name"
+                value={editCategoryName}
+                onChange={(e) => setEditCategoryName(e.target.value)}
+                className="bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2] rounded-xl font-semibold text-xs animate-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-5">
+            <Button
+              variant="outline"
+              className="flex-1 rounded-xl text-xs font-bold border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+              onClick={() => { setShowEditCategoryModal(false); setEditingCategory(null); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveCategory}
+              disabled={!editCategoryName.trim()}
+              className="flex-1 bg-[#5865F2] text-white hover:bg-[#4752C4] rounded-xl font-bold text-xs"
+            >
+              Save Changes
+            </Button>
+          </div>
+
+          <div className="border-t border-[#3F4147] mt-4 pt-4">
+            <Button
+              variant="destructive"
+              className="w-full rounded-xl text-xs font-bold bg-[#da373c] hover:bg-[#a92b2f] text-white"
+              onClick={handleDeleteCategory}
+            >
+              Delete Category
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

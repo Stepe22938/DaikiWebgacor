@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, inArray } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -10,6 +10,7 @@ import {
   channelCategoriesTable,
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
+import { hasPermission } from "../lib/permissions";
 
 const router: IRouter = Router();
 
@@ -59,7 +60,7 @@ router.post("/conversations/:id/categories", async (req, res): Promise<void> => 
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   const id = parseInt(req.params.id, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage categories" }); return; }
 
   const { name } = req.body;
   if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -86,7 +87,7 @@ router.patch("/conversations/:id/categories/:catId", async (req, res): Promise<v
   const id = parseInt(req.params.id, 10);
   const catId = parseInt(req.params.catId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage categories" }); return; }
 
   const { name, position } = req.body;
   const updates: Record<string, unknown> = {};
@@ -108,7 +109,7 @@ router.delete("/conversations/:id/categories/:catId", async (req, res): Promise<
   const id = parseInt(req.params.id, 10);
   const catId = parseInt(req.params.catId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage categories" }); return; }
 
   // Unlink channels from this category
   await db.update(channelsTable).set({ categoryId: null })
@@ -136,7 +137,95 @@ router.get("/conversations/:id/channels", async (req, res): Promise<void> => {
     .where(eq(channelsTable.conversationId, id))
     .orderBy(asc(channelsTable.position));
 
-  res.json(channels.map(serializeDates));
+  const voiceChannelIds = channels.filter(c => c.type === "voice").map(c => c.id);
+  const channelsWithMembers = channels.map(channel => ({
+    ...channel,
+    members: [] as any[],
+  }));
+
+  if (voiceChannelIds.length > 0) {
+    const voiceUsers = await db.select({
+      id: usersTable.id,
+      username: usersTable.username,
+      displayName: usersTable.displayName,
+      avatarUrl: usersTable.avatarUrl,
+      connectedVoiceChannelId: usersTable.connectedVoiceChannelId,
+    })
+    .from(usersTable)
+    .where(inArray(usersTable.connectedVoiceChannelId, voiceChannelIds));
+
+    for (const u of voiceUsers) {
+      const ch = channelsWithMembers.find(c => c.id === u.connectedVoiceChannelId);
+      if (ch) {
+        ch.members.push({
+          id: u.id,
+          username: u.username,
+          displayName: u.displayName,
+          avatarUrl: u.avatarUrl,
+        });
+      }
+    }
+  }
+
+  res.json(channelsWithMembers.map(serializeDates));
+});
+
+// POST /conversations/:id/channels/:channelId/join - join a voice channel
+router.post("/conversations/:id/channels/:channelId/join", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const channelId = parseInt(req.params.channelId, 10);
+
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  // Verify the channel exists and is a voice channel in this conversation
+  const channel = await db.query.channelsTable.findFirst({
+    where: and(
+      eq(channelsTable.id, channelId),
+      eq(channelsTable.conversationId, id),
+      eq(channelsTable.type, "voice")
+    ),
+  });
+
+  if (!channel) {
+    res.status(404).json({ error: "Voice channel not found" });
+    return;
+  }
+
+  // Update user's current voice channel
+  await db.update(usersTable)
+    .set({ connectedVoiceChannelId: channelId })
+    .where(eq(usersTable.id, user.id));
+
+  res.status(200).json({ success: true });
+});
+
+// POST /conversations/:id/channels/:channelId/leave - leave a voice channel
+router.post("/conversations/:id/channels/:channelId/leave", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const channelId = parseInt(req.params.channelId, 10);
+
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  // Only clear if the user is currently in that channel
+  if (user.connectedVoiceChannelId === channelId) {
+    await db.update(usersTable)
+      .set({ connectedVoiceChannelId: null })
+      .where(eq(usersTable.id, user.id));
+  }
+
+  res.status(200).json({ success: true });
 });
 
 // POST /conversations/:id/channels - create channel
@@ -149,7 +238,7 @@ router.post("/conversations/:id/channels", async (req, res): Promise<void> => {
 
   const id = parseInt(req.params.id, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner can manage channels" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage channels" }); return; }
 
   const { name, type, categoryId } = req.body;
   if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -202,7 +291,7 @@ router.patch("/conversations/:id/channels/:channelId", async (req, res): Promise
   const id = parseInt(req.params.id, 10);
   const channelId = parseInt(req.params.channelId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner can manage channels" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage channels" }); return; }
 
   const channel = await db.query.channelsTable.findFirst({
     where: and(eq(channelsTable.id, channelId), eq(channelsTable.conversationId, id)),
@@ -233,7 +322,7 @@ router.delete("/conversations/:id/channels/:channelId", async (req, res): Promis
   const id = parseInt(req.params.id, 10);
   const channelId = parseInt(req.params.channelId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner can manage channels" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage channels" }); return; }
 
   const channel = await db.query.channelsTable.findFirst({
     where: and(eq(channelsTable.id, channelId), eq(channelsTable.conversationId, id)),

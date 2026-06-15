@@ -15,10 +15,11 @@ export const usersTable = pgTable("users", {
   messagePrivacy: varchar("message_privacy", { length: 20 }).notNull().default("friends_only"),
   mcUsername: varchar("mc_username", { length: 100 }),
   diamonds: integer("diamonds").notNull().default(1000),
+  connectedVoiceChannelId: integer("connected_voice_channel_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true, updatedAt: true, connectedVoiceChannelId: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof usersTable.$inferSelect;

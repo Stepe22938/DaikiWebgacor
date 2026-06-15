@@ -17,7 +17,7 @@ export const channelsTable = pgTable("channels", {
   type: varchar("type", { length: 10 }).notNull().default("text"), // 'text' | 'voice'
   position: integer("position").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (t) => [unique().on(t.conversationId, t.name)]);
+});
 
 export type ChannelCategory = typeof channelCategoriesTable.$inferSelect;
 export type Channel = typeof channelsTable.$inferSelect;
