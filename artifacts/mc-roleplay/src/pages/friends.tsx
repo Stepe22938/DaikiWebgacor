@@ -267,7 +267,7 @@ export default function Friends() {
                   <Home className="w-4.5 h-4.5" /> Home Page
                 </Link>
                 <Link
-                  href="/messages"
+                  href="/member?tab=messages"
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
                 >
                   <MessageSquare className="w-4.5 h-4.5" /> Messages
@@ -396,7 +396,7 @@ export default function Friends() {
                     <Home className="w-4.5 h-4.5" /> Home Page
                   </Link>
                   <Link
-                    href="/messages"
+                    href="/member?tab=messages"
                     onClick={() => setMobileSidebarOpen(false)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all"
                   >

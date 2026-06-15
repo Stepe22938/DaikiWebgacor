@@ -1,10 +1,12 @@
 import { pgTable, serial, integer, text, timestamp, index } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 import { conversationsTable } from "./conversations";
+import { channelsTable } from "./channels";
 
 export const messagesTable = pgTable("messages", {
   id: serial("id").primaryKey(),
   conversationId: integer("conversation_id").notNull().references(() => conversationsTable.id, { onDelete: "cascade" }),
+  channelId: integer("channel_id").references(() => channelsTable.id, { onDelete: "cascade" }),
   senderId: integer("sender_id").references(() => usersTable.id, { onDelete: "set null" }),
   content: text("content").notNull(),
   imageUrl: text("image_url"),

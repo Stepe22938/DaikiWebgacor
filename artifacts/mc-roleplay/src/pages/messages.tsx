@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   useListConversations,
   getListConversationsQueryOptions,
@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
@@ -56,10 +56,47 @@ import {
   X,
   ArrowLeft,
   MoreVertical,
-  UserCircle
+  UserCircle,
+  Mic,
+  MicOff,
+  PhoneOff,
+  Volume2,
+  Edit3,
+  Info,
+  Hash,
+  Plus,
+  Trash2,
+  Settings,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
+
+interface Channel {
+  id: number;
+  conversationId: number;
+  categoryId: number | null;
+  name: string;
+  type: "text" | "voice";
+  position: number;
+  createdAt: string;
+}
+
+interface ChannelCategory {
+  id: number;
+  conversationId: number;
+  name: string;
+  position: number;
+}
+
+interface Role {
+  id: number;
+  conversationId: number;
+  name: string;
+  color: string;
+  position: number;
+  permissions: Record<string, boolean>;
+  createdAt: string;
+}
 
 function slugify(text: string): string {
   return text
@@ -74,7 +111,7 @@ const ROLE_LABELS: Record<string, string> = {
   staff: "Staff",
   dev: "Dev",
   dev_website: "Dev Website",
-  ai: "Meta AI",
+  ai: "Zaidan AI",
 };
 
 const ROLE_BADGE_CLASSES: Record<string, string> = {
@@ -227,6 +264,408 @@ function JitsiCall({
   );
 }
 
+function ZaidanAiCall({
+  onClose,
+  username,
+}: {
+  onClose: () => void;
+  username: string;
+}) {
+  const [status, setStatus] = useState<"connecting" | "connected" | "listening" | "thinking" | "speaking">("connecting");
+  const [transcript, setTranscript] = useState("");
+  const [aiReply, setAiReply] = useState("");
+  const [modelName, setModelName] = useState("");
+  const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
+  const [callDuration, setCallDuration] = useState(0);
+  const [error, setError] = useState("");
+
+  const recognitionRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const timerRef = useRef<any>(null);
+
+  // Connect to Zaidan AI on mount
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setStatus("connected");
+      speak("Halo Kak! Zaidan AI di sini~ Mau ngobrol apa hari ini?");
+      setHistory([{ role: "assistant", content: "Halo Kak! Zaidan AI di sini~ Mau ngobrol apa hari ini?" }]);
+    }, 1500);
+
+    timerRef.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(timerRef.current);
+      stopListening();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  async function speak(text: string) {
+    // Stop any currently playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    setStatus("speaking");
+
+    try {
+      // Call backend TTS endpoint for natural Indonesian female voice
+      const res = await fetch("/api/conversations/zaidanai/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!res.ok) {
+        throw new Error("TTS failed");
+      }
+
+      // Create audio blob and play it
+      const audioBlob = await res.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        audioRef.current = null;
+        // Wait a bit before starting to listen, so user has time to process
+        setTimeout(() => {
+          setStatus("connected");
+        }, 300);
+      };
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        audioRef.current = null;
+        setTimeout(() => {
+          setStatus("connected");
+        }, 300);
+      };
+
+      await audio.play();
+    } catch (err) {
+      console.error("[Zaidan AI TTS] Error:", err);
+      // Fallback to browser TTS if backend fails
+      speakFallback(text);
+    }
+  }
+
+  // Fallback to browser SpeechSynthesis if backend TTS fails
+  function speakFallback(text: string) {
+    const cleanText = text
+      .replace(/[\u{1F600}-\u{1F9FF}]/gu, "")
+      .replace(/[*_~`#]/g, "")
+      .replace(/---/g, "")
+      .replace(/\n+/g, ". ")
+      .trim();
+
+    if (!cleanText) {
+      setStatus("connected");
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = "id-ID";
+    utterance.rate = 0.95;
+    utterance.pitch = 1.15;
+
+    utterance.onend = () => {
+      setStatus("connected");
+    };
+    utterance.onerror = () => {
+      setStatus("connected");
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function startListening() {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Browser tidak support speech recognition. Coba Chrome ya Kak~");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "id-ID";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onstart = () => {
+      setStatus("listening");
+      setTranscript("");
+      setError("");
+    };
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = "";
+      let interimTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalTranscript += t;
+        else interimTranscript += t;
+      }
+      setTranscript(finalTranscript || interimTranscript);
+
+      if (finalTranscript.trim()) {
+        recognition.stop();
+        sendToAi(finalTranscript.trim());
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      if (event.error === "no-speech") {
+        setStatus("connected");
+      } else if (event.error === "not-allowed") {
+        setError("Izin mikrofon ditolak. Cek browser settings ya Kak~");
+        setStatus("connected");
+      } else {
+        setStatus("connected");
+      }
+    };
+
+    recognition.onend = () => {
+      if (status === "listening") setStatus("connected");
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }
+
+  function stopListening() {
+    try { recognitionRef.current?.stop(); } catch {}
+    recognitionRef.current = null;
+  }
+
+  async function sendToAi(text: string) {
+    setStatus("thinking");
+    stopListening();
+
+    const newHistory = [...history, { role: "user", content: text }];
+    setHistory(newHistory);
+    setAiReply("");
+
+    try {
+      const res = await fetch("/api/conversations/zaidanai/voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, history: newHistory.slice(-10) }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to reach Zaidan AI");
+      }
+
+      const data = await res.json();
+      const reply = data.reply || "Maaf Kak, aku nggak bisa denger. Coba ulangi ya~";
+      setAiReply(reply);
+      setModelName(data.model || "");
+      setHistory((h) => [...h, { role: "assistant", content: reply }]);
+
+      // Play audio from combined response (no separate TTS call needed!)
+      if (data.audio) {
+        playAudio(data.audio, data.audioType || "audio/mpeg");
+      } else {
+        // Fallback: separate TTS call
+        speak(reply);
+      }
+    } catch (err: any) {
+      console.error("[Zaidan AI Voice] Error:", err);
+      setError(`Zaidan AI lagi sibuk nih Kak, coba tap mic lagi ya~ (${err.message})`);
+      setStatus("connected");
+    }
+  }
+
+  // Play base64 audio from combined voice response
+  function playAudio(base64Audio: string, mimeType: string) {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    setStatus("speaking");
+    const binary = atob(base64Audio);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      audioRef.current = null;
+      setTimeout(() => setStatus("connected"), 300);
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      audioRef.current = null;
+      setTimeout(() => setStatus("connected"), 300);
+    };
+
+    audio.play().catch(() => {
+      URL.revokeObjectURL(url);
+      audioRef.current = null;
+      setStatus("connected");
+    });
+  }
+
+  function toggleListen() {
+    if (status === "listening") {
+      stopListening();
+      setStatus("connected");
+    } else if (status === "connected") {
+      startListening();
+    }
+  }
+
+  function hangUp() {
+    stopListening();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    speak("Dadah Kak! Senang ngobrol sama Kakak~ Sampai jumpa lagi ya!");
+    setTimeout(onClose, 2500);
+  }
+
+  const formatDuration = (s: number) => {
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const statusText = {
+    connecting: "Menghubungkan...",
+    connected: "Siap ngobrol",
+    listening: "Akira mendengarkan... 🎙️",
+    thinking: "Akira sedang berpikir...",
+    speaking: "Akira sedang bicara... 🔊",
+  }[status];
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gradient-to-br from-[#0f0c29] via-[#302b63] to-[#24243e]">
+      {/* Animated background circles */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className={`w-80 h-80 rounded-full border border-white/10 ${status === "listening" || status === "speaking" ? "animate-ping" : ""}`} style={{ animationDuration: "3s" }} />
+        <div className={`absolute w-60 h-60 rounded-full border border-white/5 ${status === "listening" || status === "speaking" ? "animate-ping" : ""}`} style={{ animationDuration: "2s", animationDelay: "0.5s" }} />
+      </div>
+
+      <div className="relative flex flex-col items-center justify-between w-full max-w-md h-full max-h-[700px] py-12 px-8">
+        {/* Top: Timer */}
+        <div className="text-center">
+          <p className="text-white/50 text-xs font-semibold tracking-widest uppercase">Voice Call</p>
+          <p className="text-white text-2xl font-bold mt-1">{formatDuration(callDuration)}</p>
+        </div>
+
+        {/* Middle: Avatar + Status */}
+        <div className="flex flex-col items-center gap-5">
+          <div className={`relative w-32 h-32 rounded-full bg-gradient-to-br from-blue-400 via-cyan-300 to-indigo-500 p-1 ${
+            status === "speaking" ? "animate-pulse" : status === "listening" ? "ring-4 ring-green-400/50" : ""
+          }`}>
+            <div className="w-full h-full rounded-full overflow-hidden bg-[#1a1a2e]">
+              <img
+                src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=256"
+                alt="Akira"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            {status === "listening" && (
+              <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-green-500 flex items-center justify-center shadow-lg">
+                <Mic className="w-4 h-4 text-white" />
+              </div>
+            )}
+            {status === "speaking" && (
+              <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
+                <Volume2 className="w-4 h-4 text-white" />
+              </div>
+            )}
+          </div>
+
+          <div className="text-center">
+            <p className="text-white text-xl font-extrabold">Akira</p>
+            <p className="text-white/60 text-xs font-semibold mt-1">AI Assistant • {statusText}</p>
+          </div>
+
+          {/* Big Tap to Talk button when connected */}
+          {status === "connected" && (
+            <button
+              onClick={() => startListening()}
+              className="w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex flex-col items-center justify-center transition-all shadow-lg shadow-green-500/30 hover:scale-105 active:scale-95 animate-pulse"
+              style={{ animationDuration: "2s" }}
+            >
+              <Mic className="w-10 h-10 text-white mb-1" />
+              <span className="text-white text-[10px] font-bold">TAP TO TALK</span>
+            </button>
+          )}
+
+          {/* Transcript / Reply area */}
+          <div className="w-full max-w-sm space-y-3 min-h-[120px]">
+            {transcript && (
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3">
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider mb-1">Kakak</p>
+                <p className="text-white text-sm">{transcript}</p>
+              </div>
+            )}
+            {aiReply && (
+              <div className="bg-blue-500/20 backdrop-blur-sm rounded-xl px-4 py-3 border border-blue-400/20">
+                <p className="text-[10px] text-blue-300/70 font-bold uppercase tracking-wider mb-1">Zaidan AI</p>
+                <p className="text-white text-sm">{aiReply}</p>
+                {modelName && <p className="text-[10px] text-white/30 mt-1.5">⚡ {modelName}</p>}
+              </div>
+            )}
+            {error && (
+              <div className="bg-red-500/20 backdrop-blur-sm rounded-xl px-4 py-3 border border-red-400/20">
+                <p className="text-red-300 text-xs">{error}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom: Controls */}
+        <div className="flex items-center gap-8">
+          {/* Big Mic button - main control */}
+          <button
+            onClick={toggleListen}
+            disabled={status !== "connected" && status !== "listening"}
+            className={`w-16 h-16 rounded-full flex items-center justify-center transition-all shadow-lg ${
+              status === "listening"
+                ? "bg-green-500 hover:bg-green-600 ring-4 ring-green-400/50 animate-pulse"
+                : status === "connected"
+                ? "bg-green-500/80 hover:bg-green-500"
+                : "bg-white/20"
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+            title={status === "listening" ? "Stop listening" : "Tap to talk"}
+          >
+            {status === "listening" ? <MicOff className="w-7 h-7 text-white" /> : <Mic className="w-7 h-7 text-white" />}
+          </button>
+
+          {/* Hang up button */}
+          <button
+            onClick={hangUp}
+            className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all shadow-lg shadow-red-500/30"
+            title="Hang up"
+          >
+            <PhoneOff className="w-7 h-7 text-white" />
+          </button>
+        </div>
+
+        <p className="text-white/40 text-xs text-center mt-4 font-medium">
+          {status === "connected" ? "👆 Tap tombol hijau untuk bicara" : status === "listening" ? "🎙️ Bicara sekarang... Akira mendengarkan" : status === "thinking" ? "⏳ Akira sedang berpikir..." : status === "speaking" ? "🔊 Akira sedang bicara..." : ""}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function formatMessageDateSeparator(dateStr: string): string {
   const d = new Date(dateStr);
   const now = new Date();
@@ -261,10 +700,12 @@ function ConvItem({
   conv,
   selected,
   onClick,
+  dark = false,
 }: {
   conv: ConversationSummary;
   selected: boolean;
   onClick: () => void;
+  dark?: boolean;
 }) {
   const name =
     conv.type === "dm"
@@ -275,10 +716,10 @@ function ConvItem({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
+      className={`w-full flex items-center gap-3 px-3 py-3 sm:py-2.5 rounded-xl text-left transition-all ${
         selected
-          ? "bg-violet-50 text-[#6366f1]"
-          : "hover:bg-slate-50 text-slate-600 hover:text-slate-900"
+          ? dark ? "bg-[#404249] text-white" : "bg-violet-50 text-[#6366f1]"
+          : dark ? "hover:bg-[#35373C] text-[#949BA4] hover:text-[#DCDDDE]" : "hover:bg-slate-50 text-slate-600 hover:text-slate-900"
       }`}
     >
       <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${conv.type === "dm" && (conv as any).otherUserEquippedBorder ? (conv as any).otherUserEquippedBorder : "border border-[#eae8f5]"}`}>
@@ -290,7 +731,7 @@ function ConvItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className={`font-bold text-xs truncate ${selected ? "text-[#6366f1]" : "text-[#110e3d]"}`}>{name}</span>
+            <span className={`font-bold text-xs truncate ${selected ? dark ? "text-white" : "text-[#6366f1]" : dark ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{name}</span>
             {conv.type === "dm" && conv.otherUserRole && conv.otherUserRole !== "member" && (
               <Badge className={`text-[8px] px-1 py-0 h-3 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[conv.otherUserRole] ?? ""}`}>
                 {ROLE_LABELS[conv.otherUserRole] ?? conv.otherUserRole}
@@ -298,13 +739,13 @@ function ConvItem({
             )}
           </div>
           {conv.type === "group" && (
-            <Badge variant="secondary" className="text-[9px] shrink-0 bg-violet-50 text-[#6366f1] hover:bg-violet-50 border border-violet-100">
+            <Badge variant="secondary" className={`text-[9px] shrink-0 hover:bg-opacity-80 ${dark ? "bg-[#35373C] text-[#949BA4] border border-[#3F4147]" : "bg-violet-50 text-[#6366f1] hover:bg-violet-50 border border-violet-100"}`}>
               Group
             </Badge>
           )}
         </div>
         {conv.lastMessageContent && (
-          <p className="text-[10px] text-slate-400 font-bold truncate mt-0.5">{conv.lastMessageContent}</p>
+          <p className={`text-[10px] font-bold truncate mt-0.5 ${dark ? "text-[#949BA4]" : "text-slate-400"}`}>{conv.lastMessageContent}</p>
         )}
       </div>
     </button>
@@ -315,32 +756,34 @@ function MessageBubble({
   msg,
   isOwn,
   onDelete,
+  isGroup = false,
 }: {
   msg: Message;
   isOwn: boolean;
   onDelete?: () => void;
+  isGroup?: boolean;
 }) {
   const name = msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
   const [isZoomed, setIsZoomed] = useState(false);
 
   return (
     <>
-      <div className={`flex gap-2 group ${isOwn ? "flex-row-reverse" : ""}`}>
+      <div className={`flex items-start gap-2 group ${isOwn ? "flex-row-reverse" : ""}`}>
         {!isOwn && (
-        <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible mt-0.5 ${(msg as any).senderEquippedBorder ? (msg as any).senderEquippedBorder : "border border-[#d7e4de]"}`}>
+        <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible mt-0.5 ${(msg as any).senderEquippedBorder ? (msg as any).senderEquippedBorder : isGroup ? "border border-[#3F4147]" : "border border-[#d7e4de]"}`}>
           <Avatar className="w-8 h-8 shrink-0">
             <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
-            <AvatarFallback className="text-[10px] bg-[#edf5f1] font-bold text-[#0b6b58]">{getInitials(name)}</AvatarFallback>
+            <AvatarFallback className={`text-[10px] font-bold ${isGroup ? "bg-[#2B2D31] text-[#DCDDDE]" : "bg-[#edf5f1] text-[#0b6b58]"}`}>{getInitials(name)}</AvatarFallback>
           </Avatar>
         </div>
         )}
         <div
-          className={`max-w-[84%] sm:max-w-[72%] flex flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}
+          className={`max-w-[88%] sm:max-w-[72%] flex flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}
         >
           <div className={`flex items-center gap-2 px-1 ${isOwn ? "flex-row-reverse" : ""}`}>
             {(!isOwn || (msg.senderRole && msg.senderRole !== "member")) && (
               <div className={`flex items-center gap-1.5 ${isOwn ? "flex-row-reverse" : ""}`}>
-                {!isOwn && <span className="text-[11px] font-extrabold text-[#075e54]">{name}</span>}
+                {!isOwn && <span className={`text-[11px] font-extrabold ${isGroup ? "text-[#DCDDDE]" : "text-[#075e54]"}`}>{name}</span>}
                 {msg.senderRole && msg.senderRole !== "member" && (
                   <Badge className={`text-[8px] px-1.5 py-0 h-3.5 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[msg.senderRole] ?? ""}`}>
                     {ROLE_LABELS[msg.senderRole] ?? msg.senderRole}
@@ -360,8 +803,8 @@ function MessageBubble({
           <div
             className={`relative rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm break-words whitespace-pre-wrap ${
               isOwn
-                ? "bg-[#dcf8c6] text-[#18251f] rounded-tr-[4px]"
-                : "bg-white border border-[#dfe8e3] text-[#18251f] rounded-tl-[4px]"
+                ? isGroup ? "bg-[#5865F2] text-white rounded-tr-[4px]" : "bg-[#dcf8c6] text-[#18251f] rounded-tr-[4px]"
+                : isGroup ? "bg-[#2B2D31] text-[#DCDDDE] rounded-tl-[4px]" : "bg-white border border-[#dfe8e3] text-[#18251f] rounded-tl-[4px]"
             }`}
           >
             {msg.imageUrl && (
@@ -377,7 +820,7 @@ function MessageBubble({
               </div>
             )}
             {msg.content && <span className="pr-12 inline-block">{msg.content}</span>}
-            <span className="absolute bottom-1.5 right-3 text-[10px] font-semibold text-[#66756f]">
+            <span className={`absolute bottom-1.5 right-3 text-[10px] font-semibold ${isGroup ? "text-[#949BA4]" : "text-[#66756f]"}`}>
               {format(new Date(msg.createdAt), "HH:mm")}
             </span>
           </div>
@@ -399,7 +842,7 @@ function MessageBubble({
   );
 }
 
-export default function MessagesPage() {
+export default function MessagesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: me } = useGetMe();
@@ -412,12 +855,37 @@ export default function MessagesPage() {
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [newChannelName, setNewChannelName] = useState("");
+  const [newChannelType, setNewChannelType] = useState<"text" | "voice">("text");
+  const [newChannelCategoryId, setNewChannelCategoryId] = useState<number | null>(null);
+  const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [showRoles, setShowRoles] = useState(false);
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [newRoleColor, setNewRoleColor] = useState("#5865F2");
+  const [newRolePerms, setNewRolePerms] = useState<Record<string, boolean>>({
+    sendMessages: true,
+    manageChannels: false,
+    manageRoles: false,
+    manageMessages: false,
+    kickMembers: false,
+  });
   const [messageText, setMessageText] = useState("");
   const [showNewDm, setShowNewDm] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showCall, setShowCall] = useState(false);
   const [callType, setCallType] = useState<"voice" | "video" | null>(null);
+  const [showAkiraCall, setShowAkiraCall] = useState(false);
+  const [showEditGroup, setShowEditGroup] = useState(false);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [editGroupDesc, setEditGroupDesc] = useState("");
+  const [editGroupIcon, setEditGroupIcon] = useState("");
+  const [editGroupSaving, setEditGroupSaving] = useState(false);
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupMemberIds, setGroupMemberIds] = useState<number[]>([]);
   const [dmSearch, setDmSearch] = useState("");
@@ -430,6 +898,15 @@ export default function MessagesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [aiTyping, setAiTyping] = useState(false);
+  const prevMsgCountRef = useRef<number>(0);
+
+  // Mention autocomplete
+  const [showMention, setShowMention] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState("");
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionStart, setMentionStart] = useState(-1);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleCopyIP = () => {
     navigator.clipboard.writeText("play.arcadiamc.net");
@@ -442,13 +919,32 @@ export default function MessagesPage() {
     query: { ...getListConversationsQueryOptions(), refetchInterval: 5000 },
   });
 
+  const selectedConv = conversations.find((c) => c.id === selectedId) ?? null;
+  const isGroup = selectedConv?.type === "group";
+
   const { data: messages = [], isLoading: msgsLoading } = useListMessages(selectedId ?? 0, {
     query: {
       ...getListMessagesQueryOptions(selectedId ?? 0),
-      enabled: selectedId !== null,
+      enabled: selectedId !== null && !isGroup,
       refetchInterval: 2000,
     },
   });
+
+  // Channel-scoped messages for groups
+  const { data: channelMessages = [], isLoading: channelMsgsLoading } = useQuery<Message[]>({
+    queryKey: ["channel-messages", selectedId, selectedChannelId],
+    queryFn: async () => {
+      const res = await fetch(`/api/conversations/${selectedId}/channels/${selectedChannelId}/messages`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isGroup && selectedId !== null && selectedChannelId !== null,
+    refetchInterval: 2000,
+  });
+
+  // Use channel messages for groups, regular messages for DMs
+  const activeMessages = isGroup ? channelMessages : messages;
+  const activeMsgsLoading = isGroup ? channelMsgsLoading : msgsLoading;
 
   const { data: friends = [] } = useGetMyFriends();
 
@@ -459,6 +955,41 @@ export default function MessagesPage() {
     },
   });
 
+  // Fetch channels for the selected group
+  const { data: channels = [] } = useQuery<Channel[]>({
+    queryKey: ["channels", selectedId],
+    queryFn: async () => {
+      const res = await fetch(`/api/conversations/${selectedId}/channels`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: selectedId !== null,
+    refetchInterval: 5000,
+  });
+
+  // Fetch categories for the selected group
+  const { data: categories = [] } = useQuery<ChannelCategory[]>({
+    queryKey: ["channel-categories", selectedId],
+    queryFn: async () => {
+      const res = await fetch(`/api/conversations/${selectedId}/categories`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: selectedId !== null,
+    refetchInterval: 5000,
+  });
+
+  // Fetch roles for the selected group
+  const { data: roles = [] } = useQuery<Role[]>({
+    queryKey: ["roles", selectedId],
+    queryFn: async () => {
+      const res = await fetch(`/api/conversations/${selectedId}/roles`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isGroup && selectedId !== null,
+  });
+
   const createDm = useCreateOrGetDm();
   const createGroup = useCreateGroup();
   const deleteConv = useDeleteConversation();
@@ -467,15 +998,92 @@ export default function MessagesPage() {
   const addMember = useAddConversationMember();
   const removeMember = useRemoveConversationMember();
 
-  const selectedConv = conversations.find((c) => c.id === selectedId) ?? null;
+  const selectedChannel = channels.find((c) => c.id === selectedChannelId) ?? null;
+
+  // Auto-select first text channel when group is selected
+  useEffect(() => {
+    if (isGroup && channels.length > 0 && !selectedChannelId) {
+      const firstText = channels.find((c) => c.type === "text");
+      if (firstText) setSelectedChannelId(firstText.id);
+    }
+    if (!isGroup) setSelectedChannelId(null);
+  }, [isGroup, channels, selectedChannelId]);
+
+  // Hide typing indicator when AI responds (new message count increases while typing)
+  useEffect(() => {
+    if (aiTyping && activeMessages.length > prevMsgCountRef.current) {
+      const lastMsg = activeMessages[activeMessages.length - 1];
+      if (lastMsg && lastMsg.senderRole === "ai") {
+        setAiTyping(false);
+      }
+    }
+    prevMsgCountRef.current = activeMessages.length;
+  }, [activeMessages, aiTyping]);
+
+  // Auto-clear typing after 30s (safety timeout)
+  useEffect(() => {
+    if (aiTyping) {
+      const timer = setTimeout(() => setAiTyping(false), 30000);
+      return () => clearTimeout(timer);
+    }
+  }, [aiTyping]);
+
+  // Lock body scroll on mobile to prevent keyboard push issues
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = "hidden";
+    html.style.height = "100%";
+    body.style.overflow = "hidden";
+    body.style.height = "100%";
+    body.style.overscrollBehavior = "none";
+
+    // Handle mobile keyboard visual viewport changes
+    const vv = window.visualViewport;
+    const rootEl = document.getElementById("root");
+    if (vv && rootEl) {
+      const onResize = () => {
+        rootEl.style.height = `${vv.height}px`;
+      };
+      vv.addEventListener("resize", onResize);
+      onResize();
+      return () => {
+        vv.removeEventListener("resize", onResize);
+        html.style.overflow = "";
+        html.style.height = "";
+        body.style.overflow = "";
+        body.style.height = "";
+        body.style.overscrollBehavior = "";
+        rootEl.style.height = "";
+      };
+    }
+
+    return () => {
+      html.style.overflow = "";
+      html.style.height = "";
+      body.style.overflow = "";
+      body.style.height = "";
+      body.style.overscrollBehavior = "";
+    };
+  }, []);
+
   const selectedName =
     selectedConv?.type === "dm"
       ? (selectedConv.otherDisplayName ?? selectedConv.otherUsername ?? "Unknown")
       : (selectedConv?.name ?? "Group");
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+    const el = messagesEndRef.current;
+    if (!el) return;
+    // Find the nearest scrollable ancestor (Radix ScrollArea viewport)
+    const scrollParent = el.closest('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+    if (scrollParent) {
+      scrollParent.scrollTop = scrollParent.scrollHeight;
+    } else {
+      // Fallback: use block "nearest" to avoid scrolling the whole page
+      el.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeMessages.length]);
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -513,6 +1121,97 @@ export default function MessagesPage() {
     }
   }
 
+  // === MENTION AUTOCOMPLETE ===
+  const mentionMembers = useMemo(() => {
+    const filter = mentionFilter.toLowerCase();
+    const items = [
+      { userId: 0, username: "all", displayName: "All Members", avatarUrl: null as string | null | undefined },
+      ...members,
+    ];
+    if (!filter) return items.slice(0, 8);
+    return items.filter((m) =>
+      m.username.toLowerCase().includes(filter) ||
+      (m.displayName ?? "").toLowerCase().includes(filter)
+    ).slice(0, 8);
+  }, [members, mentionFilter]);
+
+  function insertMention(member: { username: string; displayName?: string | null }) {
+    if (mentionStart < 0) return;
+    const before = messageText.slice(0, mentionStart);
+    const after = messageText.slice(mentionStart + mentionFilter.length + 1); // +1 for @
+    const mention = `@${member.username} `;
+    const newText = before + mention + after;
+    setMessageText(newText);
+    setShowMention(false);
+    setMentionFilter("");
+    setMentionStart(-1);
+    // Focus textarea and set cursor position
+    setTimeout(() => {
+      const ta = textareaRef.current;
+      if (ta) {
+        ta.focus();
+        const pos = (before + mention).length;
+        ta.setSelectionRange(pos, pos);
+      }
+    }, 0);
+  }
+
+  function handleMessageChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value;
+    setMessageText(value);
+
+    // Detect @ mention trigger
+    const cursorPos = e.target.selectionStart;
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const lastAtIndex = textBeforeCursor.lastIndexOf("@");
+
+    if (lastAtIndex >= 0) {
+      const charBeforeAt = lastAtIndex > 0 ? textBeforeCursor[lastAtIndex - 1] : " ";
+      // Only trigger if @ is at start or after whitespace
+      if (lastAtIndex === 0 || /[\s\n]/.test(charBeforeAt)) {
+        const filter = textBeforeCursor.slice(lastAtIndex + 1);
+        // Only show if filter doesn't contain spaces (still typing username)
+        if (!filter.includes(" ") && filter.length <= 20) {
+          setShowMention(true);
+          setMentionFilter(filter);
+          setMentionStart(lastAtIndex);
+          setMentionIndex(0);
+          return;
+        }
+      }
+    }
+    setShowMention(false);
+  }
+
+  function handleMentionKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (showMention && mentionMembers.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => (i + 1) % mentionMembers.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => (i - 1 + mentionMembers.length) % mentionMembers.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(mentionMembers[mentionIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowMention(false);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
   async function handleSend() {
     const text = messageText.trim();
     if (!text && !attachedImageUrl) return;
@@ -522,13 +1221,37 @@ export default function MessagesPage() {
       if (text) payload.content = text;
       if (attachedImageUrl) payload.imageUrl = attachedImageUrl;
 
-      await sendMessage.mutateAsync({
-        id: selectedId,
-        data: payload,
-      });
+      if (isGroup && selectedChannelId) {
+        // Channel-scoped message for groups
+        const res = await fetch(`/api/conversations/${selectedId}/channels/${selectedChannelId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("Failed to send");
+        await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+      } else {
+        // Regular DM message
+        await sendMessage.mutateAsync({ id: selectedId, data: payload });
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+      }
       setMessageText("");
       setAttachedImageUrl(null);
-      await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+
+      if (selectedConv) {
+        const isAiDm = selectedConv.type === "dm" && (
+          selectedConv.otherUsername === "zaidanai" ||
+          selectedConv.otherUsername === "akira" ||
+          selectedConv.otherUsername === "metaai"
+        );
+        const mentionsAi = text.toLowerCase().includes("@zaidan ai") ||
+                           text.toLowerCase().includes("@zaidanai") ||
+                           text.toLowerCase().includes("@akira") ||
+                           text.toLowerCase().includes("@ai");
+        if (isAiDm || mentionsAi) {
+          setAiTyping(true);
+        }
+      }
     } catch {
       toast({ title: "Failed to send message", variant: "destructive" });
     }
@@ -573,6 +1296,38 @@ export default function MessagesPage() {
     }
   }
 
+  function openEditGroup() {
+    if (!selectedConv) return;
+    setEditGroupName(selectedConv.name || "");
+    setEditGroupDesc((selectedConv as any).description || "");
+    setEditGroupIcon(selectedConv.iconUrl || "");
+    setShowEditGroup(true);
+  }
+
+  async function handleSaveGroup() {
+    if (!selectedId) return;
+    setEditGroupSaving(true);
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editGroupName.trim() || undefined,
+          description: editGroupDesc.trim() || null,
+          iconUrl: editGroupIcon.trim() || null,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast({ title: "Group updated!" });
+      setShowEditGroup(false);
+      await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    } catch {
+      toast({ title: "Failed to update group", variant: "destructive" });
+    } finally {
+      setEditGroupSaving(false);
+    }
+  }
+
   async function handleLeaveOrDelete() {
     if (!selectedId) return;
     try {
@@ -584,13 +1339,13 @@ export default function MessagesPage() {
     }
   }
 
-  const metaAiFromConv = conversations.find(c => c.type === "dm" && c.otherUsername === "metaai");
+  const metaAiFromConv = conversations.find(c => c.type === "dm" && (c.otherUsername === "zaidanai" || c.otherUsername === "akira" || c.otherUsername === "metaai"));
   const metaAiId = metaAiFromConv?.otherUserId;
 
   const aiFriendObj = metaAiId ? {
     id: metaAiId,
-    username: "metaai",
-    displayName: "Meta AI",
+    username: "akira",
+    displayName: "Akira",
     userTag: "#000",
     avatarUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128",
     role: "ai",
@@ -618,10 +1373,13 @@ export default function MessagesPage() {
     );
   });
 
+  const isGroupView = isGroup;
+
   return (
-    <div className="min-h-screen bg-[#f4f3f8] text-[#1e1b4b] flex font-sans antialiased h-screen overflow-hidden">
+    <div className={`${embedded ? "h-full" : "min-h-screen h-[100dvh]"} bg-[#f4f3f8] text-[#1e1b4b] flex font-sans antialiased overflow-hidden overscroll-none`}>
+
       {/* ── Left Sidebar (Desktop) ────────────────────────────────────────── */}
-      <aside className="w-64 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex h-full">
+      {!embedded && (<aside className="w-64 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex h-full">
         <div className="flex flex-col min-h-0 overflow-y-auto">
           {/* Logo Branding */}
           <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
@@ -686,7 +1444,7 @@ export default function MessagesPage() {
                   <Home className="w-4.5 h-4.5" /> Home Page
                 </Link>
                 <Link
-                  href="/messages"
+                  href="/member?tab=messages"
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold bg-violet-50 text-[#6366f1] transition-all"
                 >
                   <MessageSquare className="w-4.5 h-4.5" /> Messages
@@ -744,10 +1502,10 @@ export default function MessagesPage() {
             <LogOut className="w-4.5 h-4.5 text-[#ef4444]" /> Log out
           </Button>
         </div>
-      </aside>
+      </aside>)}
 
       {/* ── Mobile Sidebar Drawer ────────────────────────────────────────── */}
-      {mobileSidebarOpen && (
+      {!embedded && mobileSidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden bg-black/40 backdrop-blur-sm">
           <div className="w-64 bg-white flex flex-col justify-between p-4 shadow-2xl animate-slide-in">
             <div className="space-y-6">
@@ -815,7 +1573,7 @@ export default function MessagesPage() {
                     <Home className="w-4.5 h-4.5" /> Home Page
                   </Link>
                   <Link
-                    href="/messages"
+                    href="/member?tab=messages"
                     onClick={() => setMobileSidebarOpen(false)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold bg-violet-50 text-[#6366f1] transition-all"
                   >
@@ -864,9 +1622,10 @@ export default function MessagesPage() {
       )}
 
       {/* ── Main Content Area ────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         {/* Top Header Bar */}
-        <header className="h-14 md:h-16 bg-white border-b border-[#eae8f5] px-3 sm:px-4 md:px-6 flex items-center justify-between shrink-0">
+        {!embedded && (
+          <header className="h-14 md:h-16 bg-white border-b border-[#eae8f5] px-3 sm:px-4 md:px-6 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
@@ -914,19 +1673,19 @@ export default function MessagesPage() {
             )}
           </div>
         </header>
-
+        )}
         {/* Content Container (Full Height chat panel layout) */}
         <div className="flex-1 flex overflow-hidden min-h-0">
           {/* Chat Sidebar: Conversations List */}
-          <div className={`${selectedConv ? "hidden md:flex" : "flex"} w-full md:w-80 border-r border-[#eae8f5] bg-white flex-col shrink-0 min-h-0`}>
+          <div className={`${selectedConv ? "hidden md:flex" : "flex"} w-full md:w-80 border-r border-[#3F4147] bg-[#1E1F22] flex-col shrink-0 min-h-0`}>
             {/* Header + Create Dm/Group buttons */}
-            <div className="p-3 sm:p-4 border-b border-[#eae8f5] flex items-center justify-between shrink-0">
-              <h2 className="font-extrabold text-lg md:text-sm text-[#110e3d]">Chats</h2>
+            <div className="p-3 sm:p-4 border-b border-[#3F4147] flex items-center justify-between shrink-0">
+              <h2 className="font-extrabold text-lg md:text-sm text-white">Chats</h2>
               <div className="flex gap-1.5">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 px-3 rounded-full text-xs font-bold border-[#d7e4de] text-[#075e54] hover:bg-[#e7f6f1] hover:text-[#075e54] transition-all"
+                  className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
                   onClick={() => setShowNewDm(true)}
                 >
                   + DM
@@ -934,7 +1693,7 @@ export default function MessagesPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 px-3 rounded-full text-xs font-bold border-[#d7e4de] text-[#075e54] hover:bg-[#e7f6f1] hover:text-[#075e54] transition-all"
+                  className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
                   onClick={() => setShowNewGroup(true)}
                 >
                   + Group
@@ -956,7 +1715,7 @@ export default function MessagesPage() {
                     </div>
                   ))
                 ) : conversations.length === 0 ? (
-                  <div className="text-center text-slate-400 text-xs py-12 font-bold px-4 leading-relaxed">
+                  <div className="text-center text-xs py-12 font-bold px-4 leading-relaxed text-[#949BA4]">
                     No conversations yet.<br />
                     Start a DM with a friend!
                   </div>
@@ -966,6 +1725,7 @@ export default function MessagesPage() {
                       key={c.id}
                       conv={c}
                       selected={selectedId === c.id}
+                      dark
                       onClick={() => setSelectedId(c.id)}
                     />
                   ))
@@ -974,70 +1734,197 @@ export default function MessagesPage() {
             </ScrollArea>
           </div>
 
+          {/* Channel Sidebar (Groups only - Discord style) */}
+          {isGroup && selectedConv && (
+            <div className={`hidden md:flex w-56 bg-[#2B2D31] border-r border-[#1E1F22] flex-col shrink-0 min-h-0`}>
+              {/* Channel header */}
+              <div className="p-3 border-b border-[#1E1F22] flex items-center justify-between shrink-0">
+                <h3 className="font-extrabold text-xs text-[#DCDDDE] uppercase tracking-wider">Channels</h3>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowCreateCategory(true)}
+                    className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
+                    title="Create Category"
+                  >
+                    <FolderPlus className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => { setNewChannelCategoryId(categories[0]?.id ?? null); setShowCreateChannel(true); }}
+                    className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
+                    title="Create Channel"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              {/* Channel list grouped by category */}
+              <ScrollArea className="flex-1 min-h-0">
+                <div className="p-2 space-y-3">
+                  {categories.length === 0 ? (
+                    <>
+                      {channels.filter(c => c.type === "text" && !c.categoryId).map((ch) => (
+                        <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
+                          className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                            selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                          }`}>
+                          <Hash className="w-4 h-4 shrink-0 opacity-70" />
+                          <span className="truncate">{ch.name}</span>
+                        </button>
+                      ))}
+                      {channels.filter(c => c.type === "voice" && !c.categoryId).length > 0 && (
+                        <div className="pt-2 pb-1"><span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider px-2">Voice Channels</span></div>
+                      )}
+                      {channels.filter(c => c.type === "voice" && !c.categoryId).map((ch) => (
+                        <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
+                          className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                            selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                          }`}>
+                          <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
+                          <span className="truncate">{ch.name}</span>
+                        </button>
+                      ))}
+                    </>
+                  ) : (
+                    categories.map((cat) => {
+                      const catChannels = channels.filter(c => c.categoryId === cat.id);
+                      const textChannels = catChannels.filter(c => c.type === "text");
+                      const voiceChannels = catChannels.filter(c => c.type === "voice");
+                      return (
+                        <div key={cat.id}>
+                          <div className="flex items-center justify-between px-1 pb-1">
+                            <span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider">{cat.name}</span>
+                            <button
+                              onClick={() => { setNewChannelCategoryId(cat.id); setShowCreateChannel(true); }}
+                              className="text-[#949BA4] hover:text-white transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                              style={{ opacity: 0.6 }}
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                          {textChannels.map((ch) => (
+                            <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
+                              className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                                selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                              }`}>
+                              <Hash className="w-4 h-4 shrink-0 opacity-70" />
+                              <span className="truncate">{ch.name}</span>
+                            </button>
+                          ))}
+                          {voiceChannels.map((ch) => (
+                            <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
+                              className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                                selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                              }`}>
+                              <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
+                              <span className="truncate">{ch.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })
+                  )}
+                  {/* Uncategorized channels */}
+                  {channels.filter(c => !c.categoryId && categories.length > 0).length > 0 && (
+                    <div>
+                      <div className="px-1 pb-1"><span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider">Uncategorized</span></div>
+                      {channels.filter(c => !c.categoryId && categories.length > 0).map((ch) => (
+                        <button key={ch.id} onClick={() => setSelectedChannelId(ch.id)}
+                          className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                            selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                          }`}>
+                          {ch.type === "voice" ? <Volume2 className="w-4 h-4 shrink-0 opacity-70" /> : <Hash className="w-4 h-4 shrink-0 opacity-70" />}
+                          <span className="truncate">{ch.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+
           {/* Active Chat Screen Console */}
-          <div className={`${selectedConv ? "flex" : "hidden md:flex"} flex-1 flex-col bg-[#efe7dd] overflow-hidden min-h-0`}>
+          <div className={`${selectedConv ? "flex" : "hidden md:flex"} flex-1 flex-col ${isGroupView ? "bg-[#18191C]" : "bg-[#efe7dd]"} overflow-hidden min-h-0`}>
             {selectedConv === null ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
-                <div className="w-16 h-16 rounded-2xl bg-violet-50 flex items-center justify-center text-[#6366f1] shadow-inner">
+              <div className="flex-1 flex flex-col items-center justify-center gap-3">
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-inner ${isGroupView ? "bg-[#2B2D31] text-[#5865F2]" : "bg-violet-50 text-[#6366f1]"}`}>
                   <MessageSquare className="w-8 h-8" />
                 </div>
                 <div className="text-center space-y-1">
-                  <p className="text-sm font-extrabold text-[#110e3d]">No Conversation Selected</p>
-                  <p className="text-xs text-slate-400 font-semibold max-w-[280px]">Select a friend or group from the list to start chatting.</p>
+                  <p className={`text-sm font-extrabold ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>No Conversation Selected</p>
+                  <p className={`text-xs font-semibold max-w-[280px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Select a friend or group from the list to start chatting.</p>
                 </div>
               </div>
             ) : (
               <>
                 {/* Chat Top Header Panel */}
-                <div className="h-16 border-b border-[#d7e4de] bg-[#075e54] px-2 sm:px-4 md:px-6 flex items-center justify-between shrink-0 text-white">
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <div className={`h-14 sm:h-16 border-b ${isGroupView ? "border-[#1E1F22] bg-[#2B2D31]" : "border-[#d7e4de] bg-[#075e54]"} px-2 sm:px-4 md:px-6 flex items-center justify-between shrink-0 text-white`}>
+                  <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="md:hidden h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white shrink-0"
+                      className="md:hidden h-8 w-8 rounded-full text-white hover:bg-white/10 hover:text-white shrink-0 -ml-1"
                       onClick={() => setSelectedId(null)}
                       title="Back to chats"
                     >
                       <ArrowLeft className="h-5 w-5" />
                     </Button>
-                    <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder : "border border-[#eae8f5]"}`}>
-                      <Avatar className="w-9 h-9 shrink-0">
-                        <AvatarImage
-                          src={
-                            selectedConv.type === "dm"
-                              ? (selectedConv.otherAvatarUrl ?? undefined)
-                              : (selectedConv.iconUrl ?? undefined)
-                          }
-                        />
-                        <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(selectedName)}</AvatarFallback>
-                      </Avatar>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-extrabold text-sm leading-none truncate max-w-[42vw] sm:max-w-none">{selectedName}</p>
-                      <p className="text-[10px] text-white/70 font-bold mt-1">
-                        {selectedConv.type === "dm" ? "Direct Message" : `${selectedConv.memberCount} members`}
-                      </p>
-                    </div>
+                    <button
+                      onClick={() => setShowInfoPanel((p) => !p)}
+                      className="flex items-center gap-2 sm:gap-3 min-w-0 hover:opacity-80 transition-opacity rounded-lg px-1 py-0.5"
+                    >
+                      <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder : "border border-[#eae8f5]"}`}>
+                        <Avatar className="w-8 h-8 sm:w-9 sm:h-9 shrink-0">
+                          <AvatarImage
+                            src={
+                              selectedConv.type === "dm"
+                                ? (selectedConv.otherAvatarUrl ?? undefined)
+                                : (selectedConv.iconUrl ?? undefined)
+                            }
+                          />
+                          <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(selectedName)}</AvatarFallback>
+                        </Avatar>
+                      </div>
+                      <div className="min-w-0 flex-1 text-left">
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-extrabold text-[13px] sm:text-sm leading-none truncate max-w-[38vw] sm:max-w-none">{selectedName}</p>
+                          {selectedConv.type === "group" && selectedConv.ownerId === me?.id && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openEditGroup(); }}
+                              className="text-[10px] text-white/60 hover:text-white transition-colors font-bold"
+                              title="Edit Group"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-white/70 font-bold mt-0.5">
+                          {selectedConv.type === "dm" ? "Direct Message" : selectedChannel ? `#${selectedChannel.name}` : `${selectedConv.memberCount} members`}
+                        </p>
+                      </div>
+                    </button>
                   </div>
 
-                  <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                  <div className="flex items-center gap-0.5 sm:gap-2 shrink-0">
                     {selectedConv.type === "dm" && selectedConv.otherUserId && (
-                      <Button asChild size="icon" variant="ghost" className="h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white transition-colors" title="View Profile">
+                      <Button asChild size="icon" variant="ghost" className="hidden sm:inline-flex h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white transition-colors" title="View Profile">
                         <Link href={`/profile/${selectedConv.otherUserId}`}><UserCircle className="h-5 w-5" /></Link>
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-9 w-9 rounded-full p-0 text-white hover:bg-white/10 hover:text-white transition-colors"
-                      onClick={() => {
-                        setCallType("voice");
-                        setShowCall(true);
-                      }}
-                      title="Voice Call"
-                    >
-                      <Phone className="h-5 w-5" />
-                    </Button>
+                    {selectedConv.type !== "group" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 text-white hover:bg-white/10 hover:text-white transition-colors"
+                        onClick={() => {
+                          setCallType("voice");
+                          setShowCall(true);
+                        }}
+                        title="Voice Call"
+                      >
+                        <Phone className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+                      </Button>
+                    )}
                     {selectedConv.type === "group" && (
                       <Button
                         size="sm"
@@ -1071,8 +1958,8 @@ export default function MessagesPage() {
                 </div>
 
                 {/* Messages Bubbles Feed */}
-                <ScrollArea className="flex-1 px-2.5 sm:px-4 md:px-6 py-3 sm:py-4 min-h-0 bg-[#efe7dd]">
-                  {msgsLoading ? (
+                <ScrollArea className={`flex-1 px-2.5 sm:px-4 md:px-6 py-3 sm:py-4 min-h-0 ${isGroupView ? "bg-[#18191C]" : "bg-[#efe7dd]"}`}>
+                  {activeMsgsLoading ? (
                     <div className="space-y-4">
                       {Array.from({ length: 6 }).map((_, i) => (
                         <div
@@ -1086,14 +1973,14 @@ export default function MessagesPage() {
                         </div>
                       ))}
                     </div>
-                  ) : messages.length === 0 ? (
-                    <div className="text-center text-slate-400 text-xs py-16 font-bold">
+                  ) : activeMessages.length === 0 ? (
+                    <div className={`text-center text-xs py-16 font-bold ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
                       No messages yet. Say hello!
                     </div>
                   ) : (
                     (() => {
                       let lastDateStr = "";
-                      return messages.map((msg) => {
+                      return activeMessages.map((msg) => {
                         const msgDate = new Date(msg.createdAt);
                         const dateKey = `${msgDate.getFullYear()}-${msgDate.getMonth()}-${msgDate.getDate()}`;
                         const showDivider = dateKey !== lastDateStr;
@@ -1103,7 +1990,7 @@ export default function MessagesPage() {
                           <div key={msg.id} className="flex flex-col gap-2 mb-2.5">
                             {showDivider && (
                               <div className="flex items-center justify-center my-3">
-                                <div className="bg-[#dcebe7] text-[#52635d] text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wider shadow-sm">
+                                <div className={`${isGroupView ? "bg-[#2B2D31] text-[#949BA4]" : "bg-[#dcebe7] text-[#52635d]"} text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wider shadow-sm`}>
                                   {formatMessageDateSeparator(msg.createdAt)}
                                 </div>
                               </div>
@@ -1111,6 +1998,7 @@ export default function MessagesPage() {
                             <MessageBubble
                               msg={msg}
                               isOwn={msg.senderId === me?.id}
+                              isGroup={isGroupView}
                               onDelete={
                                 msg.senderId === me?.id
                                   ? () => handleDeleteMessage(msg.id)
@@ -1122,11 +2010,45 @@ export default function MessagesPage() {
                       });
                     })()
                   )}
+                  {/* AI Typing Indicator */}
+                  {aiTyping && (
+                    <div className="flex items-center gap-2 my-2 px-1">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 flex items-center justify-center shrink-0">
+                        <span className="text-[10px] font-black text-white">AI</span>
+                      </div>
+                      <div className={`${isGroupView ? "bg-[#2B2D31] border border-[#3F4147]" : "bg-white/80 border border-[#e2e8f0]"} rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm`}>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </div>
+                      </div>
+                      <span className={`text-[11px] font-medium ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Zaidan AI sedang mengetik...</span>
+                    </div>
+                  )}
                   <div ref={messagesEndRef} />
                 </ScrollArea>
 
                 {/* Bottom Input Console */}
-                <div className="px-2.5 sm:px-4 md:px-6 py-2.5 sm:py-3 border-t border-[#d8cec1] bg-[#f0e7dd] shrink-0">
+                <div className={`px-2 sm:px-4 md:px-6 py-2 sm:py-3 pb-3 sm:pb-4 border-t shrink-0 ${isGroupView ? "border-[#3F4147] bg-[#1E1F22]" : "border-[#d8cec1] bg-[#f0e7dd]"}`}>
+                  {selectedChannel?.type === "voice" ? (
+                    /* Voice channel controls */
+                    <div className="flex flex-col items-center gap-3 py-4">
+                      <Volume2 className="w-8 h-8 text-[#5865F2]" />
+                      <p className="text-sm font-bold text-[#DCDDDE]">#{selectedChannel.name}</p>
+                      <p className="text-xs text-[#949BA4]">Voice Channel</p>
+                      <Button
+                        onClick={() => {
+                          setShowCall(true);
+                          setCallType("voice");
+                        }}
+                        className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl font-bold px-8 shadow-md"
+                      >
+                        Join Voice
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
                   {attachedImageUrl && (
                     <div className="relative mb-2 ml-12 inline-block rounded-xl overflow-hidden border border-[#d7e4de] bg-white max-w-[132px] aspect-video group">
                       <img src={attachedImageUrl} alt="Attachment preview" className="w-full h-full object-cover" />
@@ -1152,7 +2074,7 @@ export default function MessagesPage() {
                       size="icon"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploading}
-                      className="hover:bg-white/70 transition-all shrink-0 rounded-full h-11 w-11 text-[#54656f]"
+                      className={`hover:bg-opacity-70 transition-all shrink-0 rounded-full h-11 w-11 ${isGroupView ? "text-[#949BA4]" : "text-[#54656f]"}`}
                       title="Attach image"
                     >
                       {uploading ? (
@@ -1161,32 +2083,203 @@ export default function MessagesPage() {
                         <Camera className="h-5 w-5" />
                       )}
                     </Button>
-                    <Textarea
-                      rows={1}
-                      placeholder="Message"
-                      value={messageText}
-                      onChange={(e) => setMessageText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
-                      className="min-h-11 max-h-32 resize-none bg-white border-0 focus-visible:ring-1 focus-visible:ring-[#25d366] rounded-3xl px-4 py-3 text-[15px] text-[#18251f] font-medium shadow-sm"
-                    />
+                    <div className="relative flex-1">
+                      {/* Mention Autocomplete Popup */}
+                      {showMention && mentionMembers.length > 0 && (
+                        <div className={`absolute bottom-full left-0 right-0 mb-2 rounded-xl shadow-xl border overflow-hidden z-50 ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-white border-[#e2e8f0]"}`}>
+                          {mentionMembers.map((m, idx) => (
+                            <button
+                              key={m.userId || "all"}
+                              type="button"
+                              onClick={() => insertMention(m)}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                                idx === mentionIndex
+                                  ? isGroupView ? "bg-[#404249] text-white" : "bg-[#f0f9ff] text-[#0369a1]"
+                                  : isGroupView ? "hover:bg-[#35373C] text-[#DCDDDE]" : "hover:bg-slate-50 text-[#18251f]"
+                              }`}
+                            >
+                              {m.username === "all" ? (
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center">
+                                  <span className="text-[10px] font-black text-white">ALL</span>
+                                </div>
+                              ) : (
+                                <img
+                                  src={m.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=64"}
+                                  alt={m.username}
+                                  className="w-8 h-8 rounded-full object-cover"
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold truncate">
+                                  {m.username === "all" ? "@all" : `@${m.username}`}
+                                </p>
+                                {m.displayName && m.username !== "all" && (
+                                  <p className="text-[11px] text-slate-400 truncate">{m.displayName}</p>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                          <div className={`px-4 py-1.5 border-t ${isGroupView ? "bg-[#1E1F22] border-[#3F4147]" : "bg-slate-50 border-slate-100"}`}>
+                            <p className={`text-[10px] font-medium ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                              ↑↓ navigate • Enter/Tab select • Esc close
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      <Textarea
+                        ref={textareaRef}
+                        rows={1}
+                        placeholder="Message"
+                        value={messageText}
+                        onChange={handleMessageChange}
+                        onKeyDown={handleMentionKeyDown}
+                        className={`min-h-11 max-h-32 resize-none border-0 focus-visible:ring-1 rounded-3xl px-4 py-3 text-[15px] font-medium shadow-sm ${isGroupView ? "bg-[#383A40] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2]" : "bg-white focus-visible:ring-[#25d366] text-[#18251f]"}`}
+                      />
+                    </div>
                     <Button
                       onClick={handleSend}
                       disabled={(!messageText.trim() && !attachedImageUrl) || sendMessage.isPending || uploading}
-                      className="bg-[#00a884] text-white hover:bg-[#008f72] rounded-full h-11 w-11 p-0 shrink-0 shadow-md shadow-emerald-900/10"
+                      className={`${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] shadow-indigo-900/20" : "bg-[#00a884] hover:bg-[#008f72] shadow-emerald-900/10"} text-white rounded-full h-11 w-11 p-0 shrink-0 shadow-md`}
                       title="Send"
                     >
                       <SendHorizontal className="h-5 w-5" />
                     </Button>
                   </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
           </div>
+
+          {/* Info Panel - Slide in from right */}
+          {showInfoPanel && selectedConv && (
+            <div className={`fixed inset-0 sm:relative sm:inset-auto z-50 sm:z-auto sm:w-80 sm:border-l flex flex-col overflow-hidden animate-in slide-in-from-right duration-200 ${isGroupView ? "bg-[#1E1F22] sm:border-[#3F4147]" : "bg-white sm:border-[#eae8f5]"}`}>
+              {/* Panel Header */}
+              <div className={`h-14 sm:h-16 px-3 sm:px-4 flex items-center justify-between shrink-0 ${isGroupView ? "bg-[#2B2D31]" : "bg-[#075e54]"}`}>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowInfoPanel(false)}
+                    className="sm:hidden text-white/80 hover:text-white transition-colors -ml-1"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                  <p className="text-white text-sm font-extrabold">
+                    {selectedConv.type === "group" ? "Group Info" : "Contact Info"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowInfoPanel(false)}
+                  className="hidden sm:block text-white/80 hover:text-white transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <ScrollArea className="flex-1">
+                {/* Avatar / Icon */}
+                <div className={`flex flex-col items-center py-6 px-4 border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+                  <div className={`rounded-full overflow-hidden ${selectedConv.type === "group" ? "w-24 h-24" : "w-24 h-24"} ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder + " p-1" : isGroupView ? "border-2 border-[#3F4147]" : "border-2 border-slate-100"}`}>
+                    <img
+                      src={
+                        selectedConv.type === "dm"
+                          ? (selectedConv.otherAvatarUrl ?? "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=128")
+                          : (selectedConv.iconUrl ?? "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128")
+                      }
+                      alt={selectedName}
+                      className="w-full h-full object-cover rounded-full"
+                    />
+                  </div>
+                  <h2 className={`text-lg font-extrabold mt-3 text-center ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>{selectedName}</h2>
+                  <p className={`text-xs font-bold mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                    {selectedConv.type === "dm"
+                      ? `@${selectedConv.otherUsername}`
+                      : `Group • ${selectedConv.memberCount} members`
+                    }
+                  </p>
+                  {selectedConv.type === "dm" && (selectedConv as any).otherUserRole && (
+                    <span className={`mt-2 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                      (selectedConv as any).otherUserRole === "admin"
+                        ? "bg-red-50 text-red-500 border border-red-100"
+                        : (selectedConv as any).otherUserRole === "ai"
+                        ? "bg-blue-50 text-blue-500 border border-blue-100"
+                        : "bg-slate-50 text-slate-400 border border-slate-100"
+                    }`}>
+                      {(selectedConv as any).otherUserRole}
+                    </span>
+                  )}
+                </div>
+
+                {/* Description (Group only) */}
+                {selectedConv.type === "group" && (
+                  <div className={`px-5 py-4 border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+                    <p className={`text-[10px] font-black uppercase tracking-wider mb-2 flex items-center gap-1.5 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                      <Info className="h-3 w-3" /> Description
+                    </p>
+                    <p className={`text-xs font-medium leading-relaxed ${isGroupView ? "text-[#DCDDDE]" : "text-slate-600"}`}>
+                      {(selectedConv as any).description || "No description yet."}
+                    </p>
+                  </div>
+                )}
+
+                {/* Members (Group only) */}
+                {selectedConv.type === "group" && (
+                  <div className={`px-5 py-4 border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+                    <p className={`text-[10px] font-black uppercase tracking-wider mb-3 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                      {selectedConv.memberCount} Members
+                    </p>
+                    <div className="space-y-2">
+                      {members.map((m) => (
+                        <div key={m.userId} className={`flex items-center gap-3 px-2 py-1.5 rounded-xl transition-colors ${isGroupView ? "hover:bg-[#35373C]" : "hover:bg-slate-50"}`}>
+                          <Avatar className={`w-8 h-8 border ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+                            <AvatarImage src={m.avatarUrl ?? undefined} />
+                            <AvatarFallback className={`text-[10px] font-bold ${isGroupView ? "bg-[#2B2D31] text-[#DCDDDE]" : "bg-slate-100 text-[#6366f1]"}`}>
+                              {getInitials(m.displayName ?? m.username)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-bold truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{m.displayName ?? m.username}</p>
+                            <p className={`text-[10px] font-medium ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>@{m.username}</p>
+                          </div>
+                          {selectedConv.ownerId === m.userId && (
+                            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${isGroupView ? "text-amber-400 bg-amber-900/30 border border-amber-800/50" : "text-amber-500 bg-amber-50 border border-amber-100"}`}>
+                              Owner
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="px-5 py-4 space-y-2">
+                  {selectedConv.type === "dm" && selectedConv.otherUserId && (
+                    <Button asChild className="w-full bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold">
+                      <Link href={`/profile/${selectedConv.otherUserId}`}>
+                        <UserCircle className="h-4 w-4 mr-2" /> View Full Profile
+                      </Link>
+                    </Button>
+                  )}
+                  {selectedConv.type === "group" && selectedConv.ownerId === me?.id && (
+                    <Button
+                      className="w-full bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold"
+                      onClick={() => { setShowInfoPanel(false); openEditGroup(); }}
+                    >
+                      <Edit3 className="h-4 w-4 mr-2" /> Edit Group
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    className={`w-full rounded-xl text-xs font-bold ${isGroupView ? "text-red-400 border-red-900/50 hover:bg-red-900/30 hover:text-red-300" : "text-red-500 border-red-100 hover:bg-red-50 hover:text-red-600"}`}
+                    onClick={() => { setShowInfoPanel(false); handleLeaveOrDelete(); }}
+                  >
+                    {selectedConv.type === "group" && selectedConv.ownerId === me?.id ? "Delete Group" : "Leave Chat"}
+                  </Button>
+                </div>
+              </ScrollArea>
+            </div>
+          )}
         </div>
       </main>
 
@@ -1290,23 +2383,232 @@ export default function MessagesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showMembers} onOpenChange={setShowMembers}>
-        <DialogContent className="max-w-sm bg-white border border-[#eae8f5] rounded-2xl p-5">
+      {/* Create Channel Dialog */}
+      <Dialog open={showCreateChannel} onOpenChange={setShowCreateChannel}>
+        <DialogContent className="max-w-sm bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5">
           <DialogHeader>
-            <DialogTitle className="text-sm font-extrabold text-[#110e3d]">Group Members</DialogTitle>
+            <DialogTitle className="text-sm font-extrabold text-white">Create Channel</DialogTitle>
+          </DialogHeader>
+          <Input
+            placeholder="Channel name"
+            value={newChannelName}
+            onChange={(e) => setNewChannelName(e.target.value)}
+            className="mb-3 bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2] rounded-xl font-semibold"
+          />
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setNewChannelType("text")}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+                newChannelType === "text" ? "bg-[#5865F2] text-white" : "bg-[#2B2D31] text-[#949BA4] hover:bg-[#35373C]"
+              }`}
+            >
+              <Hash className="w-4 h-4" /> Text
+            </button>
+            <button
+              onClick={() => setNewChannelType("voice")}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+                newChannelType === "voice" ? "bg-[#5865F2] text-white" : "bg-[#2B2D31] text-[#949BA4] hover:bg-[#35373C]"
+              }`}
+            >
+              <Volume2 className="w-4 h-4" /> Voice
+            </button>
+          </div>
+          <Button
+            onClick={async () => {
+              if (!newChannelName.trim() || !selectedId) return;
+              try {
+                const res = await fetch(`/api/conversations/${selectedId}/channels`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: newChannelName.trim(), type: newChannelType }),
+                });
+                if (!res.ok) throw new Error("Failed");
+                await queryClient.invalidateQueries({ queryKey: ["channels", selectedId] });
+                setNewChannelName("");
+                setShowCreateChannel(false);
+                toast({ title: "Channel created!" });
+              } catch {
+                toast({ title: "Failed to create channel", variant: "destructive" });
+              }
+            }}
+            disabled={!newChannelName.trim()}
+            className="w-full bg-[#5865F2] text-white hover:bg-[#4752C4] rounded-xl font-bold shadow-md"
+          >
+            Create Channel
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Roles Management Dialog */}
+      <Dialog open={showRoles} onOpenChange={(open) => { setShowRoles(open); if (!open) setEditingRole(null); }}>
+        <DialogContent className="max-w-md bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-extrabold text-white flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-[#5865F2]" /> Manage Roles
+            </DialogTitle>
+            <DialogDescription className="text-xs font-bold text-[#949BA4]">Create and manage roles with custom permissions.</DialogDescription>
+          </DialogHeader>
+
+          {!editingRole ? (
+            <>
+              {/* Role list */}
+              <ScrollArea className="max-h-48 mb-4 pr-1">
+                <div className="space-y-1.5">
+                  {roles.length === 0 ? (
+                    <p className="text-xs text-[#949BA4] text-center py-4">No roles created yet.</p>
+                  ) : (
+                    roles.map((r) => (
+                      <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#2B2D31] border border-[#3F4147]">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                        <span className="text-xs font-bold text-[#DCDDDE] flex-1 truncate">{r.name}</span>
+                        <button
+                          onClick={() => {
+                            setEditingRole(r);
+                            setNewRoleName(r.name);
+                            setNewRoleColor(r.color);
+                            setNewRolePerms(r.permissions as Record<string, boolean>);
+                          }}
+                          className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!selectedId || !confirm(`Delete role "${r.name}"?`)) return;
+                            try {
+                              await fetch(`/api/conversations/${selectedId}/roles/${r.id}`, { method: "DELETE" });
+                              await queryClient.invalidateQueries({ queryKey: ["roles", selectedId] });
+                              toast({ title: "Role deleted" });
+                            } catch { toast({ title: "Failed", variant: "destructive" }); }
+                          }}
+                          className="text-[#949BA4] hover:text-red-400 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+
+              {/* Create new role form */}
+              <div className="border-t border-[#3F4147] pt-4">
+                <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider mb-2">Create New Role</p>
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={newRoleName}
+                    onChange={(e) => setNewRoleName(e.target.value)}
+                    placeholder="Role name"
+                    maxLength={50}
+                    className="flex-1 px-3 py-2 text-xs rounded-xl bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4] focus:ring-2 focus:ring-[#5865F2] outline-none"
+                  />
+                  <input
+                    type="color"
+                    value={newRoleColor}
+                    onChange={(e) => setNewRoleColor(e.target.value)}
+                    className="w-10 h-9 rounded-lg border border-[#3F4147] bg-transparent cursor-pointer"
+                  />
+                </div>
+                <Button
+                  onClick={async () => {
+                    if (!newRoleName.trim() || !selectedId) return;
+                    try {
+                      const res = await fetch(`/api/conversations/${selectedId}/roles`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: newRoleName.trim(), color: newRoleColor, permissions: { sendMessages: true } }),
+                      });
+                      if (!res.ok) throw new Error();
+                      await queryClient.invalidateQueries({ queryKey: ["roles", selectedId] });
+                      setNewRoleName("");
+                      setNewRoleColor("#5865F2");
+                      toast({ title: "Role created!" });
+                    } catch { toast({ title: "Failed to create role", variant: "destructive" }); }
+                  }}
+                  disabled={!newRoleName.trim()}
+                  className="w-full bg-[#5865F2] text-white hover:bg-[#4752C4] rounded-xl text-xs font-bold"
+                >
+                  Create Role
+                </Button>
+              </div>
+            </>
+          ) : (
+            /* Edit role form */
+            <>
+              <button onClick={() => setEditingRole(null)} className="text-xs text-[#949BA4] hover:text-white mb-3 flex items-center gap-1 cursor-pointer">
+                <ArrowLeft className="w-3 h-3" /> Back to roles
+              </button>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                  placeholder="Role name"
+                  className="flex-1 px-3 py-2 text-xs rounded-xl bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] focus:ring-2 focus:ring-[#5865F2] outline-none"
+                />
+                <input
+                  type="color"
+                  value={newRoleColor}
+                  onChange={(e) => setNewRoleColor(e.target.value)}
+                  className="w-10 h-9 rounded-lg border border-[#3F4147] bg-transparent cursor-pointer"
+                />
+              </div>
+              <div className="space-y-2 mb-4">
+                <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Permissions</p>
+                {Object.entries(newRolePerms).map(([key, val]) => (
+                  <label key={key} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[#2B2D31] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={val}
+                      onChange={(e) => setNewRolePerms(p => ({ ...p, [key]: e.target.checked }))}
+                      className="accent-[#5865F2]"
+                    />
+                    <span className="text-xs font-semibold text-[#DCDDDE] capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
+                  </label>
+                ))}
+              </div>
+              <Button
+                onClick={async () => {
+                  if (!selectedId || !editingRole) return;
+                  try {
+                    await fetch(`/api/conversations/${selectedId}/roles/${editingRole.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ name: newRoleName.trim(), color: newRoleColor, permissions: newRolePerms }),
+                    });
+                    await queryClient.invalidateQueries({ queryKey: ["roles", selectedId] });
+                    setEditingRole(null);
+                    toast({ title: "Role updated!" });
+                  } catch { toast({ title: "Failed", variant: "destructive" }); }
+                }}
+                disabled={!newRoleName.trim()}
+                className="w-full bg-[#5865F2] text-white hover:bg-[#4752C4] rounded-xl text-xs font-bold"
+              >
+                Save Role
+              </Button>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showMembers} onOpenChange={setShowMembers}>
+        <DialogContent className={`max-w-sm rounded-2xl p-5 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147]" : "bg-white border border-[#eae8f5]"}`}>
+          <DialogHeader>
+            <DialogTitle className={`text-sm font-extrabold ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>Group Members</DialogTitle>
           </DialogHeader>
           <ScrollArea className="h-48 mb-4 pr-1">
             <div className="space-y-2">
               {members.map((m) => (
-                <div key={m.userId} className="flex items-center gap-3 px-2 py-1.5 rounded-xl bg-slate-50/50 border border-slate-100">
-                  <Avatar className="w-7 h-7 border border-[#eae8f5]">
+                <div key={m.userId} className={`flex items-center gap-3 px-2 py-1.5 rounded-xl ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147]" : "bg-slate-50/50 border border-slate-100"}`}>
+                  <Avatar className={`w-7 h-7 border ${isGroupView ? "border-[#3F4147]" : "border-[#eae8f5]"}`}>
                     <AvatarImage src={m.avatarUrl ?? undefined} />
-                    <AvatarFallback className="text-[10px] bg-slate-100 font-bold text-[#6366f1]">
+                    <AvatarFallback className={`text-[10px] font-bold ${isGroupView ? "bg-[#35373C] text-[#DCDDDE]" : "bg-slate-100 text-[#6366f1]"}`}>
                       {getInitials(m.displayName ?? m.username)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-[#110e3d] truncate">{m.displayName ?? m.username}</p>
+                    <p className={`text-xs font-bold truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{m.displayName ?? m.username}</p>
                     {selectedConv?.ownerId === m.userId && (
                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Owner</p>
                     )}
@@ -1368,6 +2670,96 @@ export default function MessagesPage() {
               </ScrollArea>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Group Dialog */}
+      <Dialog open={showEditGroup} onOpenChange={setShowEditGroup}>
+        <DialogContent className={`max-w-sm rounded-2xl p-5 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147]" : "bg-white border border-[#eae8f5]"}`}>
+          <DialogHeader>
+            <DialogTitle className={`text-sm font-extrabold flex items-center gap-2 ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>
+              <Edit3 className={`h-4 w-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} /> Edit Group
+            </DialogTitle>
+            <DialogDescription className={`text-xs font-bold ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Update your group name, photo, and description.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            {/* Group Icon Preview & URL */}
+            <div className="flex items-center gap-4">
+              <div className={`w-16 h-16 rounded-2xl overflow-hidden border-2 flex items-center justify-center shrink-0 ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#eae8f5] bg-slate-50"}`}>
+                {editGroupIcon ? (
+                  <img src={editGroupIcon} alt="Group" className="w-full h-full object-cover" />
+                ) : (
+                  <span className={`text-2xl font-black ${isGroupView ? "text-[#949BA4]" : "text-slate-300"}`}>{getInitials(editGroupName || "G")}</span>
+                )}
+              </div>
+              <div className="flex-1">
+                <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Group Photo URL</label>
+                <input
+                  type="text"
+                  value={editGroupIcon}
+                  onChange={(e) => setEditGroupIcon(e.target.value)}
+                  placeholder="https://example.com/photo.jpg"
+                  className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"}`}
+                />
+              </div>
+            </div>
+
+            {/* Group Name */}
+            <div>
+              <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Group Name</label>
+              <input
+                type="text"
+                value={editGroupName}
+                onChange={(e) => setEditGroupName(e.target.value)}
+                placeholder="Enter group name"
+                maxLength={100}
+                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"}`}
+              />
+            </div>
+
+            {/* Group Description */}
+            <div>
+              <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Description</label>
+              <textarea
+                value={editGroupDesc}
+                onChange={(e) => setEditGroupDesc(e.target.value)}
+                placeholder="What's this group about?"
+                maxLength={500}
+                rows={3}
+                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none resize-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"}`}
+              />
+              <p className="text-[10px] text-slate-300 mt-1 text-right">{editGroupDesc.length}/500</p>
+            </div>
+          </div>
+
+          {/* Manage Roles Button */}
+          <button
+            onClick={() => { setShowEditGroup(false); setShowRoles(true); }}
+            className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
+          >
+            <ShieldAlert className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
+            Manage Roles
+            <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>{roles.length} roles</span>
+          </button>
+
+          <div className="flex gap-2 mt-4">
+            <Button
+              variant="outline"
+              className={`flex-1 rounded-xl text-xs font-bold ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : ""}`}
+              onClick={() => setShowEditGroup(false)}
+              disabled={editGroupSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold shadow-md shadow-violet-500/10"
+              onClick={handleSaveGroup}
+              disabled={editGroupSaving || !editGroupName.trim()}
+            >
+              {editGroupSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1448,6 +2840,14 @@ export default function MessagesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Zaidan AI Voice Call Overlay */}
+      {showAkiraCall && (
+        <ZaidanAiCall
+          onClose={() => setShowAkiraCall(false)}
+          username={me?.username ?? "user"}
+        />
+      )}
     </div>
   );
 }

@@ -673,13 +673,10 @@ function ProfileProtected() {
 }
 
 function MessagesProtected() {
-  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
-    return <Messages />;
-  }
   return (
     <>
       <Show when="signed-in">
-        <Messages />
+        <Redirect to="/member?tab=messages" />
       </Show>
       <Show when="signed-out">
         <Redirect to="/" />

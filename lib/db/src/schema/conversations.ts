@@ -6,6 +6,7 @@ export const conversationsTable = pgTable("conversations", {
   type: varchar("type", { length: 10 }).notNull(),
   name: varchar("name", { length: 100 }),
   iconUrl: text("icon_url"),
+  description: text("description"),
   ownerId: integer("owner_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

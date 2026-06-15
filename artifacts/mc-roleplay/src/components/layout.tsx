@@ -107,7 +107,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Link href="/friends" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
                       <Users className="w-4.5 h-4.5" /> Guilds
                     </Link>
-                    <Link href="/messages" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                    <Link href="/member?tab=messages" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
                       <MessageSquare className="w-4.5 h-4.5" /> Messages
                     </Link>
                     <Link href="/member?tab=settings" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>

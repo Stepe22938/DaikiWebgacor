@@ -69,6 +69,8 @@ import {
   Cell
 } from "recharts";
 
+import MessagesPage from "./messages";
+
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 declare global {
@@ -107,7 +109,7 @@ export default function Member() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet", "music"].includes(tab)) {
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet", "music", "messages"].includes(tab)) {
       setActiveTab(tab);
     } else if (!tab) {
       setActiveTab("dashboard");
@@ -298,7 +300,7 @@ export default function Member() {
   const recentAnnouncements = announcements ? announcements.slice(0, 2) : [];
 
   return (
-    <div className="min-h-screen bg-[#f4f3f8] text-[#1e1b4b] flex font-sans antialiased">
+    <div className={`${activeTab === "messages" ? "h-[100dvh] overflow-hidden overscroll-none" : "min-h-screen"} bg-[#f4f3f8] text-[#1e1b4b] flex font-sans antialiased`}>
       {/* â”€â”€ Left Sidebar (Desktop) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <aside className="w-64 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex">
         <div className="flex flex-col">
@@ -414,12 +416,16 @@ export default function Member() {
                 >
                   <Home className="w-4.5 h-4.5" /> Home Page
                 </Link>
-                <Link
-                  href="/messages"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                <button
+                  onClick={() => handleTabChange("messages")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "messages"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
                 >
                   <MessageSquare className="w-4.5 h-4.5" /> Messages
-                </Link>
+                </button>
                 <Link
                   href="/friends"
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
@@ -602,13 +608,16 @@ export default function Member() {
                   >
                     <Home className="w-4.5 h-4.5" /> Home Page
                   </Link>
-                  <Link
-                    href="/messages"
-                    onClick={() => setMobileSidebarOpen(false)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  <button
+                    onClick={() => handleTabChangeMobile("messages")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "messages"
+                        ? "bg-violet-50 text-[#6366f1]"
+                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                    }`}
                   >
                     <MessageSquare className="w-4.5 h-4.5" /> Messages
-                  </Link>
+                  </button>
                   <Link
                     href="/friends"
                     onClick={() => setMobileSidebarOpen(false)}
@@ -675,7 +684,7 @@ export default function Member() {
       )}
 
       {/* â”€â”€ Main Content Area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <main className={`flex-1 flex flex-col min-w-0 ${activeTab === "messages" ? "overflow-hidden" : "overflow-y-auto"}`}>
         {/* Top Header Bar */}
         <header className="h-16 bg-white border-b border-[#eae8f5] px-6 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
@@ -692,7 +701,7 @@ export default function Member() {
               <span>Guild Portal</span>
               <span>/</span>
               <span className="text-[#110e3d] capitalize">
-                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "music" ? "Music Player" : "Arcadia Credits"}
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : "Arcadia Credits"}
               </span>
             </div>
           </div>
@@ -725,8 +734,18 @@ export default function Member() {
           </div>
         </header>
 
+        {/* Messages Tab - Full height chat layout */}
+        {activeTab === "messages" && (
+          <div className="flex-1 min-h-0 overflow-hidden px-4 md:px-6 pb-4 md:pb-6 pt-0">
+            <div className="h-full min-h-0 rounded-2xl border border-[#eae8f5] shadow-sm bg-white overflow-hidden">
+              <MessagesPage embedded />
+            </div>
+          </div>
+        )}
+
         {/* Content Container */}
-        <div className="flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6">
+        {activeTab !== "messages" && (
+        <div className="flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6 overflow-y-auto">
           {/* Dashboard Tab Overview */}
           {activeTab === "dashboard" && (
             <div className="space-y-6">
@@ -1373,6 +1392,7 @@ export default function Member() {
             </div>
           )}
         </div>
+        )}
       </main>
 
       {/* â”€â”€ Dialog Modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
