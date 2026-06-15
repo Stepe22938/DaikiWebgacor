@@ -5,13 +5,18 @@
  * MC Roleplay Server API
  * OpenAPI spec version: 0.1.0
  */
+import type { ConversationMemberInfoRolesItem } from './conversationMemberInfoRolesItem';
 
 export interface ConversationMemberInfo {
+  id?: number;
   userId: number;
   username: string;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
   avatarUrl?: string | null;
+  /** @nullable */
+  role?: string | null;
   joinedAt: string;
+  roles?: ConversationMemberInfoRolesItem[];
 }

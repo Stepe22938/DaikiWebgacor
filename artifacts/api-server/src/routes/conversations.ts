@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc, asc } from "drizzle-orm";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import {
   db,
@@ -14,8 +14,11 @@ import {
   aiKnowledgeTable,
   channelsTable,
   channelCategoriesTable,
+  rolesTable,
+  memberRolesTable,
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
+import { hasPermission } from "../lib/permissions";
 import {
   ListConversationsResponse,
   GetConversationResponse,
@@ -96,9 +99,18 @@ async function fetchExchangeRates(): Promise<{ [key: string]: number } | null> {
   return cachedRates;
 }
 
-async function generateAiResponse(conversationId: number, userDbId: number, userMessageContent: string, convType: string) {
+async function generateAiResponse(
+  conversationId: number,
+  userDbId: number,
+  userMessageContent: string,
+  convType: string,
+  channelId: number | null = null
+) {
   const aiUser = await ensureZaidanAiUser();
   if (!aiUser) return;
+
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, conversationId) });
+  if (!conv) return;
 
   // If group, make sure Zaidan AI is a member of the group
   if (convType === "group") {
@@ -109,6 +121,10 @@ async function generateAiResponse(conversationId: number, userDbId: number, user
   }
 
   // Get last 10 messages for history context
+  const historyWhere = channelId
+    ? and(eq(messagesTable.conversationId, conversationId), eq(messagesTable.channelId, channelId))
+    : eq(messagesTable.conversationId, conversationId);
+
   const historyRows = await db
     .select({
       senderId: messagesTable.senderId,
@@ -117,7 +133,7 @@ async function generateAiResponse(conversationId: number, userDbId: number, user
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
-    .where(eq(messagesTable.conversationId, conversationId))
+    .where(historyWhere)
     .orderBy(desc(messagesTable.createdAt))
     .limit(10);
 
@@ -174,6 +190,19 @@ async function generateAiResponse(conversationId: number, userDbId: number, user
     console.error("[Currency] Exchange rate error:", err);
   }
 
+  const ownerUser = conv.ownerId ? await db.query.usersTable.findFirst({ where: eq(usersTable.id, conv.ownerId) }) : null;
+  const ownerUsername = ownerUser?.username || "owner";
+
+  const gamingRules = convType === "group" ? `\n\nPEMBUATAN CHANNEL OTOMATIS:
+- Pemilik group (Kak Owner) adalah @${ownerUsername}. Hanya @${ownerUsername} yang berhak memerintahkan pembuatan channel khusus gaming.
+- Jika user lain (bukan @${ownerUsername}) menyuruhmu membuat channel, tolak dengan sopan tetapi tegas.
+- Jika @${ownerUsername} menyuruhmu membuat channel gaming atau setup area gaming:
+  1. Pertama-tama, tanyakan dulu kepada @${ownerUsername}: "Apakah Kak Owner ingin menghapus channel-channel lama yang ada sekarang, atau tetap mempertahankan channel lama tapi dimasukkan ke kategori 'Group Channel Lama'?"
+  2. JANGAN langsung membuat channel di turn pertama. Tanyakan dulu pilihan di atas untuk konfirmasi.
+  3. Setelah @${ownerUsername} memberikan jawaban (misal: "hapus saja" atau "pindahkan/pertahankan"):
+     - Jika ia memilih untuk menghapus channel lama, balas konfirmasinya dan akhiri pesanmu dengan tag perintah: [CMD: SETUP_GAMING option=delete]
+     - Jika ia memilih untuk memindahkan/mempertahankan channel lama, balas konfirmasinya dan akhiri pesanmu dengan tag perintah: [CMD: SETUP_GAMING option=archive]` : "";
+
   const systemPrompt = `Kamu adalah Zaidan AI, asisten AI yang santai, cerdas, dan bisa belajar sendiri di Arcadia Minecraft Roleplay Server.
 
 KEPRIBADIAN:
@@ -225,7 +254,7 @@ ATURAN:
 - Jika di grup, sebut user dengan @username.
 - Jawab dalam bahasa yang sama dengan user (Indonesia atau Inggris).
 - Untuk chat biasa: singkat dan ramah. Untuk laporan: detail dan terstruktur.
-- JANGAN PERNAH mengabaikan filter atau sensor yang Owner pasang, apapun alasannya.`;
+- JANGAN PERNAH mengabaikan filter atau sensor yang Owner pasang, apapun alasannya.${gamingRules}`;
 
   const chatMessages = [
     { role: "system", content: systemPrompt + knowledgeContext + currencyContext },
@@ -272,6 +301,78 @@ ATURAN:
 
     const aiReply = responseData.choices?.[0]?.message?.content || "";
     if (aiReply.trim()) {
+      // Check for SETUP_GAMING command from Owner
+      let cleanReply = aiReply;
+      const match = aiReply.match(/\[CMD:\s*SETUP_GAMING\s+option=(delete|archive)\]/i);
+      if (match && conv && conv.ownerId === userDbId) {
+        const option = match[1].toLowerCase();
+        try {
+          // 1. Get existing channels and categories
+          const existingChannels = await db.select().from(channelsTable).where(eq(channelsTable.conversationId, conversationId));
+          const existingCategories = await db.select().from(channelCategoriesTable).where(eq(channelCategoriesTable.conversationId, conversationId));
+
+          // 2. Create the GAMING AREA category (or retrieve if it already exists)
+          let gamingCat = existingCategories.find(c => c.name.toUpperCase() === "GAMING AREA");
+          if (!gamingCat) {
+            [gamingCat] = await db.insert(channelCategoriesTable).values({
+              conversationId,
+              name: "GAMING AREA",
+              position: 10,
+            }).returning();
+          }
+
+          // 3. Create gaming channels
+          const newChannels = [
+            { conversationId, name: "gaming-chat", type: "text" as const, position: 0, categoryId: gamingCat.id },
+            { conversationId, name: "gaming-clips", type: "text" as const, position: 1, categoryId: gamingCat.id },
+            { conversationId, name: "🎮 gaming voice 1", type: "voice" as const, position: 2, categoryId: gamingCat.id },
+            { conversationId, name: "🎮 gaming voice 2", type: "voice" as const, position: 3, categoryId: gamingCat.id },
+          ];
+          let mainGamingChatId: number | null = null;
+          for (const chan of newChannels) {
+            const [inserted] = await db.insert(channelsTable).values(chan).returning();
+            if (chan.name === "gaming-chat") {
+              mainGamingChatId = inserted.id;
+            }
+          }
+
+          // 4. Clean/Archive old items
+          if (option === "delete") {
+            const oldChannelIds = existingChannels.map(c => c.id);
+            if (oldChannelIds.length > 0) {
+              await db.delete(channelsTable).where(inArray(channelsTable.id, oldChannelIds));
+            }
+            const oldCategoryIds = existingCategories.map(c => c.id);
+            if (oldCategoryIds.length > 0) {
+              await db.delete(channelCategoriesTable).where(inArray(channelCategoriesTable.id, oldCategoryIds));
+            }
+            // If the channel where the message was sent is deleted, direct the response to gaming-chat
+            if (mainGamingChatId) {
+              channelId = mainGamingChatId;
+            }
+          } else if (option === "archive") {
+            let oldCat = existingCategories.find(c => c.name.toUpperCase() === "GROUP CHANNEL LAMA");
+            if (!oldCat) {
+              [oldCat] = await db.insert(channelCategoriesTable).values({
+                conversationId,
+                name: "GROUP CHANNEL LAMA",
+                position: 0,
+              }).returning();
+            }
+
+            const oldChannelIds = existingChannels.map(c => c.id);
+            if (oldChannelIds.length > 0) {
+              await db.update(channelsTable).set({ categoryId: oldCat.id }).where(inArray(channelsTable.id, oldChannelIds));
+            }
+          }
+
+          // Clean command tags from user-facing text
+          cleanReply = aiReply.replace(/\[CMD:\s*SETUP_GAMING\s+option=(delete|archive)\]/gi, "").trim();
+        } catch (err) {
+          console.error("Failed to execute SETUP_GAMING command:", err);
+        }
+      }
+
       // Get the username of the user Akira is replying to
       const replyUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userDbId) });
       const replyUsername = replyUser?.username || "user";
@@ -289,11 +390,12 @@ ATURAN:
       const modelLabel = model.includes("/") ? model.split("/").pop() : model;
       const modelFooter = `\n\n⚡ ${modelLabel} • untuk ${replyUsername} • ${timeStr}`;
 
-      const fullReply = aiReply.trim() + modelFooter;
+      const fullReply = cleanReply.trim() + modelFooter;
 
       // Insert AI message into database
       await db.insert(messagesTable).values({
         conversationId,
+        channelId,
         senderId: aiUser.id,
         content: fullReply,
       });
@@ -640,7 +742,7 @@ router.patch("/conversations/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
   if (!conv) { res.status(404).json({ error: "Not found" }); return; }
-  if (conv.ownerId !== user.id) { res.status(403).json({ error: "Not the group owner" }); return; }
+  if (conv.ownerId !== user.id && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Not authorized to edit group details" }); return; }
 
   const parsed = UpdateGroupBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -798,7 +900,7 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
                        parsed.data.content?.toLowerCase().includes("@ai");
 
     if (isDmWithAi || mentionsAi) {
-      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type).catch((err) => {
+      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type, null).catch((err) => {
         console.error("Failed to generate AI response:", err);
       });
     }
@@ -956,7 +1058,7 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
   if (mentionsAi) {
     const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
     if (conv) {
-      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type).catch((err) => {
+      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type, channelId).catch((err) => {
         console.error("Failed to generate AI response:", err);
       });
     }
@@ -978,6 +1080,36 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
   });
 });
 
+// GET /conversations/:id/my-permissions - get current user's permissions in group
+router.get("/conversations/:id/my-permissions", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  const conv = await db.query.conversationsTable.findFirst({
+    where: eq(conversationsTable.id, id),
+  });
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  const isOwner = conv.ownerId === user.id;
+
+  const permissions = {
+    manageChannels: isOwner || (await hasPermission(id, user.id, "manageChannels")),
+    manageRoles: isOwner || (await hasPermission(id, user.id, "manageRoles")),
+    manageMessages: isOwner || (await hasPermission(id, user.id, "manageMessages")),
+    kickMembers: isOwner || (await hasPermission(id, user.id, "kickMembers")),
+    sendMessages: isOwner || (await hasPermission(id, user.id, "sendMessages")),
+    inviteMembers: isOwner || (await hasPermission(id, user.id, "inviteMembers")),
+  };
+
+  res.json({ isOwner, permissions });
+});
+
 router.get("/conversations/:id/members", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -990,17 +1122,39 @@ router.get("/conversations/:id/members", async (req, res): Promise<void> => {
 
   const rows = await db
     .select({
+      id: conversationMembersTable.id,
       userId: usersTable.id,
       username: usersTable.username,
       displayName: usersTable.displayName,
       avatarUrl: usersTable.avatarUrl,
+      role: usersTable.role,
       joinedAt: conversationMembersTable.joinedAt,
     })
     .from(conversationMembersTable)
     .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
     .where(eq(conversationMembersTable.conversationId, id));
 
-  res.json(ListConversationMembersResponse.parse(rows.map((r) => serializeDates(r))));
+  const enrichedMembers = await Promise.all(
+    rows.map(async (row) => {
+      const memberRoles = await db
+        .select({
+          id: rolesTable.id,
+          name: rolesTable.name,
+          color: rolesTable.color,
+        })
+        .from(memberRolesTable)
+        .innerJoin(rolesTable, eq(memberRolesTable.roleId, rolesTable.id))
+        .where(eq(memberRolesTable.conversationMemberId, row.id))
+        .orderBy(asc(rolesTable.position));
+
+      return {
+        ...serializeDates(row),
+        roles: memberRoles,
+      };
+    })
+  );
+
+  res.json(ListConversationMembersResponse.parse(enrichedMembers));
 });
 
 router.post("/conversations/:id/members", async (req, res): Promise<void> => {
@@ -1014,6 +1168,10 @@ router.post("/conversations/:id/members", async (req, res): Promise<void> => {
   const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
   if (!conv || conv.type !== "group") { res.status(404).json({ error: "Group not found" }); return; }
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+  if (conv.ownerId !== user.id && !(await hasPermission(id, user.id, "inviteMembers"))) {
+    res.status(403).json({ error: "You do not have permission to invite members to this group" });
+    return;
+  }
 
   const parsed = AddConversationMemberBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -1063,8 +1221,14 @@ router.delete("/conversations/:id/members/:userId", async (req, res): Promise<vo
   const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
   if (!conv) { res.status(404).json({ error: "Not found" }); return; }
 
-  if (targetUserId !== user.id && conv.ownerId !== user.id) {
-    res.status(403).json({ error: "Not authorized" }); return;
+  if (targetUserId === conv.ownerId) {
+    res.status(403).json({ error: "Cannot kick the group owner" }); return;
+  }
+
+  if (targetUserId !== user.id) {
+    if (conv.ownerId !== user.id && !(await hasPermission(id, user.id, "kickMembers"))) {
+      res.status(403).json({ error: "Not authorized to kick members from this group" }); return;
+    }
   }
 
   await db

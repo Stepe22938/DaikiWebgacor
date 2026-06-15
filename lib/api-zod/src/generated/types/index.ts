@@ -29,6 +29,7 @@ export * from './announcementUpdateType';
 export * from './assignBadgeInput';
 export * from './badge';
 export * from './conversationMemberInfo';
+export * from './conversationMemberInfoRolesItem';
 export * from './conversationSummary';
 export * from './conversationSummaryType';
 export * from './cosmetic';

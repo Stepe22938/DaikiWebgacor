@@ -10,6 +10,7 @@ import {
   memberRolesTable,
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
+import { hasPermission } from "../lib/permissions";
 
 const router: IRouter = Router();
 
@@ -74,7 +75,7 @@ router.post("/conversations/:id/roles", async (req, res): Promise<void> => {
 
   const id = parseInt(req.params.id, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner can manage roles" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageRoles"))) { res.status(403).json({ error: "Only owner or admins with manageRoles permission can manage roles" }); return; }
 
   const { name, color, permissions } = req.body;
   if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -122,7 +123,7 @@ router.patch("/conversations/:id/roles/:roleId", async (req, res): Promise<void>
   const id = parseInt(req.params.id, 10);
   const roleId = parseInt(req.params.roleId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner can manage roles" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageRoles"))) { res.status(403).json({ error: "Only owner or admins with manageRoles permission can manage roles" }); return; }
 
   const role = await db.query.rolesTable.findFirst({
     where: and(eq(rolesTable.id, roleId), eq(rolesTable.conversationId, id)),
@@ -161,7 +162,7 @@ router.delete("/conversations/:id/roles/:roleId", async (req, res): Promise<void
   const id = parseInt(req.params.id, 10);
   const roleId = parseInt(req.params.roleId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner can manage roles" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageRoles"))) { res.status(403).json({ error: "Only owner or admins with manageRoles permission can manage roles" }); return; }
 
   const role = await db.query.rolesTable.findFirst({
     where: and(eq(rolesTable.id, roleId), eq(rolesTable.conversationId, id)),
@@ -183,7 +184,7 @@ router.post("/conversations/:id/members/:memberId/roles", async (req, res): Prom
   const id = parseInt(req.params.id, 10);
   const memberId = parseInt(req.params.memberId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner can assign roles" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageRoles"))) { res.status(403).json({ error: "Only owner or admins with manageRoles permission can assign roles" }); return; }
 
   const { roleId } = req.body;
   if (!roleId || typeof roleId !== "number") {
@@ -227,7 +228,7 @@ router.delete("/conversations/:id/members/:memberId/roles/:roleId", async (req, 
   const memberId = parseInt(req.params.memberId, 10);
   const roleId = parseInt(req.params.roleId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
-  if (!(await isOwner(id, user.id))) { res.status(403).json({ error: "Only owner can manage roles" }); return; }
+  if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageRoles"))) { res.status(403).json({ error: "Only owner or admins with manageRoles permission can manage roles" }); return; }
 
   await db
     .delete(memberRolesTable)

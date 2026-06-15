@@ -384,14 +384,24 @@ export interface Message {
   senderEquippedBorder?: string | null;
 }
 
+export type ConversationMemberInfoRolesItem = {
+  id: number;
+  name: string;
+  color: string;
+};
+
 export interface ConversationMemberInfo {
+  id?: number;
   userId: number;
   username: string;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
   avatarUrl?: string | null;
+  /** @nullable */
+  role?: string | null;
   joinedAt: string;
+  roles?: ConversationMemberInfoRolesItem[];
 }
 
 export interface CreateDmInput {

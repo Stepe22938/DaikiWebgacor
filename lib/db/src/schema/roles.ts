@@ -26,4 +26,5 @@ export interface RolePermissions {
   manageMessages?: boolean;
   kickMembers?: boolean;
   sendMessages?: boolean;
+  inviteMembers?: boolean;
 }

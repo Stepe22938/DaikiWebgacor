@@ -747,7 +747,6 @@ export const ListConversationsResponseItem = zod.object({
   "type": zod.enum(['dm', 'group']),
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
-  "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "otherUserId": zod.number().nullish(),
@@ -816,7 +815,6 @@ export const GetConversationResponse = zod.object({
   "type": zod.enum(['dm', 'group']),
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
-  "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "otherUserId": zod.number().nullish(),
@@ -844,9 +842,7 @@ export const updateGroupBodyNameMax = 100;
 
 
 export const UpdateGroupBody = zod.object({
-  "name": zod.string().min(1).max(updateGroupBodyNameMax).optional(),
-  "iconUrl": zod.string().nullish(),
-  "description": zod.string().max(500).nullish()
+  "name": zod.string().min(1).max(updateGroupBodyNameMax).optional()
 })
 
 export const UpdateGroupResponse = zod.object({
@@ -854,7 +850,6 @@ export const UpdateGroupResponse = zod.object({
   "type": zod.enum(['dm', 'group']),
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
-  "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "otherUserId": zod.number().nullish(),
@@ -936,11 +931,18 @@ export const ListConversationMembersParams = zod.object({
 })
 
 export const ListConversationMembersResponseItem = zod.object({
+  "id": zod.number().optional(),
   "userId": zod.number(),
   "username": zod.string(),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
-  "joinedAt": zod.string()
+  "role": zod.string().nullish(),
+  "joinedAt": zod.string(),
+  "roles": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string()
+})).optional()
 })
 export const ListConversationMembersResponse = zod.array(ListConversationMembersResponseItem)
 
