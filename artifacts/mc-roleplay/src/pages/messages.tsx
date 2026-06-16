@@ -59,7 +59,8 @@ import {
   MessageSquare,
   Users,
   Home,
-  Camera,
+  Download,
+  File,
   SendHorizontal,
   X,
   ArrowLeft,
@@ -80,15 +81,74 @@ import {
   Cpu,
   Key,
   RefreshCw,
+  ArrowUp,
+  ArrowDown,
+  ListOrdered,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
+
+type UploadedAttachment = {
+  driveFileId: string;
+  url: string;
+  downloadUrl: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  imageUrl?: string | null;
+};
+
+function formatFileSize(bytes?: number | null) {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
 
 interface VoiceMember {
   id: number;
   username: string;
   displayName?: string | null;
   avatarUrl?: string | null;
+  voiceJoinedAt?: string | null;
+}
+
+interface ProfilePreviewUser {
+  id: number;
+  username: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  role?: string | null;
+  roles?: Array<{ id: number; name: string; color: string }>;
+  equippedBorder?: string | null;
+}
+
+interface ProfileOverview {
+  user: ProfilePreviewUser & {
+    bio?: string | null;
+    lastSeenAt?: string | null;
+    isOnline: boolean;
+    equippedBadge?: string | null;
+    equippedBackground?: string | null;
+  };
+  groupRoles: Array<{ id: number; name: string; color: string; position?: number }>;
+  voiceChannel: {
+    id: number;
+    name: string;
+    conversationId: number;
+    conversationName?: string | null;
+  } | null;
+  mutualGroups: Array<{
+    id: number;
+    name?: string | null;
+    iconUrl?: string | null;
+    ownerId?: number | null;
+  }>;
 }
 
 interface Channel {
@@ -145,6 +205,91 @@ const ROLE_BADGE_CLASSES: Record<string, string> = {
   ai: "bg-blue-50 text-[#2563eb] border border-blue-100 font-extrabold tracking-wide",
   bot: "bg-blue-50 text-[#5865f2] border border-blue-100 font-black tracking-wide",
 };
+
+const ROLE_PERMISSION_OPTIONS = [
+  { key: "sendMessages", label: "Send Messages" },
+  { key: "postAnnouncements", label: "Post Announcements" },
+  { key: "manageChannels", label: "Manage Channels / Channel Editor" },
+  { key: "manageRoles", label: "Manage Roles" },
+  { key: "manageMessages", label: "Manage Messages" },
+  { key: "kickMembers", label: "Kick Members" },
+  { key: "inviteMembers", label: "Invite Members" },
+  { key: "inviteBot", label: "Invite Bots" },
+] as const;
+
+function formatVoiceDuration(joinedAt: string | null | undefined, now: number) {
+  if (!joinedAt) return "00:00";
+
+  const joinedAtMs = new Date(joinedAt).getTime();
+  if (!Number.isFinite(joinedAtMs)) return "00:00";
+
+  const totalSeconds = Math.max(0, Math.floor((now - joinedAtMs) / 1000));
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const hours = Math.floor(totalSeconds / 3600);
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatLastSeen(lastSeenAt: string | null | undefined) {
+  if (!lastSeenAt) return "No recent activity";
+
+  const lastSeenMs = new Date(lastSeenAt).getTime();
+  if (!Number.isFinite(lastSeenMs)) return "No recent activity";
+
+  const secondsAgo = Math.max(0, Math.floor((Date.now() - lastSeenMs) / 1000));
+  if (secondsAgo < 60) return "Seen just now";
+  const minutesAgo = Math.floor(secondsAgo / 60);
+  if (minutesAgo < 60) return `Seen ${minutesAgo}m ago`;
+  const hoursAgo = Math.floor(minutesAgo / 60);
+  if (hoursAgo < 24) return `Seen ${hoursAgo}h ago`;
+  return `Seen ${Math.floor(hoursAgo / 24)}d ago`;
+}
+
+function getVoiceChannelStartedAt(members: VoiceMember[] | undefined) {
+  if (!members?.length) return null;
+
+  const joinedAtTimes = members
+    .map((member) => member.voiceJoinedAt ? new Date(member.voiceJoinedAt).getTime() : Number.NaN)
+    .filter(Number.isFinite);
+
+  if (!joinedAtTimes.length) return null;
+  return new Date(Math.min(...joinedAtTimes)).toISOString();
+}
+
+function VoiceChannelDuration({ members, now }: { members?: VoiceMember[]; now: number }) {
+  const startedAt = getVoiceChannelStartedAt(members);
+  if (!startedAt) return null;
+
+  return (
+    <span className="shrink-0 font-mono text-[10px] font-black text-emerald-400 tabular-nums">
+      {formatVoiceDuration(startedAt, now)}
+    </span>
+  );
+}
+
+function VoiceMemberRow({ member, onClick }: { member: VoiceMember; onClick?: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-2 text-xs text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C] rounded-md px-1 py-0.5 min-w-0 text-left transition-colors"
+    >
+      {member.avatarUrl ? (
+        <img src={member.avatarUrl} className="w-4.5 h-4.5 rounded-full object-cover shrink-0" />
+      ) : (
+        <div className="w-4.5 h-4.5 rounded-full bg-violet-600 flex items-center justify-center text-[9px] text-white font-extrabold shrink-0">
+          {member.username[0].toUpperCase()}
+        </div>
+      )}
+      <span className="truncate font-semibold min-w-0">{member.displayName || member.username}</span>
+    </button>
+  );
+}
 
 function JitsiCall({
   roomName,
@@ -779,34 +924,49 @@ function MessageBubble({
   msg,
   isOwn,
   onDelete,
+  onUserClick,
   isGroup = false,
 }: {
   msg: Message;
   isOwn: boolean;
   onDelete?: () => void;
+  onUserClick?: () => void;
   isGroup?: boolean;
 }) {
   const name = msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
   const [isZoomed, setIsZoomed] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
 
   return (
     <>
-      <div className={`flex items-start gap-2 group ${isOwn ? "flex-row-reverse" : ""}`}>
+      <div className={`flex items-start gap-2 group max-w-full ${isOwn ? "flex-row-reverse" : ""}`}>
         {!isOwn && (
-        <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible mt-0.5 ${(msg as any).senderEquippedBorder ? (msg as any).senderEquippedBorder : isGroup ? "border border-[#3F4147]" : "border border-[#d7e4de]"}`}>
+        <button
+          type="button"
+          onClick={onUserClick}
+          className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible mt-0.5 cursor-pointer ${(msg as any).senderEquippedBorder ? (msg as any).senderEquippedBorder : isGroup ? "border border-[#3F4147]" : "border border-[#d7e4de]"}`}
+        >
           <Avatar className="w-8 h-8 shrink-0">
             <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
             <AvatarFallback className={`text-[10px] font-bold ${isGroup ? "bg-[#2B2D31] text-[#DCDDDE]" : "bg-[#edf5f1] text-[#0b6b58]"}`}>{getInitials(name)}</AvatarFallback>
           </Avatar>
-        </div>
+        </button>
         )}
         <div
-          className={`max-w-[88%] sm:max-w-[72%] flex flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}
+          className={`min-w-0 flex flex-col gap-1 ${isOwn ? "items-end max-w-[82%] sm:max-w-[72%]" : "items-start max-w-[calc(100%-44px)] sm:max-w-[72%]"}`}
         >
           <div className={`flex items-center gap-2 px-1 ${isOwn ? "flex-row-reverse" : ""}`}>
             {(!isOwn || (msg.senderRole && msg.senderRole !== "member")) && (
               <div className={`flex items-center gap-1.5 ${isOwn ? "flex-row-reverse" : ""}`}>
-                {!isOwn && <span className={`text-[11px] font-extrabold ${isGroup ? "text-[#DCDDDE]" : "text-[#075e54]"}`}>{name}</span>}
+                {!isOwn && (
+                  <button
+                    type="button"
+                    onClick={onUserClick}
+                    className={`text-[11px] font-extrabold hover:underline cursor-pointer ${isGroup ? "text-[#DCDDDE]" : "text-[#075e54]"}`}
+                  >
+                    {name}
+                  </button>
+                )}
                 {msg.senderRole && msg.senderRole !== "member" && (
                   <Badge className={`text-[8px] px-1.5 py-0 h-3.5 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[msg.senderRole] ?? ""}`}>
                     {ROLE_LABELS[msg.senderRole] ?? msg.senderRole}
@@ -824,13 +984,13 @@ function MessageBubble({
             )}
           </div>
           <div
-            className={`relative rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm break-words whitespace-pre-wrap ${
+            className={`relative max-w-full overflow-hidden rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm whitespace-pre-wrap [overflow-wrap:anywhere] ${
               isOwn
                 ? isGroup ? "bg-[#5865F2] text-white rounded-tr-[4px]" : "bg-[#dcf8c6] text-[#18251f] rounded-tr-[4px]"
                 : isGroup ? "bg-[#2B2D31] text-[#DCDDDE] rounded-tl-[4px]" : "bg-white border border-[#dfe8e3] text-[#18251f] rounded-tl-[4px]"
             }`}
           >
-            {msg.imageUrl && (
+            {msg.imageUrl && !imageFailed && (
               <div 
                 className="mb-2 max-w-sm rounded-lg overflow-hidden cursor-zoom-in hover:brightness-95 transition-all duration-200"
                 onClick={() => setIsZoomed(true)}
@@ -839,10 +999,48 @@ function MessageBubble({
                   src={msg.imageUrl}
                   alt="Chat attachment"
                   className="w-full h-auto object-cover max-h-64 rounded-md border border-black/5"
+                  onError={() => setImageFailed(true)}
                 />
               </div>
             )}
-            {msg.content && <span className="pr-12 inline-block">{msg.content}</span>}
+            {msg.imageUrl && imageFailed && (
+              <a
+                href={msg.imageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mb-2 block rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100"
+              >
+                Image failed to load. Open image
+              </a>
+            )}
+            {(msg as any).attachmentUrl && (
+              <div className={`mb-2 flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2 ${
+                isGroup ? "border-[#3F4147] bg-black/10" : "border-[#dfe8e3] bg-white/70"
+              }`}>
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                  isOwn ? "bg-white/20 text-white" : isGroup ? "bg-[#35373C] text-[#DCDDDE]" : "bg-[#edf5f1] text-[#075e54]"
+                }`}>
+                  <File className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-black">{(msg as any).attachmentName || "Attachment"}</p>
+                  <p className={`truncate text-[10px] font-semibold ${isOwn ? "text-white/70" : isGroup ? "text-[#949BA4]" : "text-slate-500"}`}>
+                    {formatFileSize((msg as any).attachmentSize)}{(msg as any).attachmentMime ? ` • ${(msg as any).attachmentMime}` : ""}
+                  </p>
+                </div>
+                <a
+                  href={(msg as any).attachmentUrl}
+                  download={(msg as any).attachmentName || true}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-2 text-[10px] font-black transition-colors ${
+                    isOwn ? "bg-white/20 text-white hover:bg-white/30" : isGroup ? "bg-[#5865F2] text-white hover:bg-[#4752C4]" : "bg-[#075e54] text-white hover:bg-[#064f46]"
+                  }`}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Save As Download
+                </a>
+              </div>
+            )}
+            {msg.content && <span className="block min-w-0 pb-3 pr-10 [overflow-wrap:anywhere]">{msg.content}</span>}
             <span className={`absolute bottom-1.5 right-3 text-[10px] font-semibold ${isGroup ? "text-[#949BA4]" : "text-[#66756f]"}`}>
               {format(new Date(msg.createdAt), "HH:mm")}
             </span>
@@ -884,6 +1082,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [newChannelType, setNewChannelType] = useState<"text" | "voice" | "announce">("text");
   const [newChannelCategoryId, setNewChannelCategoryId] = useState<number | null>(null);
   const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [showChannelEditor, setShowChannelEditor] = useState(false);
+  const [movingChannelId, setMovingChannelId] = useState<number | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showRoles, setShowRoles] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -903,6 +1103,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [showNewDm, setShowNewDm] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [profilePreviewUser, setProfilePreviewUser] = useState<ProfilePreviewUser | null>(null);
   const [showCall, setShowCall] = useState(false);
   const [callType, setCallType] = useState<"voice" | "video" | null>(null);
   const [isCallMinimized, setIsCallMinimized] = useState(false);
@@ -933,13 +1134,16 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   const [uploading, setUploading] = useState(false);
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
+  const [attachedFile, setAttachedFile] = useState<UploadedAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileChannelDrawerOpen, setMobileChannelDrawerOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [aiTyping, setAiTyping] = useState(false);
-  const [activeJoinedVoiceChannel, setActiveJoinedVoiceChannel] = useState<{ conversationId: number; channelId: number } | null>(null);
+  const [activeJoinedVoiceChannel, setActiveJoinedVoiceChannel] = useState<{ conversationId: number; channelId: number; voiceJoinedAt: string } | null>(null);
+  const [voiceTimerNow, setVoiceTimerNow] = useState(() => Date.now());
 
   // Developer & Bot States
   const [showDeveloperSettings, setShowDeveloperSettings] = useState(false);
@@ -957,15 +1161,47 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const callChatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!me?.id) return;
+
+    const sendHeartbeat = () => {
+      void customFetch("/api/presence/heartbeat", {
+        method: "POST",
+      }).catch(() => undefined);
+    };
+
+    sendHeartbeat();
+    const interval = window.setInterval(sendHeartbeat, 15_000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") sendHeartbeat();
+    };
+
+    window.addEventListener("focus", sendHeartbeat);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", sendHeartbeat);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [me?.id]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setVoiceTimerNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     // If showCall becomes false, but we have an active joined voice channel, we leave it
     if (!showCall && activeJoinedVoiceChannel) {
       const { conversationId, channelId } = activeJoinedVoiceChannel;
       fetch(`/api/conversations/${conversationId}/channels/${channelId}/leave`, {
         method: "POST",
-      }).catch((e) => console.error("Error leaving voice channel:", e));
+      })
+        .then(() => queryClient.invalidateQueries({ queryKey: ["channels", conversationId] }))
+        .catch((e) => console.error("Error leaving voice channel:", e));
       setActiveJoinedVoiceChannel(null);
     }
-  }, [showCall, activeJoinedVoiceChannel]);
+  }, [showCall, activeJoinedVoiceChannel, queryClient]);
 
   useEffect(() => {
     // Handle beforeunload to notify backend we are leaving
@@ -994,10 +1230,16 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       channelName: ch?.name ?? "Voice Channel",
     });
     try {
-      await fetch(`/api/conversations/${conversationId}/channels/${channelId}/join`, {
+      const res = await fetch(`/api/conversations/${conversationId}/channels/${channelId}/join`, {
         method: "POST",
       });
-      setActiveJoinedVoiceChannel({ conversationId, channelId });
+      const data = await res.json().catch(() => ({}));
+      setActiveJoinedVoiceChannel({
+        conversationId,
+        channelId,
+        voiceJoinedAt: data.voiceJoinedAt ?? new Date().toISOString(),
+      });
+      queryClient.invalidateQueries({ queryKey: ["channels", conversationId] });
     } catch (e) {
       console.error("Failed to join voice channel on backend:", e);
     }
@@ -1021,6 +1263,11 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         setSelectedChannelId(callContext.channelId);
       }
     }
+  };
+
+  const handleSelectChannel = (channelId: number) => {
+    setSelectedChannelId(channelId);
+    setMobileChannelDrawerOpen(false);
   };
 
   const handleOpenEditCategory = (cat: ChannelCategory) => {
@@ -1185,6 +1432,13 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     refetchInterval: 5000,
   });
 
+  const { data: profileOverview } = useQuery<ProfileOverview>({
+    queryKey: ["profile-overview", profilePreviewUser?.id, selectedId],
+    queryFn: () => customFetch<ProfileOverview>(`/api/users/${profilePreviewUser!.id}/overview${selectedId ? `?conversationId=${selectedId}` : ""}`),
+    enabled: !!profilePreviewUser?.id,
+    refetchInterval: profilePreviewUser ? 10_000 : false,
+  });
+
   // Fetch categories for the selected group
   const { data: categories = [] } = useQuery<ChannelCategory[]>({
     queryKey: ["channel-categories", selectedId],
@@ -1196,6 +1450,44 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     enabled: selectedId !== null,
     refetchInterval: 5000,
   });
+
+  const channelEditorSections = useMemo(() => {
+    const byPosition = (a: Channel, b: Channel) => a.position - b.position || a.id - b.id;
+    const messageChannels = (items: Channel[]) => items.filter((ch) => ch.type === "text" || ch.type === "announce").sort(byPosition);
+    const voiceChannels = (items: Channel[]) => items.filter((ch) => ch.type === "voice").sort(byPosition);
+    const sections: Array<{ key: string; label: string; channels: Channel[] }> = [];
+
+    if (categories.length === 0) {
+      sections.push({ key: "messages-root", label: "Text & Announce", channels: messageChannels(channels) });
+      sections.push({ key: "voice-root", label: "Voice Channels", channels: voiceChannels(channels) });
+      return sections.filter((section) => section.channels.length > 0);
+    }
+
+    for (const cat of categories) {
+      const catChannels = channels.filter((ch) => ch.categoryId === cat.id);
+      sections.push({ key: `cat-${cat.id}-messages`, label: `${cat.name} / Text & Announce`, channels: messageChannels(catChannels) });
+      sections.push({ key: `cat-${cat.id}-voice`, label: `${cat.name} / Voice`, channels: voiceChannels(catChannels) });
+    }
+
+    const uncategorized = channels.filter((ch) => !ch.categoryId);
+    sections.push({ key: "uncategorized-messages", label: "Uncategorized / Text & Announce", channels: messageChannels(uncategorized) });
+    sections.push({ key: "uncategorized-voice", label: "Uncategorized / Voice", channels: voiceChannels(uncategorized) });
+
+    return sections.filter((section) => section.channels.length > 0);
+  }, [categories, channels]);
+
+  const activeVoiceByUserId = useMemo(() => {
+    const voiceMap = new Map<number, { channel: Channel; member: VoiceMember }>();
+
+    for (const channel of channels) {
+      if (channel.type !== "voice") continue;
+      for (const member of channel.members ?? []) {
+        voiceMap.set(member.id, { channel, member });
+      }
+    }
+
+    return voiceMap;
+  }, [channels]);
 
   // Fetch roles for the selected group
   const { data: roles = [] } = useQuery<Role[]>({
@@ -1304,6 +1596,84 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     return groups;
   }, [activeBots]);
 
+  const openProfilePreview = (user: ProfilePreviewUser) => {
+    setProfilePreviewUser(user);
+  };
+
+  const openProfileFromMember = (member: any) => {
+    openProfilePreview({
+      id: member.userId ?? member.id,
+      username: member.username,
+      displayName: member.displayName,
+      avatarUrl: member.avatarUrl,
+      role: member.role,
+      roles: member.roles ?? [],
+      equippedBorder: member.equippedBorder ?? null,
+    });
+  };
+
+  const openProfileFromVoiceMember = (member: VoiceMember) => {
+    const conversationMember = members.find((candidate: any) => candidate.userId === member.id);
+    const equippedBorder = (conversationMember as any)?.equippedBorder ?? null;
+    openProfilePreview({
+      id: member.id,
+      username: member.username,
+      displayName: member.displayName ?? conversationMember?.displayName,
+      avatarUrl: member.avatarUrl ?? conversationMember?.avatarUrl,
+      role: conversationMember?.role,
+      roles: conversationMember?.roles ?? [],
+      equippedBorder,
+    });
+  };
+
+  const openProfileFromMessage = (msg: Message) => {
+    if (!msg.senderId) return;
+
+    const conversationMember = members.find((member: any) => member.userId === msg.senderId);
+    const equippedBorder = (conversationMember as any)?.equippedBorder ?? null;
+    openProfilePreview({
+      id: msg.senderId,
+      username: msg.senderUsername ?? conversationMember?.username ?? "unknown",
+      displayName: msg.senderDisplayName ?? conversationMember?.displayName,
+      avatarUrl: msg.senderAvatarUrl ?? conversationMember?.avatarUrl,
+      role: msg.senderRole ?? conversationMember?.role,
+      roles: conversationMember?.roles ?? [],
+      equippedBorder: (msg as any).senderEquippedBorder ?? equippedBorder,
+    });
+  };
+
+  const handleMoveChannel = async (channel: Channel, direction: -1 | 1) => {
+    if (!selectedId || movingChannelId !== null) return;
+
+    const section = channelEditorSections.find((candidate) => candidate.channels.some((ch) => ch.id === channel.id));
+    if (!section) return;
+
+    const currentIndex = section.channels.findIndex((ch) => ch.id === channel.id);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= section.channels.length) return;
+
+    const reordered = [...section.channels];
+    [reordered[currentIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[currentIndex]];
+
+    setMovingChannelId(channel.id);
+    try {
+      await Promise.all(reordered.map((ch, index) =>
+        fetch(`/api/conversations/${selectedId}/channels/${ch.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ position: index }),
+        }).then((res) => {
+          if (!res.ok) throw new Error("Failed to update channel position");
+        })
+      ));
+      await queryClient.invalidateQueries({ queryKey: ["channels", selectedId] });
+    } catch {
+      toast({ title: "Failed to move channel", variant: "destructive" });
+    } finally {
+      setMovingChannelId(null);
+    }
+  };
+
   const createDm = useCreateOrGetDm();
   const createGroup = useCreateGroup();
   const deleteConv = useDeleteConversation();
@@ -1314,14 +1684,14 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   const selectedChannel = channels.find((c) => c.id === selectedChannelId) ?? null;
 
-  // Auto-select first text channel when group is selected, or if selected channel is deleted
+  // Auto-select first message channel when group is selected, or if selected channel is deleted
   useEffect(() => {
     if (isGroup && channels.length > 0) {
       const hasSelected = channels.some((c) => c.id === selectedChannelId);
       if (!hasSelected) {
-        const firstText = channels.find((c) => c.type === "text");
-        if (firstText) {
-          setSelectedChannelId(firstText.id);
+        const firstMessageChannel = channels.find((c) => c.type === "text" || c.type === "announce");
+        if (firstMessageChannel) {
+          setSelectedChannelId(firstMessageChannel.id);
         } else {
           setSelectedChannelId(channels[0].id);
         }
@@ -1330,15 +1700,21 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     if (!isGroup) setSelectedChannelId(null);
   }, [isGroup, channels, selectedChannelId]);
 
-  // Hide typing indicator when AI responds (new message count increases while typing)
+  // Hide typing indicator when AI responds.
   useEffect(() => {
-    if (aiTyping && activeMessages.length > prevMsgCountRef.current) {
+    if (aiTyping && activeMessages.length > 0) {
       const lastMsg = activeMessages[activeMessages.length - 1];
-      if (lastMsg && lastMsg.senderRole === "ai") {
+      const isAiMessage =
+        lastMsg?.senderRole === "ai" ||
+        lastMsg?.senderUsername === "zaidanai" ||
+        lastMsg?.senderUsername === "akira" ||
+        lastMsg?.senderUsername === "metaai";
+      if (isAiMessage) {
         setAiTyping(false);
         // Invalidate channels and categories to update the layout immediately (e.g. GAMING AREA setup)
         queryClient.invalidateQueries({ queryKey: ["channels", selectedId] });
         queryClient.invalidateQueries({ queryKey: ["channel-categories", selectedId] });
+        queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/members`] });
       }
     }
     prevMsgCountRef.current = activeMessages.length;
@@ -1408,23 +1784,15 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     }
   }, [activeMessages.length]);
 
-  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "Error", description: "Only image files are allowed.", variant: "destructive" });
-      return;
-    }
+    e.target.value = "";
     setUploading(true);
     try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": file.type,
-          "x-file-name": file.name,
-        },
-        body: file,
-      });
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/drive/upload", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text().catch(() => "Upload failed");
         let errMsg = "Upload failed";
@@ -1433,11 +1801,12 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         } catch {}
         throw new Error(errMsg);
       }
-      const data = await response.json();
-      setAttachedImageUrl(data.url);
-      toast({ title: "Success", description: "Image uploaded successfully." });
+      const data = await response.json() as UploadedAttachment;
+      setAttachedFile(data);
+      setAttachedImageUrl(data.imageUrl ?? null);
+      toast({ title: "Uploaded", description: `${data.name} is ready to send.` });
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Failed to upload image. Please try again.";
+      const errMsg = err instanceof Error ? err.message : "Failed to upload file. Please try again.";
       toast({ title: "Error", description: errMsg, variant: "destructive" });
     } finally {
       setUploading(false);
@@ -1448,21 +1817,24 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const mentionMembers = useMemo(() => {
     const filter = mentionFilter.toLowerCase();
     const items = [
-      { userId: 0, username: "all", displayName: "All Members", avatarUrl: null as string | null | undefined },
+      { userId: 0, username: "all", displayName: "All Members", avatarUrl: null as string | null | undefined, userTag: "", mentionTag: "" },
       ...members,
     ];
     if (!filter) return items.slice(0, 8);
     return items.filter((m) =>
       m.username.toLowerCase().includes(filter) ||
+      ((m as any).userTag ?? "").toLowerCase().includes(filter) ||
+      ((m as any).mentionTag ?? "").toLowerCase().includes(filter) ||
       (m.displayName ?? "").toLowerCase().includes(filter)
     ).slice(0, 8);
   }, [members, mentionFilter]);
 
-  function insertMention(member: { username: string; displayName?: string | null }) {
+  function insertMention(member: { username: string; displayName?: string | null; userTag?: string | null; mentionTag?: string | null }) {
     if (mentionStart < 0) return;
     const before = messageText.slice(0, mentionStart);
     const after = messageText.slice(mentionStart + mentionFilter.length + 1); // +1 for @
-    const mention = `@${member.username} `;
+    const tag = member.mentionTag ?? member.userTag ?? "";
+    const mention = `@${member.username}${member.username === "all" ? "" : tag} `;
     const newText = before + mention + after;
     setMessageText(newText);
     setShowMention(false);
@@ -1537,12 +1909,28 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   async function handleSend() {
     const text = messageText.trim();
-    if (!text && !attachedImageUrl) return;
+    if (!text && !attachedFile && !attachedImageUrl) return;
     if (selectedId === null) return;
     try {
-      const payload: { content?: string; imageUrl?: string } = {};
+      const payload: {
+        content?: string;
+        imageUrl?: string;
+        attachmentDriveFileId?: string;
+        attachmentUrl?: string;
+        attachmentName?: string;
+        attachmentMime?: string;
+        attachmentSize?: number;
+      } = {};
       if (text) payload.content = text;
       if (attachedImageUrl) payload.imageUrl = attachedImageUrl;
+      if (attachedFile) {
+        payload.attachmentDriveFileId = attachedFile.driveFileId;
+        payload.attachmentUrl = attachedFile.downloadUrl;
+        payload.attachmentName = attachedFile.name;
+        payload.attachmentMime = attachedFile.mimeType;
+        payload.attachmentSize = attachedFile.size;
+        if (attachedFile.imageUrl && !payload.imageUrl) payload.imageUrl = attachedFile.imageUrl;
+      }
 
       if (isGroup && selectedChannelId) {
         // Channel-scoped message for groups
@@ -1560,6 +1948,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       }
       setMessageText("");
       setAttachedImageUrl(null);
+      setAttachedFile(null);
 
       if (selectedConv) {
         const isAiDm = selectedConv.type === "dm" && (
@@ -2158,13 +2547,29 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           </div>
 
           {/* Channel Sidebar (Groups only - Discord style) */}
+          {isGroup && selectedConv && mobileChannelDrawerOpen && (
+            <button
+              type="button"
+              className="fixed inset-0 z-40 bg-black/60 md:hidden"
+              onClick={() => setMobileChannelDrawerOpen(false)}
+              aria-label="Close channels"
+            />
+          )}
           {isGroup && selectedConv && (
-            <div className={`hidden md:flex w-56 bg-[#2B2D31] border-r border-[#1E1F22] flex-col shrink-0 min-h-0`}>
+            <div className={`${mobileChannelDrawerOpen ? "flex" : "hidden"} fixed inset-y-0 left-0 z-50 w-72 bg-[#2B2D31] border-r border-[#1E1F22] flex-col shrink-0 min-h-0 shadow-2xl md:static md:z-auto md:flex md:w-56 md:shadow-none`}>
               {/* Channel header */}
               <div className="p-3 border-b border-[#1E1F22] flex items-center justify-between shrink-0">
                 <h3 className="font-extrabold text-xs text-[#DCDDDE] uppercase tracking-wider">Channels</h3>
-                {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
-                  <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1">
+                  {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                    <>
+                    <button
+                      onClick={() => setShowChannelEditor(true)}
+                      className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
+                      title="Channel Editor"
+                    >
+                      <ListOrdered className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => setShowCreateCategory(true)}
                       className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
@@ -2179,8 +2584,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     >
                       <Plus className="w-4 h-4" />
                     </button>
-                  </div>
-                )}
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setMobileChannelDrawerOpen(false)}
+                    className="text-[#949BA4] hover:text-white transition-colors cursor-pointer md:hidden"
+                    title="Close Channels"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               {/* Channel list grouped by category */}
               <ScrollArea className="flex-1 min-h-0">
@@ -2189,7 +2603,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     <>
                       {channels.filter(c => (c.type === "text" || c.type === "announce") && !c.categoryId).map((ch) => (
                         <div key={ch.id} className="group relative flex items-center justify-between rounded-md">
-                          <button onClick={() => setSelectedChannelId(ch.id)}
+                          <button onClick={() => handleSelectChannel(ch.id)}
                             className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
                               selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
                             }`}>
@@ -2217,12 +2631,13 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       {channels.filter(c => c.type === "voice" && !c.categoryId).map((ch) => (
                         <div key={ch.id} className="w-full">
                           <div className="group relative flex items-center justify-between rounded-md">
-                            <button onClick={() => setSelectedChannelId(ch.id)}
+                            <button onClick={() => handleSelectChannel(ch.id)}
                               className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
                                 selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
                               }`}>
                               <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
                               <span className="truncate">{ch.name}</span>
+                              <VoiceChannelDuration members={ch.members} now={voiceTimerNow} />
                             </button>
                             {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
                               <button
@@ -2239,16 +2654,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           {ch.members && ch.members.length > 0 && (
                             <div className="pl-6 pr-2 py-1 space-y-1">
                               {ch.members.map((member) => (
-                                <div key={member.id} className="flex items-center gap-2 text-xs text-[#949BA4] py-0.5">
-                                  {member.avatarUrl ? (
-                                    <img src={member.avatarUrl} className="w-4.5 h-4.5 rounded-full object-cover" />
-                                  ) : (
-                                    <div className="w-4.5 h-4.5 rounded-full bg-violet-600 flex items-center justify-center text-[9px] text-white font-extrabold">
-                                      {member.username[0].toUpperCase()}
-                                    </div>
-                                  )}
-                                  <span className="truncate font-semibold">{member.displayName || member.username}</span>
-                                </div>
+                                <VoiceMemberRow key={member.id} member={member} onClick={() => openProfileFromVoiceMember(member)} />
                               ))}
                             </div>
                           )}
@@ -2285,7 +2691,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           </div>
                           {textChannels.map((ch) => (
                             <div key={ch.id} className="group relative flex items-center justify-between rounded-md">
-                              <button onClick={() => setSelectedChannelId(ch.id)}
+                              <button onClick={() => handleSelectChannel(ch.id)}
                                 className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
                                   selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
                                 }`}>
@@ -2310,12 +2716,13 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           {voiceChannels.map((ch) => (
                             <div key={ch.id} className="w-full">
                               <div className="group relative flex items-center justify-between rounded-md">
-                                <button onClick={() => setSelectedChannelId(ch.id)}
+                                <button onClick={() => handleSelectChannel(ch.id)}
                                   className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
                                     selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
                                   }`}>
                                   <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
                                   <span className="truncate">{ch.name}</span>
+                                  <VoiceChannelDuration members={ch.members} now={voiceTimerNow} />
                                 </button>
                                 {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
                                   <button
@@ -2332,16 +2739,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               {ch.members && ch.members.length > 0 && (
                                 <div className="pl-6 pr-2 py-1 space-y-1">
                                   {ch.members.map((member) => (
-                                    <div key={member.id} className="flex items-center gap-2 text-xs text-[#949BA4] py-0.5">
-                                      {member.avatarUrl ? (
-                                        <img src={member.avatarUrl} className="w-4.5 h-4.5 rounded-full object-cover" />
-                                      ) : (
-                                        <div className="w-4.5 h-4.5 rounded-full bg-violet-600 flex items-center justify-center text-[9px] text-white font-extrabold">
-                                          {member.username[0].toUpperCase()}
-                                        </div>
-                                      )}
-                                      <span className="truncate font-semibold">{member.displayName || member.username}</span>
-                                    </div>
+                                    <VoiceMemberRow key={member.id} member={member} onClick={() => openProfileFromVoiceMember(member)} />
                                   ))}
                                 </div>
                               )}
@@ -2358,12 +2756,13 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       {channels.filter(c => !c.categoryId && categories.length > 0).map((ch) => (
                         <div key={ch.id} className="w-full">
                           <div className="group relative flex items-center justify-between rounded-md">
-                            <button onClick={() => setSelectedChannelId(ch.id)}
+                            <button onClick={() => handleSelectChannel(ch.id)}
                               className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
                                 selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
                               }`}>
                               {ch.type === "voice" ? <Volume2 className="w-4 h-4 shrink-0 opacity-70" /> : <Hash className="w-4 h-4 shrink-0 opacity-70" />}
                               <span className="truncate">{ch.name}</span>
+                              {ch.type === "voice" && <VoiceChannelDuration members={ch.members} now={voiceTimerNow} />}
                             </button>
                             {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
                               <button
@@ -2380,16 +2779,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           {ch.type === "voice" && ch.members && ch.members.length > 0 && (
                             <div className="pl-6 pr-2 py-1 space-y-1">
                               {ch.members.map((member) => (
-                                <div key={member.id} className="flex items-center gap-2 text-xs text-[#949BA4] py-0.5">
-                                  {member.avatarUrl ? (
-                                    <img src={member.avatarUrl} className="w-4.5 h-4.5 rounded-full object-cover" />
-                                  ) : (
-                                    <div className="w-4.5 h-4.5 rounded-full bg-violet-600 flex items-center justify-center text-[9px] text-white font-extrabold">
-                                      {member.username[0].toUpperCase()}
-                                    </div>
-                                  )}
-                                  <span className="truncate font-semibold">{member.displayName || member.username}</span>
-                                </div>
+                                <VoiceMemberRow key={member.id} member={member} onClick={() => openProfileFromVoiceMember(member)} />
                               ))}
                             </div>
                           )}
@@ -2451,9 +2841,20 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     >
                       <ArrowLeft className="h-5 w-5" />
                     </Button>
+                    {selectedConv.type === "group" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="md:hidden h-8 w-8 rounded-full text-white hover:bg-white/10 hover:text-white shrink-0"
+                        onClick={() => setMobileChannelDrawerOpen(true)}
+                        title="Channels"
+                      >
+                        <Hash className="h-5 w-5" />
+                      </Button>
+                    )}
                     <button
                       onClick={() => setShowInfoPanel((p) => !p)}
-                      className="flex items-center gap-2 sm:gap-3 min-w-0 hover:opacity-80 transition-opacity rounded-lg px-1 py-0.5"
+                      className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 hover:opacity-80 transition-opacity rounded-lg px-1 py-0.5"
                     >
                       <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder : "border border-[#eae8f5]"}`}>
                         <Avatar className="w-8 h-8 sm:w-9 sm:h-9 shrink-0">
@@ -2469,7 +2870,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       </div>
                       <div className="min-w-0 flex-1 text-left">
                         <div className="flex items-center gap-1.5">
-                          <p className="font-extrabold text-[13px] sm:text-sm leading-none truncate max-w-[38vw] sm:max-w-none">{selectedName}</p>
+                          <p className="font-extrabold text-[13px] sm:text-sm leading-none truncate max-w-[34vw] sm:max-w-none">{selectedName}</p>
                           {selectedConv.type === "group" && (selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels || myPerms?.permissions?.manageRoles) && (
                             <button
                               onClick={(e) => { e.stopPropagation(); openEditGroup(); }}
@@ -2601,6 +3002,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               msg={msg}
                               isOwn={msg.senderId === me?.id}
                               isGroup={isGroupView}
+                              onUserClick={msg.senderId ? () => openProfileFromMessage(msg) : undefined}
                               onDelete={
                                 msg.senderId === me?.id
                                   ? () => handleDeleteMessage(msg.id)
@@ -2661,12 +3063,25 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
                   return (
                     <div className={`px-2 sm:px-4 md:px-6 py-2 sm:py-3 pb-3 sm:pb-4 border-t shrink-0 ${isGroupView ? "border-[#3F4147] bg-[#1E1F22]" : "border-[#d8cec1] bg-[#f0e7dd]"}`}>
-                      {attachedImageUrl && (
-                        <div className="relative mb-2 ml-12 inline-block rounded-xl overflow-hidden border border-[#d7e4de] bg-white max-w-[132px] aspect-video group">
-                          <img src={attachedImageUrl} alt="Attachment preview" className="w-full h-full object-cover" />
+                      {attachedFile && (
+                        <div className={`relative mb-2 ml-12 flex max-w-[min(360px,calc(100%-3rem))] items-center gap-3 rounded-xl border px-3 py-2 shadow-sm ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#d7e4de] bg-white"}`}>
+                          {attachedImageUrl ? (
+                            <img src={attachedImageUrl} alt="Attachment preview" className="h-12 w-16 rounded-lg object-cover border border-black/5" />
+                          ) : (
+                            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${isGroupView ? "bg-[#35373C] text-[#DCDDDE]" : "bg-[#edf5f1] text-[#075e54]"}`}>
+                              <File className="h-5 w-5" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className={`truncate text-xs font-black ${isGroupView ? "text-[#DCDDDE]" : "text-[#18251f]"}`}>{attachedFile.name}</p>
+                            <p className={`truncate text-[10px] font-semibold ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                              {formatFileSize(attachedFile.size)}{attachedFile.mimeType ? ` - ${attachedFile.mimeType}` : ""}
+                            </p>
+                          </div>
                           <button
-                            onClick={() => setAttachedImageUrl(null)}
-                            className="absolute top-1 right-1 bg-black/60 hover:bg-black text-white rounded-full w-6 h-6 flex items-center justify-center transition-colors"
+                            onClick={() => { setAttachedFile(null); setAttachedImageUrl(null); }}
+                            className="shrink-0 rounded-full bg-black/50 hover:bg-black text-white w-6 h-6 flex items-center justify-center transition-colors"
+                            type="button"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -2675,10 +3090,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       <div className="flex items-end gap-2">
                         <input
                           type="file"
-                          accept="image/*"
                           className="hidden"
                           ref={fileInputRef}
-                          onChange={handleImageUpload}
+                          onChange={handleFileUpload}
                         />
                         <Button
                           type="button"
@@ -2687,12 +3101,12 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           onClick={() => fileInputRef.current?.click()}
                           disabled={uploading}
                           className={`hover:bg-opacity-70 transition-all shrink-0 rounded-full h-11 w-11 ${isGroupView ? "text-[#949BA4]" : "text-[#54656f]"}`}
-                          title="Attach image"
+                          title="Attach file"
                         >
                           {uploading ? (
                             <span className="h-4 w-4 rounded-full border-2 border-[#075e54]/20 border-t-[#075e54] animate-spin" />
                           ) : (
-                            <Camera className="h-5 w-5" />
+                            <File className="h-5 w-5" />
                           )}
                         </Button>
                         <div className="relative flex-1">
@@ -2723,8 +3137,15 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                                   )}
                                   <div className="min-w-0">
                                     <p className="text-sm font-bold truncate">
-                                      {m.username === "all" ? "@all" : `@${m.username}`}
+                                      {m.username === "all" ? "@all" : (
+                                        <>
+                                          @{m.username} <span className="text-[11px] font-black text-[#8B5CF6]">{(m as any).mentionTag ?? (m as any).userTag}</span>
+                                        </>
+                                      )}
                                     </p>
+                                    {m.username !== "all" && (m as any).mentionTag && (
+                                      <p className="text-[10px] text-slate-500 truncate">Group tag {(m as any).mentionTag}</p>
+                                    )}
                                     {m.displayName && m.username !== "all" && (
                                       <p className="text-[11px] text-slate-400 truncate">{m.displayName}</p>
                                     )}
@@ -2750,7 +3171,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                         </div>
                         <Button
                           onClick={handleSend}
-                          disabled={(!messageText.trim() && !attachedImageUrl) || sendMessage.isPending || uploading}
+                          disabled={(!messageText.trim() && !attachedFile && !attachedImageUrl) || sendMessage.isPending || uploading}
                           className={`${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] shadow-indigo-900/20" : "bg-[#00a884] hover:bg-[#008f72] shadow-emerald-900/10"} text-white rounded-full h-11 w-11 p-0 shrink-0 shadow-md`}
                           title="Send"
                         >
@@ -2843,14 +3264,22 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     <div className="space-y-2">
                       {members.map((m) => (
                         <div key={m.userId} className={`flex items-center gap-3 px-2 py-1.5 rounded-xl transition-colors ${isGroupView ? "hover:bg-[#35373C]" : "hover:bg-slate-50"}`}>
-                          <Avatar className={`w-8 h-8 border ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
-                            <AvatarImage src={m.avatarUrl ?? undefined} />
-                            <AvatarFallback className={`text-[10px] font-bold ${isGroupView ? "bg-[#2B2D31] text-[#DCDDDE]" : "bg-slate-100 text-[#6366f1]"}`}>
-                              {getInitials(m.displayName ?? m.username)}
-                            </AvatarFallback>
-                          </Avatar>
+                          <button type="button" onClick={() => openProfileFromMember(m)} className="shrink-0">
+                            <Avatar className={`w-8 h-8 border ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+                              <AvatarImage src={m.avatarUrl ?? undefined} />
+                              <AvatarFallback className={`text-[10px] font-bold ${isGroupView ? "bg-[#2B2D31] text-[#DCDDDE]" : "bg-slate-100 text-[#6366f1]"}`}>
+                                {getInitials(m.displayName ?? m.username)}
+                              </AvatarFallback>
+                            </Avatar>
+                          </button>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-bold truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{m.displayName ?? m.username}</p>
+                            <button
+                              type="button"
+                              onClick={() => openProfileFromMember(m)}
+                              className={`block max-w-full text-xs font-bold truncate text-left hover:underline ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}
+                            >
+                              {m.displayName ?? m.username}
+                            </button>
                             <p className={`text-[10px] font-medium ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>@{m.username}</p>
                           </div>
                           {selectedConv.ownerId === m.userId && (
@@ -3191,12 +3620,22 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       const res = await fetch(`/api/conversations/${selectedId}/roles`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ name: newRoleName.trim(), color: newRoleColor, permissions: { sendMessages: true } }),
+                        body: JSON.stringify({ name: newRoleName.trim(), color: newRoleColor, permissions: newRolePerms }),
                       });
                       if (!res.ok) throw new Error();
                       await queryClient.invalidateQueries({ queryKey: ["roles", selectedId] });
                       setNewRoleName("");
                       setNewRoleColor("#5865F2");
+                      setNewRolePerms({
+                        sendMessages: true,
+                        manageChannels: false,
+                        manageRoles: false,
+                        manageMessages: false,
+                        kickMembers: false,
+                        inviteMembers: false,
+                        inviteBot: false,
+                        postAnnouncements: false,
+                      });
                       toast({ title: "Role created!" });
                     } catch { toast({ title: "Failed to create role", variant: "destructive" }); }
                   }}
@@ -3239,15 +3678,15 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Permissions</p>
                     <ScrollArea className="h-44 pr-1">
                       <div className="space-y-1">
-                        {Object.entries(newRolePerms).map(([key, val]) => (
+                        {ROLE_PERMISSION_OPTIONS.map(({ key, label }) => (
                           <label key={key} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-[#2B2D31] cursor-pointer transition-colors">
                             <input
                               type="checkbox"
-                              checked={val}
+                              checked={newRolePerms[key] ?? false}
                               onChange={(e) => setNewRolePerms(p => ({ ...p, [key]: e.target.checked }))}
                               className="accent-[#5865F2]"
                             />
-                            <span className="text-xs font-semibold text-[#DCDDDE] capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
+                            <span className="text-xs font-semibold text-[#DCDDDE]">{label}</span>
                           </label>
                         ))}
                       </div>
@@ -3345,15 +3784,23 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             <div className="space-y-2">
               {members.map((m) => (
                 <div key={m.userId} className={`flex items-center gap-3 px-2 py-1.5 rounded-xl ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147]" : "bg-slate-50/50 border border-slate-100"}`}>
-                  <Avatar className={`w-7 h-7 border ${isGroupView ? "border-[#3F4147]" : "border-[#eae8f5]"}`}>
-                    <AvatarImage src={m.avatarUrl ?? undefined} />
-                    <AvatarFallback className={`text-[10px] font-bold ${isGroupView ? "bg-[#35373C] text-[#DCDDDE]" : "bg-slate-100 text-[#6366f1]"}`}>
-                      {getInitials(m.displayName ?? m.username)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <button type="button" onClick={() => openProfileFromMember(m)} className="shrink-0">
+                    <Avatar className={`w-7 h-7 border ${isGroupView ? "border-[#3F4147]" : "border-[#eae8f5]"}`}>
+                      <AvatarImage src={m.avatarUrl ?? undefined} />
+                      <AvatarFallback className={`text-[10px] font-bold ${isGroupView ? "bg-[#35373C] text-[#DCDDDE]" : "bg-slate-100 text-[#6366f1]"}`}>
+                        {getInitials(m.displayName ?? m.username)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                      <p className={`text-xs font-bold truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{m.displayName ?? m.username}</p>
+                      <button
+                        type="button"
+                        onClick={() => openProfileFromMember(m)}
+                        className={`text-xs font-bold truncate hover:underline cursor-pointer ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}
+                      >
+                        {m.displayName ?? m.username}
+                      </button>
                       {m.role && m.role !== "member" && (
                         <Badge className={`text-[8px] px-1 py-0 h-3 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[m.role] ?? ""}`}>
                           {ROLE_LABELS[m.role] ?? m.role}
@@ -3363,6 +3810,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest shrink-0">Owner</p>
                       )}
                     </div>
+                    <p className={`text-[10px] font-semibold truncate ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                      @{m.username}<span className={isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}>{(m as any).mentionTag ?? (m as any).userTag}</span>
+                    </p>
                     {m.roles && m.roles.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {m.roles.map((gr) => (
@@ -3595,6 +4045,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           </div>
 
           {/* Manage Roles Button */}
+          {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+            <button
+              onClick={() => { setShowEditGroup(false); setShowChannelEditor(true); }}
+              className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
+            >
+              <ListOrdered className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
+              Channel Editor
+              <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>{channels.length} channels</span>
+            </button>
+          )}
+
           {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageRoles) && (
             <button
               onClick={() => { setShowEditGroup(false); setShowRoles(true); }}
@@ -3875,6 +4336,249 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           username={me?.username ?? "user"}
         />
       )}
+
+      {/* User Profile Preview */}
+      <Dialog open={profilePreviewUser !== null} onOpenChange={(open) => { if (!open) setProfilePreviewUser(null); }}>
+        {profilePreviewUser && (() => {
+          const overviewUser = profileOverview?.user;
+          const localVoiceInfo = activeVoiceByUserId.get(profilePreviewUser.id);
+          const voiceChannel = profileOverview?.voiceChannel ?? (localVoiceInfo ? {
+            id: localVoiceInfo.channel.id,
+            name: localVoiceInfo.channel.name,
+            conversationId: localVoiceInfo.channel.conversationId,
+            conversationName: selectedConv?.name ?? null,
+          } : null);
+          const isOnline = overviewUser?.isOnline ?? false;
+          const displayName = overviewUser?.displayName || profilePreviewUser.displayName || profilePreviewUser.username;
+          const username = overviewUser?.username || profilePreviewUser.username;
+          const avatarUrl = overviewUser?.avatarUrl ?? profilePreviewUser.avatarUrl;
+          const role = overviewUser?.role ?? profilePreviewUser.role;
+          const bio = overviewUser?.bio?.trim();
+          const equippedBorder = overviewUser?.equippedBorder ?? profilePreviewUser.equippedBorder;
+          const groupRoles = profileOverview?.groupRoles?.length ? profileOverview.groupRoles : (profilePreviewUser.roles ?? []);
+          const mutualGroups = profileOverview?.mutualGroups ?? [];
+          return (
+            <DialogContent className="max-w-sm overflow-hidden rounded-2xl border border-[#3F4147] bg-[#1E1F22] p-0 text-white shadow-2xl">
+              <div className="h-24 bg-gradient-to-br from-[#5865F2] via-[#7C3AED] to-[#111827]" />
+              <div className="px-5 pb-5">
+                <div className="-mt-10 flex items-end justify-between">
+                  <div className={`rounded-full p-1 ${equippedBorder ?? "bg-[#1E1F22]"}`}>
+                    <div className="relative">
+                      <Avatar className="h-20 w-20 border-4 border-[#1E1F22]">
+                        <AvatarImage src={avatarUrl ?? undefined} />
+                        <AvatarFallback className="bg-[#2B2D31] text-xl font-black text-[#DCDDDE]">
+                          {getInitials(displayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className={`absolute bottom-2 right-2 h-5 w-5 rounded-full border-4 border-[#1E1F22] ${isOnline ? "bg-emerald-500" : "bg-zinc-500"}`} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <h3 className="text-xl font-black leading-tight text-white">{displayName}</h3>
+                  <p className="text-xs font-bold text-[#B5BAC1]">@{username}</p>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {role && role !== "member" && (
+                    <Badge className={`h-5 rounded-md px-2 text-[10px] font-bold ${ROLE_BADGE_CLASSES[role] ?? ""}`}>
+                      {ROLE_LABELS[role] ?? role}
+                    </Badge>
+                  )}
+                </div>
+
+                {groupRoles.length > 0 && (
+                  <div className="mt-2 rounded-lg border border-[#3F4147] bg-[#2B2D31] px-3 py-2">
+                    <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-[#B5BAC1]">Group Roles</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {groupRoles.map((role) => (
+                        <span
+                          key={`group-role-${role.id}`}
+                          className="rounded-md border px-2 py-0.5 text-[10px] font-bold"
+                          style={{
+                            backgroundColor: `${role.color}22`,
+                            color: role.color,
+                            borderColor: `${role.color}55`,
+                          }}
+                        >
+                          {role.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 rounded-xl border border-[#3F4147] bg-[#2B2D31] p-3">
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-[#B5BAC1]">Bio</p>
+                  <p className={`whitespace-pre-wrap text-xs font-semibold leading-relaxed ${bio ? "text-[#DCDDDE]" : "text-[#949BA4]"}`}>
+                    {bio || "No bio yet."}
+                  </p>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-[#3F4147] bg-[#2B2D31] p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#B5BAC1]">
+                      {isOnline ? "Online" : "Offline"}
+                    </span>
+                    <span className={`h-2.5 w-2.5 rounded-full ${isOnline ? "bg-emerald-500 shadow-md shadow-emerald-500/40" : "bg-zinc-500"}`} />
+                  </div>
+                  <p className="mb-3 text-[11px] font-semibold text-[#949BA4]">
+                    {isOnline ? "Currently browsing Arcadia" : formatLastSeen(overviewUser?.lastSeenAt)}
+                  </p>
+
+                  {voiceChannel ? (
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#B5BAC1]">In voice</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Volume2 className="h-4 w-4 shrink-0 text-[#B5BAC1]" />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-extrabold text-[#DCDDDE]">{voiceChannel.name}</p>
+                            <p className="text-[11px] font-semibold text-[#949BA4]">
+                              in {voiceChannel.conversationName ?? "this group"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        className="h-9 w-full rounded-lg bg-[#5865F2] text-xs font-bold text-white hover:bg-[#4752C4]"
+                        onClick={() => {
+                          setProfilePreviewUser(null);
+                          setSelectedId(voiceChannel.conversationId);
+                          setSelectedChannelId(voiceChannel.id);
+                        }}
+                      >
+                        Open Voice
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-xs font-semibold text-[#949BA4]">Not connected to a voice channel.</p>
+                  )}
+                </div>
+
+                <div className="mt-3 rounded-xl border border-[#3F4147] bg-[#2B2D31] p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#B5BAC1]">Mutual Groups</p>
+                    <span className="text-[10px] font-black text-[#949BA4]">{mutualGroups.length}</span>
+                  </div>
+                  {mutualGroups.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {mutualGroups.slice(0, 4).map((group) => (
+                        <button
+                          key={group.id}
+                          type="button"
+                          onClick={() => {
+                            setProfilePreviewUser(null);
+                            setSelectedId(group.id);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[#35373C]"
+                        >
+                          <Avatar className="h-6 w-6 border border-[#3F4147]">
+                            <AvatarImage src={group.iconUrl ?? undefined} />
+                            <AvatarFallback className="bg-[#35373C] text-[9px] font-black text-[#DCDDDE]">
+                              {getInitials(group.name ?? "Group")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="min-w-0 flex-1 truncate text-xs font-bold text-[#DCDDDE]">
+                            {group.name ?? "Unnamed Group"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-semibold text-[#949BA4]">No shared groups.</p>
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          );
+        })()}
+      </Dialog>
+
+      {/* Channel Editor Dialog */}
+      <Dialog open={showChannelEditor} onOpenChange={setShowChannelEditor}>
+        <DialogContent className="max-w-lg bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-extrabold text-white flex items-center gap-2">
+              <ListOrdered className="w-4 h-4 text-[#5865F2]" /> Channel Editor
+            </DialogTitle>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[60vh] pr-2 mt-2">
+            <div className="space-y-4">
+              {channelEditorSections.length === 0 ? (
+                <div className="rounded-xl border border-[#3F4147] bg-[#2B2D31] px-4 py-8 text-center text-xs font-bold text-[#949BA4]">
+                  No channels
+                </div>
+              ) : (
+                channelEditorSections.map((section) => (
+                  <div key={section.key} className="space-y-1.5">
+                    <div className="px-1 text-[10px] font-black text-[#949BA4] uppercase tracking-widest">
+                      {section.label}
+                    </div>
+                    <div className="space-y-1">
+                      {section.channels.map((ch, index) => {
+                        const isMoving = movingChannelId === ch.id;
+                        const isFirst = index === 0;
+                        const isLast = index === section.channels.length - 1;
+                        return (
+                          <div
+                            key={ch.id}
+                            className="flex items-center gap-2 rounded-lg border border-[#3F4147] bg-[#2B2D31] px-2 py-2"
+                          >
+                            {ch.type === "voice" ? (
+                              <Volume2 className="w-4 h-4 shrink-0 text-[#949BA4]" />
+                            ) : ch.type === "announce" ? (
+                              <Megaphone className="w-4 h-4 shrink-0 text-[#949BA4]" />
+                            ) : (
+                              <Hash className="w-4 h-4 shrink-0 text-[#949BA4]" />
+                            )}
+                            <span className="min-w-0 flex-1 truncate text-xs font-bold text-[#DCDDDE]">
+                              {ch.name}
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                disabled={isFirst || movingChannelId !== null}
+                                onClick={() => handleMoveChannel(ch, -1)}
+                                title="Move Up"
+                                className="h-7 w-7 rounded-md text-[#DCDDDE] hover:bg-[#35373C] hover:text-white disabled:opacity-30"
+                              >
+                                <ArrowUp className={`w-3.5 h-3.5 ${isMoving ? "animate-pulse" : ""}`} />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                disabled={isLast || movingChannelId !== null}
+                                onClick={() => handleMoveChannel(ch, 1)}
+                                title="Move Down"
+                                className="h-7 w-7 rounded-md text-[#DCDDDE] hover:bg-[#35373C] hover:text-white disabled:opacity-30"
+                              >
+                                <ArrowDown className={`w-3.5 h-3.5 ${isMoving ? "animate-pulse" : ""}`} />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+
+          <div className="flex justify-end pt-3">
+            <Button
+              className="bg-[#5865F2] hover:bg-[#4752C4] font-bold text-xs rounded-xl"
+              onClick={() => setShowChannelEditor(false)}
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Channel Dialog */}
       <Dialog open={showEditChannelModal} onOpenChange={setShowEditChannelModal}>

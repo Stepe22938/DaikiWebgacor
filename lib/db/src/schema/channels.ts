@@ -14,7 +14,7 @@ export const channelsTable = pgTable("channels", {
   conversationId: integer("conversation_id").notNull().references(() => conversationsTable.id, { onDelete: "cascade" }),
   categoryId: integer("category_id").references(() => channelCategoriesTable.id, { onDelete: "set null" }),
   name: varchar("name", { length: 100 }).notNull(),
-  type: varchar("type", { length: 10 }).notNull().default("text"), // 'text' | 'voice'
+  type: varchar("type", { length: 10 }).notNull().default("text"), // 'text' | 'voice' | 'announce'
   position: integer("position").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

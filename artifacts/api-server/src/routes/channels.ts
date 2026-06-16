@@ -13,6 +13,8 @@ import { serializeDates } from "../lib/serialize";
 import { hasPermission } from "../lib/permissions";
 
 const router: IRouter = Router();
+const channelTypes = ["text", "voice", "announce"] as const;
+type ChannelType = (typeof channelTypes)[number];
 
 async function getDbUser(clerkId: string) {
   return db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, clerkId) });
@@ -131,11 +133,38 @@ router.get("/conversations/:id/channels", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
 
-  const channels = await db
+  let channels = await db
     .select()
     .from(channelsTable)
     .where(eq(channelsTable.conversationId, id))
     .orderBy(asc(channelsTable.position));
+
+  if (channels.length === 0) {
+    let [defaultCat] = await db
+      .select()
+      .from(channelCategoriesTable)
+      .where(eq(channelCategoriesTable.conversationId, id))
+      .orderBy(asc(channelCategoriesTable.position))
+      .limit(1);
+
+    if (!defaultCat) {
+      [defaultCat] = await db.insert(channelCategoriesTable).values({
+        conversationId: id,
+        name: "TEXT CHANNELS",
+        position: 0,
+      }).returning();
+    }
+
+    const [defaultChannel] = await db.insert(channelsTable).values({
+      conversationId: id,
+      categoryId: defaultCat.id,
+      name: "general",
+      type: "text",
+      position: 0,
+    }).returning();
+
+    channels = [defaultChannel];
+  }
 
   const voiceChannelIds = channels.filter(c => c.type === "voice").map(c => c.id);
   const channelsWithMembers = channels.map(channel => ({
@@ -150,6 +179,7 @@ router.get("/conversations/:id/channels", async (req, res): Promise<void> => {
       displayName: usersTable.displayName,
       avatarUrl: usersTable.avatarUrl,
       connectedVoiceChannelId: usersTable.connectedVoiceChannelId,
+      voiceJoinedAt: usersTable.voiceJoinedAt,
     })
     .from(usersTable)
     .where(inArray(usersTable.connectedVoiceChannelId, voiceChannelIds));
@@ -162,6 +192,7 @@ router.get("/conversations/:id/channels", async (req, res): Promise<void> => {
           username: u.username,
           displayName: u.displayName,
           avatarUrl: u.avatarUrl,
+          voiceJoinedAt: u.voiceJoinedAt,
         });
       }
     }
@@ -198,11 +229,16 @@ router.post("/conversations/:id/channels/:channelId/join", async (req, res): Pro
   }
 
   // Update user's current voice channel
+  const voiceJoinedAt = user.connectedVoiceChannelId === channelId && user.voiceJoinedAt ? user.voiceJoinedAt : new Date();
+
   await db.update(usersTable)
-    .set({ connectedVoiceChannelId: channelId })
+    .set({
+      connectedVoiceChannelId: channelId,
+      voiceJoinedAt,
+    })
     .where(eq(usersTable.id, user.id));
 
-  res.status(200).json({ success: true });
+  res.status(200).json({ success: true, voiceJoinedAt: voiceJoinedAt.toISOString() });
 });
 
 // POST /conversations/:id/channels/:channelId/leave - leave a voice channel
@@ -221,7 +257,7 @@ router.post("/conversations/:id/channels/:channelId/leave", async (req, res): Pr
   // Only clear if the user is currently in that channel
   if (user.connectedVoiceChannelId === channelId) {
     await db.update(usersTable)
-      .set({ connectedVoiceChannelId: null })
+      .set({ connectedVoiceChannelId: null, voiceJoinedAt: null })
       .where(eq(usersTable.id, user.id));
   }
 
@@ -245,7 +281,10 @@ router.post("/conversations/:id/channels", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Channel name is required" }); return;
   }
   if (name.length > 100) { res.status(400).json({ error: "Channel name too long" }); return; }
-  const channelType = type === "voice" ? "voice" : "text";
+  const channelType = (type ?? "text") as ChannelType;
+  if (!channelTypes.includes(channelType)) {
+    res.status(400).json({ error: "Invalid channel type" }); return;
+  }
 
   // Verify category if provided
   let validCategoryId: number | null = null;

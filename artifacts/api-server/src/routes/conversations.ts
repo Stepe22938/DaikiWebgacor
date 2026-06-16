@@ -19,6 +19,8 @@ import {
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 import { hasPermission } from "../lib/permissions";
+import { createAiChatCompletion, type AiChatMessage } from "../lib/aiProvider";
+import { generateFluxImage, isImageGenerationRequest, shouldAutoGenerateImageInAiDm } from "../lib/fluxImage";
 import { dispatchBotWebhooks } from "./bots";
 import {
   ListConversationsResponse,
@@ -59,6 +61,329 @@ async function ensureZaidanAiUser() {
       .returning();
   }
   return user;
+}
+
+function parseAiKickCommand(content: string) {
+  const normalized = content.toLowerCase();
+  if (!/\b(kick|keluarin|tendang|remove)\b/.test(normalized)) return null;
+
+  const commandIndex = normalized.search(/\b(kick|keluarin|tendang|remove)\b/);
+  const afterCommand = commandIndex >= 0 ? content.slice(commandIndex) : content;
+  const mentions = [...afterCommand.matchAll(/@([a-zA-Z0-9_][a-zA-Z0-9_.-]{1,60})(#[0-9]{3})?/g)]
+    .filter((match) => !["zaidanai", "ai", "akira", "metaai"].includes(match[1].toLowerCase()));
+  const mention = mentions[mentions.length - 1];
+  if (mention) {
+    const compactTag = mention[1].match(/^(.+?)([0-9]{3})$/);
+    return {
+      name: (compactTag?.[1] ?? mention[1]).toLowerCase(),
+      tag: mention[2]?.toUpperCase() ?? (compactTag ? `#${compactTag[2]}` : null),
+    };
+  }
+
+  const commandMatch = afterCommand.match(/\b(?:kick|keluarin|tendang|remove)\s+(?:si\s+)?@?([a-zA-Z0-9_][a-zA-Z0-9_.-]{1,60})(#[0-9]{3})?/i);
+  if (!commandMatch) return null;
+  const compactTag = commandMatch[1].match(/^(.+?)([0-9]{3})$/);
+  return {
+    name: (compactTag?.[1] ?? commandMatch[1]).toLowerCase(),
+    tag: commandMatch[2]?.toUpperCase() ?? (compactTag ? `#${compactTag[2]}` : null),
+  };
+}
+
+type AiMemberTarget = {
+  name: string;
+  tag: string | null;
+};
+
+function extractAiMentionTarget(content: string, commandPattern: RegExp): AiMemberTarget | null {
+  const normalized = content.toLowerCase();
+  const commandIndex = normalized.search(commandPattern);
+  const afterCommand = commandIndex >= 0 ? content.slice(commandIndex) : content;
+  const mentions = [...afterCommand.matchAll(/@([a-zA-Z0-9_][a-zA-Z0-9_.-]{1,60})(#[0-9]{3})?/g)]
+    .filter((match) => !["zaidanai", "ai", "akira", "metaai"].includes(match[1].toLowerCase()));
+  const mention = mentions[mentions.length - 1];
+  if (!mention) return null;
+
+  const compactTag = mention[1].match(/^(.+?)([0-9]{3})$/);
+  return {
+    name: (compactTag?.[1] ?? mention[1]).toLowerCase(),
+    tag: mention[2]?.toUpperCase() ?? (compactTag ? `#${compactTag[2]}` : null),
+  };
+}
+
+function cleanAiRoleName(value: string | undefined) {
+  return (value ?? "")
+    .replace(/@\S+/g, "")
+    .replace(/\b(di|ke|buat|untuk|aja|yak|ya|dong|cok|jir|jier|lah)\b.*$/i, "")
+    .replace(/[.,!?]+$/g, "")
+    .trim()
+    .slice(0, 50);
+}
+
+function parseAiSetRoleCommand(content: string) {
+  const normalized = content.toLowerCase();
+  const hasRoleIntent = /\b(set|kasih|beri|assign|jadiin|jadikan|ubah|ganti)\b/.test(normalized) && /\b(role|rolenya|jabatan|rank|staff|admin|mod)\b/.test(normalized);
+  if (!hasRoleIntent) return null;
+
+  const target = extractAiMentionTarget(content, /\b(set|kasih|beri|assign|jadiin|jadikan|ubah|ganti)\b/);
+  if (!target) return null;
+
+  const rolePatterns = [
+    /\brolenya\s+([a-zA-Z0-9 _-]{1,50})/i,
+    /\brole\s+(?:nya\s+)?([a-zA-Z0-9 _-]{1,50})/i,
+    /\bjadi(?:in|kan)?\s+(?:role\s+|rolenya\s+)?([a-zA-Z0-9 _-]{1,50})/i,
+    /\b(?:kasih|beri|assign)\s+(?:role\s+)?([a-zA-Z0-9 _-]{1,50})\s+(?:ke|buat|untuk)/i,
+  ];
+
+  for (const pattern of rolePatterns) {
+    const match = content.match(pattern);
+    const roleName = cleanAiRoleName(match?.[1]);
+    if (roleName) return { target, roleName };
+  }
+
+  return null;
+}
+
+function normalizeMemberName(value: string | null | undefined) {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function findConversationMemberTarget(conversationId: number, target: AiMemberTarget) {
+  const rows = await db
+    .select({
+      memberId: conversationMembersTable.id,
+      userId: usersTable.id,
+      username: usersTable.username,
+      userTag: usersTable.userTag,
+      displayName: usersTable.displayName,
+      joinedAt: conversationMembersTable.joinedAt,
+    })
+    .from(conversationMembersTable)
+    .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
+    .where(eq(conversationMembersTable.conversationId, conversationId))
+    .orderBy(asc(conversationMembersTable.joinedAt), asc(conversationMembersTable.id));
+
+  const nameCounts = new Map<string, number>();
+  const possibleMembers = rows.map((member) => {
+    const key = normalizeMemberName(member.username);
+    const next = (nameCounts.get(key) ?? 0) + 1;
+    nameCounts.set(key, next);
+    return {
+      ...member,
+      mentionTag: `#${String(next).padStart(3, "0")}`,
+    };
+  });
+
+  return possibleMembers.filter((member) => {
+    const nameMatches =
+      normalizeMemberName(member.username) === target.name ||
+      normalizeMemberName(member.displayName) === target.name;
+    const tagMatches = !target.tag || member.userTag.toUpperCase() === target.tag || member.mentionTag === target.tag;
+    return nameMatches && tagMatches;
+  });
+}
+
+async function findGlobalUserTarget(target: AiMemberTarget) {
+  const users = await db
+    .select({
+      id: usersTable.id,
+      username: usersTable.username,
+      userTag: usersTable.userTag,
+      displayName: usersTable.displayName,
+    })
+    .from(usersTable);
+
+  return users.find((user) => {
+    const nameMatches =
+      normalizeMemberName(user.username) === target.name ||
+      normalizeMemberName(user.displayName) === target.name;
+    const tagMatches = !target.tag || user.userTag.toUpperCase() === target.tag;
+    return nameMatches && tagMatches;
+  });
+}
+
+async function sendAiSystemMessage(conversationId: number, channelId: number | null, aiUserId: number, content: string) {
+  await db.insert(messagesTable).values({
+    conversationId,
+    channelId,
+    senderId: aiUserId,
+    content,
+  });
+  await db.update(conversationsTable)
+    .set({ updatedAt: new Date() })
+    .where(eq(conversationsTable.id, conversationId));
+}
+
+async function handleAiAdminCommand(
+  conversationId: number,
+  channelId: number | null,
+  requesterId: number,
+  content: string,
+  convType: string,
+  aiUserId: number,
+) {
+  if (convType !== "group") return false;
+
+  const kickTarget = parseAiKickCommand(content);
+  const roleCommand = parseAiSetRoleCommand(content);
+  if (!kickTarget && !roleCommand) return false;
+
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, conversationId) });
+  if (!conv) return true;
+
+  const requester = await db.query.usersTable.findFirst({ where: eq(usersTable.id, requesterId) });
+  const requesterName = requester?.username ?? "user";
+
+  if (roleCommand) {
+    const canManageRoles = conv.ownerId === requesterId || await hasPermission(conversationId, requesterId, "manageRoles");
+    if (!canManageRoles) {
+      await sendAiSystemMessage(
+        conversationId,
+        channelId,
+        aiUserId,
+        `Maaf Kak @${requesterName}, command role ditolak. Kamu belum punya permission Manage Roles di group ini.`,
+      );
+      return true;
+    }
+
+    const matchedMembers = await findConversationMemberTarget(conversationId, roleCommand.target);
+    if (matchedMembers.length > 1 && !roleCommand.target.tag) {
+      const choices = matchedMembers
+        .map((member) => `@${member.username}${member.userTag}${member.displayName ? ` (${member.displayName})` : ""}`)
+        .join(", ");
+      await sendAiSystemMessage(
+        conversationId,
+        channelId,
+        aiUserId,
+        `Ada beberapa member bernama @${roleCommand.target.name}, Kak @${requesterName}. Pilih pakai tag: ${choices}`,
+      );
+      return true;
+    }
+
+    const targetMember = matchedMembers[0];
+    if (!targetMember) {
+      const globalUser = await findGlobalUserTarget(roleCommand.target);
+      await sendAiSystemMessage(
+        conversationId,
+        channelId,
+        aiUserId,
+        globalUser
+          ? `@${globalUser.username}${globalUser.userTag} ada, Kak @${requesterName}, tapi dia bukan member group ini. Add lagi dulu baru bisa dikasih role ${roleCommand.roleName}.`
+          : `Aku nggak nemu member @${roleCommand.target.name}${roleCommand.target.tag ?? ""} di group ini, Kak @${requesterName}.`,
+      );
+      return true;
+    }
+
+    const groupRoles = await db
+      .select({
+        id: rolesTable.id,
+        name: rolesTable.name,
+      })
+      .from(rolesTable)
+      .where(eq(rolesTable.conversationId, conversationId));
+    const targetRole = groupRoles.find((role) => normalizeMemberName(role.name) === normalizeMemberName(roleCommand.roleName));
+    if (!targetRole) {
+      await sendAiSystemMessage(
+        conversationId,
+        channelId,
+        aiUserId,
+        `Role "${roleCommand.roleName}" belum ada di group ini, Kak @${requesterName}.`,
+      );
+      return true;
+    }
+
+    await db.insert(memberRolesTable)
+      .values({
+        conversationMemberId: targetMember.memberId,
+        roleId: targetRole.id,
+      })
+      .onConflictDoNothing();
+
+    await sendAiSystemMessage(
+      conversationId,
+      channelId,
+      aiUserId,
+      `Siap Kak @${requesterName}, @${targetMember.username}${targetMember.userTag} sekarang punya role ${targetRole.name}.`,
+    );
+    return true;
+  }
+
+  const target = kickTarget;
+  if (!target) return false;
+
+  const canKick = conv.ownerId === requesterId || await hasPermission(conversationId, requesterId, "kickMembers");
+  if (!canKick) {
+    await sendAiSystemMessage(
+      conversationId,
+      channelId,
+      aiUserId,
+      `Maaf Kak @${requesterName}, command kick ditolak. Kamu belum punya permission Kick Members di group ini.`,
+    );
+    return true;
+  }
+
+  const matchedMembers = await findConversationMemberTarget(conversationId, target);
+
+  if (matchedMembers.length > 1 && !target.tag) {
+    const choices = matchedMembers
+      .map((member) => `@${member.username}${member.userTag}${member.displayName ? ` (${member.displayName})` : ""}`)
+      .join(", ");
+    await sendAiSystemMessage(
+      conversationId,
+      channelId,
+      aiUserId,
+      `Ada beberapa member bernama @${target.name}, Kak @${requesterName}. Pilih pakai tag: ${choices}`,
+    );
+    return true;
+  }
+
+  const targetMember = matchedMembers[0];
+
+  if (!targetMember) {
+    const globalUser = await findGlobalUserTarget(target);
+    await sendAiSystemMessage(
+      conversationId,
+      channelId,
+      aiUserId,
+      globalUser
+        ? `@${globalUser.username}${globalUser.userTag} ada, Kak @${requesterName}, tapi dia bukan member group ini.`
+        : `Aku nggak nemu member @${target.name}${target.tag ?? ""} di group ini, Kak @${requesterName}.`,
+    );
+    return true;
+  }
+
+  if (targetMember.userId === conv.ownerId) {
+    await sendAiSystemMessage(
+      conversationId,
+      channelId,
+      aiUserId,
+      `Command kick ditolak, Kak @${requesterName}. Owner group nggak bisa dikick.`,
+    );
+    return true;
+  }
+
+  if (targetMember.userId === requesterId) {
+    await sendAiSystemMessage(
+      conversationId,
+      channelId,
+      aiUserId,
+      `Kak @${requesterName}, kamu nggak perlu pakai aku buat kick diri sendiri.`,
+    );
+    return true;
+  }
+
+  await db.delete(conversationMembersTable)
+    .where(and(
+      eq(conversationMembersTable.conversationId, conversationId),
+      eq(conversationMembersTable.userId, targetMember.userId),
+    ));
+
+  await sendAiSystemMessage(
+    conversationId,
+    channelId,
+    aiUserId,
+    `Siap Kak @${requesterName}, @${targetMember.username}${targetMember.userTag} sudah aku kick dari group ini.`,
+  );
+  return true;
 }
 
 // === CURRENCY EXCHANGE RATES ===
@@ -105,7 +430,8 @@ async function generateAiResponse(
   userDbId: number,
   userMessageContent: string,
   convType: string,
-  channelId: number | null = null
+  channelId: number | null = null,
+  options: { forceImageMode?: boolean } = {},
 ) {
   const aiUser = await ensureZaidanAiUser();
   if (!aiUser) return;
@@ -119,6 +445,41 @@ async function generateAiResponse(
       conversationId,
       userId: aiUser.id
     }).onConflictDoNothing();
+  }
+
+  if (await handleAiAdminCommand(conversationId, channelId, userDbId, userMessageContent, convType, aiUser.id)) {
+    return;
+  }
+
+  if (isImageGenerationRequest(userMessageContent) || options.forceImageMode) {
+    const replyUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userDbId) });
+    const replyUsername = replyUser?.username || "user";
+    try {
+      const { prompt, imageUrl } = await generateFluxImage(userMessageContent);
+
+      await db.insert(messagesTable).values({
+        conversationId,
+        channelId,
+        senderId: aiUser.id,
+        content: `Nih Kak @${replyUsername}, aku bikinin pakai Flux AI: ${prompt}`,
+        imageUrl,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown Flux AI error";
+      await db.insert(messagesTable).values({
+        conversationId,
+        channelId,
+        senderId: aiUser.id,
+        content: `Maaf Kak @${replyUsername}, Flux AI lagi gagal bikin gambar: ${errorMessage.slice(0, 220)}`,
+      });
+    }
+
+    await db
+      .update(conversationsTable)
+      .set({ updatedAt: new Date() })
+      .where(eq(conversationsTable.id, conversationId));
+
+    return;
   }
 
   // Get last 10 messages for history context
@@ -219,6 +580,11 @@ SELF-LEARNING:
 - Gunakan pengetahuan yang sudah kamu pelajari dari sesi sebelumnya.
 - Kamu selalu update tentang tren dan info terbaru di 2026.
 
+KEMAMPUAN GAMBAR:
+- Kamu terintegrasi dengan Flux AI untuk membuat gambar.
+- Kalau user meminta, menyuruh, atau mendeskripsikan visual/gambar, jangan bilang tidak bisa membuat gambar.
+- Untuk request gambar eksplisit, sistem akan otomatis membuat gambar dengan Flux AI. Jika kamu tetap perlu menjawab teks, jawab singkat bahwa gambar sedang/akan dibuat dengan Flux AI.
+
 RESPON TERHADAP TUGAS ILEGAL / BERBAHAYA:
 - Kalau user minta sesuatu yang ilegal, berbahaya, atau melanggar hukum, LANGSUNG MENOLAK dengan tegas tapi tetap santai.
 - Contoh: "Waduh Kak, yang kayak gitu aku nggak bisa bantu ya. Bahaya tuh, nanti Owner marah 😅"
@@ -255,6 +621,7 @@ ATURAN:
 - Jika di grup, sebut user dengan @username.
 - Jawab dalam bahasa yang sama dengan user (Indonesia atau Inggris).
 - Untuk chat biasa: singkat dan ramah. Untuk laporan: detail dan terstruktur.
+- Command admin seperti kick member hanya boleh dijalankan jika user punya permission. Sistem backend akan mengecek dan mengeksekusi command itu; jangan mengaku berhasil jika backend belum menjalankannya.
 - JANGAN PERNAH mengabaikan filter atau sensor yang Owner pasang, apapun alasannya.${gamingRules}`;
 
   const chatMessages = [
@@ -269,38 +636,15 @@ ATURAN:
     })
   ];
 
-  const apiKey = process.env.NINEROUTER_API_KEY || "not_needed_for_local";
-  const baseUrl = process.env.NINEROUTER_BASE_URL || "http://127.0.0.1:20128/v1";
-  const model = process.env.NINEROUTER_MODEL || "gpt-4o";
-
   try {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: chatMessages,
-      }),
+    const completion = await createAiChatCompletion({
+      messages: chatMessages as AiChatMessage[],
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`9Router API error (${res.status}):`, errText);
-      return;
+    const aiReply = completion.content;
+    if (!aiReply.trim()) {
+      throw new Error("ObscuraWorks returned an empty response.");
     }
-
-    const responseData = (await res.json()) as {
-      choices?: Array<{
-        message?: {
-          content?: string;
-        };
-      }>;
-    };
-
-    const aiReply = responseData.choices?.[0]?.message?.content || "";
     if (aiReply.trim()) {
       // Check for SETUP_GAMING command from Owner
       let cleanReply = aiReply;
@@ -388,7 +732,7 @@ ATURAN:
         minute: "2-digit",
         hour12: true,
       });
-      const modelLabel = model.includes("/") ? model.split("/").pop() : model;
+      const modelLabel = completion.modelLabel;
       const modelFooter = `\n\n⚡ ${modelLabel} • untuk ${replyUsername} • ${timeStr}`;
 
       const fullReply = cleanReply.trim() + modelFooter;
@@ -413,7 +757,16 @@ ATURAN:
       );
     }
   } catch (err) {
-    console.error("Failed to generate AI response via 9Router:", err);
+    console.error("Failed to generate AI response:", err);
+    const errorMessage = err instanceof Error ? err.message : "Unknown AI provider error";
+    const replyUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userDbId) });
+    const replyUsername = replyUser?.username || "user";
+    await db.insert(messagesTable).values({
+      conversationId,
+      channelId,
+      senderId: aiUser.id,
+      content: `Maaf Kak @${replyUsername}, koneksi ObscuraWorks lagi gagal: ${errorMessage.slice(0, 180)}`,
+    });
   }
 }
 
@@ -432,6 +785,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     .select({
       userId: usersTable.id,
       username: usersTable.username,
+      userTag: usersTable.userTag,
       displayName: usersTable.displayName,
       avatarUrl: usersTable.avatarUrl,
       role: usersTable.role,
@@ -808,6 +1162,11 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       senderId: messagesTable.senderId,
       content: messagesTable.content,
       imageUrl: messagesTable.imageUrl,
+      attachmentDriveFileId: messagesTable.attachmentDriveFileId,
+      attachmentUrl: messagesTable.attachmentUrl,
+      attachmentName: messagesTable.attachmentName,
+      attachmentMime: messagesTable.attachmentMime,
+      attachmentSize: messagesTable.attachmentSize,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
       senderUsername: usersTable.username,
@@ -888,6 +1247,11 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
       senderId: user.id,
       content: parsed.data.content ?? "",
       imageUrl: parsed.data.imageUrl ?? null,
+      attachmentDriveFileId: parsed.data.attachmentDriveFileId ?? null,
+      attachmentUrl: parsed.data.attachmentUrl ?? null,
+      attachmentName: parsed.data.attachmentName ?? null,
+      attachmentMime: parsed.data.attachmentMime ?? null,
+      attachmentSize: parsed.data.attachmentSize ?? null,
     })
     .returning();
 
@@ -920,7 +1284,8 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
                        parsed.data.content?.toLowerCase().includes("@ai");
 
     if (isDmWithAi || mentionsAi) {
-      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type, null).catch((err) => {
+      const forceImageMode = !!isDmWithAi && shouldAutoGenerateImageInAiDm(parsed.data.content ?? "");
+      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type, null, { forceImageMode }).catch((err) => {
         console.error("Failed to generate AI response:", err);
       });
     }
@@ -996,6 +1361,11 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
       senderId: messagesTable.senderId,
       content: messagesTable.content,
       imageUrl: messagesTable.imageUrl,
+      attachmentDriveFileId: messagesTable.attachmentDriveFileId,
+      attachmentUrl: messagesTable.attachmentUrl,
+      attachmentName: messagesTable.attachmentName,
+      attachmentMime: messagesTable.attachmentMime,
+      attachmentSize: messagesTable.attachmentSize,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
       senderUsername: usersTable.username,
@@ -1087,6 +1457,11 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
       senderId: user.id,
       content: parsed.data.content ?? "",
       imageUrl: parsed.data.imageUrl ?? null,
+      attachmentDriveFileId: parsed.data.attachmentDriveFileId ?? null,
+      attachmentUrl: parsed.data.attachmentUrl ?? null,
+      attachmentName: parsed.data.attachmentName ?? null,
+      attachmentMime: parsed.data.attachmentMime ?? null,
+      attachmentSize: parsed.data.attachmentSize ?? null,
     })
     .returning();
 
@@ -1180,6 +1555,7 @@ router.get("/conversations/:id/members", async (req, res): Promise<void> => {
       id: conversationMembersTable.id,
       userId: usersTable.id,
       username: usersTable.username,
+      userTag: usersTable.userTag,
       displayName: usersTable.displayName,
       avatarUrl: usersTable.avatarUrl,
       role: usersTable.role,
@@ -1187,10 +1563,22 @@ router.get("/conversations/:id/members", async (req, res): Promise<void> => {
     })
     .from(conversationMembersTable)
     .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
-    .where(eq(conversationMembersTable.conversationId, id));
+    .where(eq(conversationMembersTable.conversationId, id))
+    .orderBy(asc(conversationMembersTable.joinedAt), asc(conversationMembersTable.id));
+
+  const mentionNameCounts = new Map<string, number>();
+  const rowsWithMentionTags = rows.map((row) => {
+    const key = normalizeMemberName(row.username);
+    const next = (mentionNameCounts.get(key) ?? 0) + 1;
+    mentionNameCounts.set(key, next);
+    return {
+      ...row,
+      mentionTag: `#${String(next).padStart(3, "0")}`,
+    };
+  });
 
   const enrichedMembers = await Promise.all(
-    rows.map(async (row) => {
+    rowsWithMentionTags.map(async (row) => {
       const memberRoles = await db
         .select({
           id: rolesTable.id,
@@ -1321,9 +1709,10 @@ router.post("/conversations/zaidanai/voice", async (req, res): Promise<void> => 
   const user = await getDbUser(auth.userId);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-  const { message, history } = req.body as {
+  const { message, history, model } = req.body as {
     message?: string;
     history?: Array<{ role: string; content: string }>;
+    model?: string;
   };
 
   if (!message?.trim()) {
@@ -1359,30 +1748,16 @@ ATURAN:
     { role: "user" as const, content: message },
   ];
 
-  const apiKey = process.env.NINEROUTER_API_KEY || "not_needed_for_local";
-  const baseUrl = process.env.NINEROUTER_BASE_URL || "http://127.0.0.1:20128/v1";
-  const model = process.env.NINEROUTER_MODEL || "gpt-4o";
-
   try {
     // Step 1: Get AI response
     const startTime = Date.now();
-    const aiRes = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ model, messages: chatMessages, max_tokens: 150 }),
+    const completion = await createAiChatCompletion({
+      messages: chatMessages as AiChatMessage[],
+      model,
+      maxTokens: 150,
     });
-
-    if (!aiRes.ok) {
-      console.error(`Akira voice API error (${aiRes.status}):`, await aiRes.text());
-      res.status(502).json({ error: "AI service error" }); return;
-    }
-
-    const data = (await aiRes.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const reply = data.choices?.[0]?.message?.content?.trim() || "Maaf Kak, Akira nggak bisa denger. Coba ulangi ya~";
-    const modelLabel = model.includes("/") ? model.split("/").pop() : model;
+    const reply = completion.content || "Maaf Kak, Akira nggak bisa denger. Coba ulangi ya~";
+    const modelLabel = completion.modelLabel;
     const llmTime = Date.now() - startTime;
 
     // Step 2: TTS synthesis (combined in same request)

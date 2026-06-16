@@ -14,6 +14,16 @@ export interface Message {
   content: string;
   /** @nullable */
   imageUrl?: string | null;
+  /** @nullable */
+  attachmentDriveFileId?: string | null;
+  /** @nullable */
+  attachmentUrl?: string | null;
+  /** @nullable */
+  attachmentName?: string | null;
+  /** @nullable */
+  attachmentMime?: string | null;
+  /** @nullable */
+  attachmentSize?: number | null;
   createdAt: string;
   /** @nullable */
   updatedAt?: Date | null;

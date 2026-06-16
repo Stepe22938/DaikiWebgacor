@@ -11,6 +11,8 @@ export interface ConversationMemberInfo {
   id?: number;
   userId: number;
   username: string;
+  userTag: string;
+  mentionTag: string;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */

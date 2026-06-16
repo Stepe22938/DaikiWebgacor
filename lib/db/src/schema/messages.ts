@@ -10,6 +10,11 @@ export const messagesTable = pgTable("messages", {
   senderId: integer("sender_id").references(() => usersTable.id, { onDelete: "set null" }),
   content: text("content").notNull(),
   imageUrl: text("image_url"),
+  attachmentDriveFileId: text("attachment_drive_file_id"),
+  attachmentUrl: text("attachment_url"),
+  attachmentName: text("attachment_name"),
+  attachmentMime: text("attachment_mime"),
+  attachmentSize: integer("attachment_size"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [index("messages_conv_idx").on(t.conversationId, t.createdAt)]);

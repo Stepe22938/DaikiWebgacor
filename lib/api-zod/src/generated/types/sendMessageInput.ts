@@ -13,4 +13,9 @@ export interface SendMessageInput {
      */
   content?: string;
   imageUrl?: string;
+  attachmentDriveFileId?: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentMime?: string;
+  attachmentSize?: number;
 }

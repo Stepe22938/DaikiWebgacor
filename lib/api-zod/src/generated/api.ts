@@ -886,6 +886,11 @@ export const ListMessagesResponseItem = zod.object({
   "senderId": zod.number().nullish(),
   "content": zod.string(),
   "imageUrl": zod.string().nullish(),
+  "attachmentDriveFileId": zod.string().nullish(),
+  "attachmentUrl": zod.string().nullish(),
+  "attachmentName": zod.string().nullish(),
+  "attachmentMime": zod.string().nullish(),
+  "attachmentSize": zod.number().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.coerce.date().nullish(),
   "senderUsername": zod.string().nullish(),
@@ -910,7 +915,12 @@ export const sendMessageBodyContentMax = 4000;
 
 export const SendMessageBody = zod.object({
   "content": zod.string().min(1).max(sendMessageBodyContentMax).optional(),
-  "imageUrl": zod.string().optional()
+  "imageUrl": zod.string().optional(),
+  "attachmentDriveFileId": zod.string().optional(),
+  "attachmentUrl": zod.string().optional(),
+  "attachmentName": zod.string().optional(),
+  "attachmentMime": zod.string().optional(),
+  "attachmentSize": zod.number().optional()
 })
 
 
@@ -934,6 +944,8 @@ export const ListConversationMembersResponseItem = zod.object({
   "id": zod.number().optional(),
   "userId": zod.number(),
   "username": zod.string(),
+  "userTag": zod.string(),
+  "mentionTag": zod.string(),
   "displayName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "role": zod.string().nullish(),
@@ -1660,5 +1672,3 @@ export const AdminUpdateCosmeticResponse = zod.object({
 export const AdminDeleteCosmeticParams = zod.object({
   "id": zod.coerce.number()
 })
-
-

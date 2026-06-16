@@ -1,7 +1,17 @@
 import { Router, type IRouter } from "express";
 import { clerkClient } from "@clerk/express";
 import { asc, eq, sql, and, inArray } from "drizzle-orm";
-import { db, usersTable, userCosmeticsTable, cosmeticsTable } from "@workspace/db";
+import {
+  db,
+  usersTable,
+  userCosmeticsTable,
+  cosmeticsTable,
+  conversationsTable,
+  conversationMembersTable,
+  channelsTable,
+  rolesTable,
+  memberRolesTable,
+} from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
 
@@ -65,6 +75,7 @@ import {
 
 const router: IRouter = Router();
 const DEV_WEBSITE_ROLE = "dev_website";
+const ONLINE_WINDOW_MS = 45_000;
 
 function canManageAdminTools(role: string | null | undefined) {
   return role === "admin" || role === DEV_WEBSITE_ROLE;
@@ -288,6 +299,141 @@ router.patch("/me", async (req, res): Promise<void> => {
 
   const updatedWithCosmetics = await attachEquippedCosmeticsToSingle(updated);
   res.json(UpdateMeResponse.parse(serializeDates(updatedWithCosmetics)));
+});
+
+router.post("/presence/heartbeat", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const now = new Date();
+  const [updated] = await db
+    .update(usersTable)
+    .set({ lastSeenAt: now, updatedAt: now })
+    .where(eq(usersTable.clerkId, auth.userId))
+    .returning({
+      id: usersTable.id,
+      lastSeenAt: usersTable.lastSeenAt,
+    });
+
+  if (!updated) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  res.json(serializeDates({ ...updated, isOnline: true }));
+});
+
+router.get("/users/:id/overview", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const currentUser = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!currentUser) {
+    res.status(404).json({ error: "Current user not found" });
+    return;
+  }
+
+  const targetId = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(targetId)) {
+    res.status(400).json({ error: "Invalid user ID" });
+    return;
+  }
+  const requestedConversationIdRaw = typeof req.query.conversationId === "string" ? Number.parseInt(req.query.conversationId, 10) : null;
+
+  const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, targetId) });
+  if (!targetUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const currentMemberships = await db
+    .select({ conversationId: conversationMembersTable.conversationId })
+    .from(conversationMembersTable)
+    .where(eq(conversationMembersTable.userId, currentUser.id));
+  const currentConversationIds = currentMemberships.map((membership) => membership.conversationId);
+
+  const mutualGroups = currentConversationIds.length === 0 ? [] : await db
+    .select({
+      id: conversationsTable.id,
+      name: conversationsTable.name,
+      iconUrl: conversationsTable.iconUrl,
+      ownerId: conversationsTable.ownerId,
+    })
+    .from(conversationMembersTable)
+    .innerJoin(conversationsTable, eq(conversationMembersTable.conversationId, conversationsTable.id))
+    .where(and(
+      eq(conversationMembersTable.userId, targetUser.id),
+      inArray(conversationMembersTable.conversationId, currentConversationIds),
+      eq(conversationsTable.type, "group"),
+    ))
+    .orderBy(asc(conversationsTable.name));
+
+  const requestedConversationId =
+    requestedConversationIdRaw && Number.isFinite(requestedConversationIdRaw) && currentConversationIds.includes(requestedConversationIdRaw)
+      ? requestedConversationIdRaw
+      : null;
+  const targetConversationMember = requestedConversationId ? await db.query.conversationMembersTable.findFirst({
+    where: and(
+      eq(conversationMembersTable.conversationId, requestedConversationId),
+      eq(conversationMembersTable.userId, targetUser.id),
+    ),
+  }) : null;
+  const groupRoles = targetConversationMember ? await db
+    .select({
+      id: rolesTable.id,
+      name: rolesTable.name,
+      color: rolesTable.color,
+      position: rolesTable.position,
+    })
+    .from(memberRolesTable)
+    .innerJoin(rolesTable, eq(memberRolesTable.roleId, rolesTable.id))
+    .where(eq(memberRolesTable.conversationMemberId, targetConversationMember.id))
+    .orderBy(asc(rolesTable.position)) : [];
+
+  const voiceChannel = targetUser.connectedVoiceChannelId ? await db
+    .select({
+      id: channelsTable.id,
+      name: channelsTable.name,
+      conversationId: channelsTable.conversationId,
+      conversationName: conversationsTable.name,
+    })
+    .from(channelsTable)
+    .innerJoin(conversationsTable, eq(channelsTable.conversationId, conversationsTable.id))
+    .where(and(
+      eq(channelsTable.id, targetUser.connectedVoiceChannelId),
+      currentConversationIds.length > 0 ? inArray(channelsTable.conversationId, currentConversationIds) : sql`false`,
+    ))
+    .limit(1)
+    .then((rows) => rows[0] ?? null) : null;
+
+  const lastSeenAt = targetUser.lastSeenAt;
+  const isOnline = !!lastSeenAt && Date.now() - lastSeenAt.getTime() <= ONLINE_WINDOW_MS;
+  const userWithCosmetics = await attachEquippedCosmeticsToSingle(targetUser);
+
+  res.json(serializeDates({
+    user: {
+      id: userWithCosmetics.id,
+      username: userWithCosmetics.username,
+      displayName: userWithCosmetics.displayName,
+      avatarUrl: userWithCosmetics.avatarUrl,
+      role: userWithCosmetics.role,
+      bio: userWithCosmetics.bio,
+      lastSeenAt,
+      isOnline,
+      equippedBorder: userWithCosmetics.equippedBorder,
+      equippedBadge: userWithCosmetics.equippedBadge,
+      equippedBackground: userWithCosmetics.equippedBackground,
+    },
+    groupRoles,
+    voiceChannel,
+    mutualGroups,
+  }));
 });
 
 router.get("/users/switchable", async (req, res): Promise<void> => {
