@@ -18,6 +18,8 @@ export const UserRole = {
   staff: 'staff',
   dev: 'dev',
   dev_website: 'dev_website',
+  bot: 'bot',
+  ai: 'ai',
 } as const;
 
 export interface User {
@@ -64,6 +66,8 @@ export const UserRoleUpdateRole = {
   staff: 'staff',
   dev: 'dev',
   dev_website: 'dev_website',
+  bot: 'bot',
+  ai: 'ai',
 } as const;
 
 export interface UserRoleUpdate {
@@ -79,6 +83,8 @@ export const PublicUserRole = {
   staff: 'staff',
   dev: 'dev',
   dev_website: 'dev_website',
+  bot: 'bot',
+  ai: 'ai',
 } as const;
 
 export interface PublicUser {
@@ -134,6 +140,8 @@ export const AdminUserUpdateRole = {
   staff: 'staff',
   dev: 'dev',
   dev_website: 'dev_website',
+  bot: 'bot',
+  ai: 'ai',
 } as const;
 
 export interface AdminUserUpdate {

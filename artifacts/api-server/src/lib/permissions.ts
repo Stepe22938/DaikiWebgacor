@@ -8,7 +8,7 @@ import { eq, and } from "drizzle-orm";
 export async function hasPermission(
   conversationId: number,
   userId: number,
-  permission: "manageChannels" | "manageRoles" | "manageMessages" | "kickMembers" | "sendMessages" | "inviteMembers"
+  permission: "manageChannels" | "manageRoles" | "manageMessages" | "kickMembers" | "sendMessages" | "inviteMembers" | "inviteBot" | "postAnnouncements"
 ): Promise<boolean> {
   // 1. Fetch conversation to check owner
   const conv = await db.query.conversationsTable.findFirst({

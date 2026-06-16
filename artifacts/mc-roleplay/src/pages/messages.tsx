@@ -77,6 +77,9 @@ import {
   Settings,
   FolderPlus,
   Minimize2,
+  Cpu,
+  Key,
+  RefreshCw,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -93,7 +96,7 @@ interface Channel {
   conversationId: number;
   categoryId: number | null;
   name: string;
-  type: "text" | "voice";
+  type: "text" | "voice" | "announce";
   position: number;
   createdAt: string;
   members?: VoiceMember[];
@@ -130,6 +133,7 @@ const ROLE_LABELS: Record<string, string> = {
   dev: "Dev",
   dev_website: "Dev Website",
   ai: "Zaidan AI",
+  bot: "BOT",
 };
 
 const ROLE_BADGE_CLASSES: Record<string, string> = {
@@ -139,6 +143,7 @@ const ROLE_BADGE_CLASSES: Record<string, string> = {
   dev: "bg-emerald-50 text-emerald-600 border border-emerald-100",
   dev_website: "bg-fuchsia-50 text-fuchsia-600 border border-fuchsia-100",
   ai: "bg-blue-50 text-[#2563eb] border border-blue-100 font-extrabold tracking-wide",
+  bot: "bg-blue-50 text-[#5865f2] border border-blue-100 font-black tracking-wide",
 };
 
 function JitsiCall({
@@ -876,7 +881,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
-  const [newChannelType, setNewChannelType] = useState<"text" | "voice">("text");
+  const [newChannelType, setNewChannelType] = useState<"text" | "voice" | "announce">("text");
   const [newChannelCategoryId, setNewChannelCategoryId] = useState<number | null>(null);
   const [showCreateCategory, setShowCreateCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -891,6 +896,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     manageMessages: false,
     kickMembers: false,
     inviteMembers: false,
+    inviteBot: false,
+    postAnnouncements: false,
   });
   const [messageText, setMessageText] = useState("");
   const [showNewDm, setShowNewDm] = useState(false);
@@ -933,6 +940,21 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [copied, setCopied] = useState(false);
   const [aiTyping, setAiTyping] = useState(false);
   const [activeJoinedVoiceChannel, setActiveJoinedVoiceChannel] = useState<{ conversationId: number; channelId: number } | null>(null);
+
+  // Developer & Bot States
+  const [showDeveloperSettings, setShowDeveloperSettings] = useState(false);
+  const [developerTab, setDeveloperTab] = useState<"list" | "create" | "tutorial">("list");
+  const [botNameInput, setBotNameInput] = useState("");
+  const [botCategoryInput, setBotCategoryInput] = useState("General");
+  const [editingBot, setEditingBot] = useState<any | null>(null);
+  const [botWebhookInput, setBotWebhookInput] = useState("");
+  const [showInviteBotModal, setShowInviteBotModal] = useState(false);
+  const [visibleTokens, setVisibleTokens] = useState<Record<number, boolean>>({});
+  const [copiedTokenBotId, setCopiedTokenBotId] = useState<number | null>(null);
+
+  const [showCallChat, setShowCallChat] = useState(false);
+  const [callMessageText, setCallMessageText] = useState("");
+  const callChatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // If showCall becomes false, but we have an active joined voice channel, we leave it
@@ -1200,6 +1222,87 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     enabled: isGroup && selectedId !== null,
     refetchInterval: 10000,
   });
+
+  // Fetch active bots online in the system (for sidebar categories display)
+  const { data: activeBots = [] } = useQuery<any[]>({
+    queryKey: ["active-bots"],
+    queryFn: async () => {
+      const res = await fetch("/api/bots/active");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 3000,
+  });
+
+  // Fetch my bots for Developer Settings page
+  const { data: myBots = [], refetch: refetchMyBots } = useQuery<any[]>({
+    queryKey: ["my-bots"],
+    queryFn: async () => {
+      const res = await fetch("/api/bots");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: showDeveloperSettings,
+  });
+
+  // Fetch all bots in the system for inviting
+  const { data: systemBots = [], refetch: refetchSystemBots } = useQuery<any[]>({
+    queryKey: ["system-bots"],
+    queryFn: async () => {
+      const res = await fetch("/api/bots/system");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: showInviteBotModal,
+  });
+
+  // Fetch bots currently invited to this conversation/group
+  const { data: conversationBots = [], refetch: refetchConversationBots } = useQuery<any[]>({
+    queryKey: ["conversation-bots", selectedId],
+    queryFn: async () => {
+      if (!selectedId) return [];
+      const res = await fetch(`/api/conversations/${selectedId}/bots`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: selectedId !== null && isGroup,
+  });
+
+  // Fetch messages for the call chat independently so it doesn't get messed up if selectedId changes
+  const { data: callMessages = [] } = useQuery<Message[]>({
+    queryKey: ["call-messages", callContext?.conversationId, callContext?.channelId],
+    queryFn: async () => {
+      if (!callContext?.conversationId) return [];
+      if (callContext.channelId) {
+        const res = await fetch(`/api/conversations/${callContext.conversationId}/channels/${callContext.channelId}/messages`);
+        if (!res.ok) return [];
+        return res.json();
+      } else {
+        const res = await fetch(`/api/conversations/${callContext.conversationId}/messages`);
+        if (!res.ok) return [];
+        return res.json();
+      }
+    },
+    enabled: showCall && callContext !== null && callContext?.conversationId !== undefined,
+    refetchInterval: 2000,
+  });
+
+  useEffect(() => {
+    if (showCallChat && callChatEndRef.current) {
+      callChatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [showCallChat, callMessages]);
+
+  // Group active bots by category for the channels sidebar
+  const activeBotsByCategory = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    for (const bot of activeBots) {
+      const cat = bot.category || "General";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(bot);
+    }
+    return groups;
+  }, [activeBots]);
 
   const createDm = useCreateOrGetDm();
   const createGroup = useCreateGroup();
@@ -1487,6 +1590,44 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     }
   }
 
+  async function handleSendCallMessage() {
+    const text = callMessageText.trim();
+    if (!text) return;
+    if (!callContext?.conversationId) return;
+    const callConvId = callContext.conversationId;
+    const callChanId = callContext.channelId;
+    try {
+      const payload = { content: text };
+
+      if (callContext.channelId) {
+        // Channel-scoped message for groups
+        const res = await fetch(`/api/conversations/${callConvId}/channels/${callChanId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("Failed to send");
+        await queryClient.invalidateQueries({ queryKey: ["channel-messages", callConvId, callChanId] });
+        await queryClient.invalidateQueries({ queryKey: ["call-messages", callConvId, callChanId] });
+      } else {
+        // Regular DM message
+        await sendMessage.mutateAsync({ id: callConvId, data: payload });
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${callConvId}/messages`] });
+        await queryClient.invalidateQueries({ queryKey: ["call-messages", callConvId, callChanId] });
+      }
+      setCallMessageText("");
+      
+      // Auto scroll down call chat
+      setTimeout(() => {
+        if (callChatEndRef.current) {
+          callChatEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 100);
+    } catch {
+      toast({ title: "Failed to send message", variant: "destructive" });
+    }
+  }
+
   async function handleStartDm(targetUserId: number) {
     try {
       const conv = await createDm.mutateAsync({ data: { targetUserId } });
@@ -1693,6 +1834,12 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 >
                   <ShieldAlert className="w-4.5 h-4.5" /> Arcadia Credits
                 </Link>
+                <button
+                  onClick={() => setShowDeveloperSettings(true)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-55 hover:text-slate-900 transition-all text-left cursor-pointer"
+                >
+                  <Hammer className="w-4.5 h-4.5 text-[#6366f1]" /> Developer Settings
+                </button>
               </nav>
             </div>
           </div>
@@ -1824,6 +1971,12 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   >
                     <ShieldAlert className="w-4.5 h-4.5" /> Arcadia Credits
                   </Link>
+                  <button
+                    onClick={() => { setMobileSidebarOpen(false); setShowDeveloperSettings(true); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-55 hover:text-slate-900 transition-all text-left cursor-pointer"
+                  >
+                    <Hammer className="w-4.5 h-4.5 text-[#6366f1]" /> Developer Settings
+                  </button>
                 </div>
               </nav>
             </div>
@@ -1989,6 +2142,19 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 )}
               </div>
             </ScrollArea>
+
+            {/* Developer Settings Footer */}
+            <div className="p-3 border-t border-[#3F4147] bg-[#1E1F22] shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowDeveloperSettings(true)}
+                className="w-full flex items-center justify-center gap-2 h-9 rounded-xl text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+              >
+                <Hammer className="w-4 h-4 text-[#6366f1]" />
+                Developer Settings
+              </Button>
+            </div>
           </div>
 
           {/* Channel Sidebar (Groups only - Discord style) */}
@@ -2021,13 +2187,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 <div className="p-2 space-y-3">
                   {categories.length === 0 ? (
                     <>
-                      {channels.filter(c => c.type === "text" && !c.categoryId).map((ch) => (
+                      {channels.filter(c => (c.type === "text" || c.type === "announce") && !c.categoryId).map((ch) => (
                         <div key={ch.id} className="group relative flex items-center justify-between rounded-md">
                           <button onClick={() => setSelectedChannelId(ch.id)}
                             className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
                               selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
                             }`}>
-                            <Hash className="w-4 h-4 shrink-0 opacity-70" />
+                            {ch.type === "announce" ? (
+                              <Megaphone className="w-4 h-4 shrink-0 opacity-70" />
+                            ) : (
+                              <Hash className="w-4 h-4 shrink-0 opacity-70" />
+                            )}
                             <span className="truncate">{ch.name}</span>
                           </button>
                           {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
@@ -2088,7 +2258,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   ) : (
                     categories.map((cat) => {
                       const catChannels = channels.filter(c => c.categoryId === cat.id);
-                      const textChannels = catChannels.filter(c => c.type === "text");
+                      const textChannels = catChannels.filter(c => c.type === "text" || c.type === "announce");
                       const voiceChannels = catChannels.filter(c => c.type === "voice");
                       return (
                         <div key={cat.id}>
@@ -2119,7 +2289,11 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                                 className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
                                   selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
                                 }`}>
-                                <Hash className="w-4 h-4 shrink-0 opacity-70" />
+                                {ch.type === "announce" ? (
+                                  <Megaphone className="w-4 h-4 shrink-0 opacity-70" />
+                                ) : (
+                                  <Hash className="w-4 h-4 shrink-0 opacity-70" />
+                                )}
                                 <span className="truncate">{ch.name}</span>
                               </button>
                               {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
@@ -2223,6 +2397,29 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       ))}
                     </div>
                   )}
+                  {/* Active connected bots section */}
+                  {Object.keys(activeBotsByCategory).length > 0 && (
+                    <div className="pt-4 border-t border-[#3F4147] mt-4 space-y-3">
+                      <div className="px-1"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Bots</span></div>
+                      {Object.entries(activeBotsByCategory).map(([catName, botList]) => (
+                        <div key={catName} className="space-y-1">
+                          <span className="text-[9px] font-black text-[#949BA4] uppercase tracking-wider px-2">🤖 {catName}</span>
+                          {botList.map((bot) => (
+                            <div key={bot.id} className="flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-[#35373C]">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Avatar className="w-5.5 h-5.5 border border-[#3F4147] shrink-0">
+                                  <AvatarImage src={bot.avatarUrl ?? undefined} />
+                                  <AvatarFallback className="text-[8px] bg-slate-800 text-white font-extrabold">B</AvatarFallback>
+                                </Avatar>
+                                <span className="text-xs font-bold text-[#DCDDDE] truncate">{bot.name}</span>
+                              </div>
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 shadow-lg shadow-emerald-500/50" />
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
             </div>
@@ -2315,6 +2512,19 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                         title="Voice Call"
                       >
                         <Phone className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+                      </Button>
+                    )}
+                    {selectedConv.type === "group" && selectedChannel?.type === "voice" && (
+                      <Button
+                        size="sm"
+                        className="inline-flex items-center gap-1.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-extrabold text-xs px-3.5 py-1.5 rounded-xl transition-all shadow-md cursor-pointer mr-2.5"
+                        onClick={() => {
+                          if (selectedId && selectedChannel) {
+                            handleJoinVoice(selectedId, selectedChannel.id);
+                          }
+                        }}
+                      >
+                        <Volume2 className="w-4 h-4 text-white" /> Join Voice
                       </Button>
                     )}
                     {selectedConv.type === "group" && (
@@ -2422,125 +2632,134 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 </ScrollArea>
 
                 {/* Bottom Input Console */}
-                <div className={`px-2 sm:px-4 md:px-6 py-2 sm:py-3 pb-3 sm:pb-4 border-t shrink-0 ${isGroupView ? "border-[#3F4147] bg-[#1E1F22]" : "border-[#d8cec1] bg-[#f0e7dd]"}`}>
-                  {selectedChannel?.type === "voice" ? (
-                    /* Voice channel controls */
-                    <div className="flex flex-col items-center gap-3 py-4">
-                      <Volume2 className="w-8 h-8 text-[#5865F2]" />
-                      <p className="text-sm font-bold text-[#DCDDDE]">#{selectedChannel.name}</p>
-                      <p className="text-xs text-[#949BA4]">Voice Channel</p>
-                      <Button
-                        onClick={() => {
-                          if (selectedId && selectedChannel) {
-                            handleJoinVoice(selectedId, selectedChannel.id);
-                          }
-                        }}
-                        className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl font-bold px-8 shadow-md"
-                      >
-                        Join Voice
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                  {attachedImageUrl && (
-                    <div className="relative mb-2 ml-12 inline-block rounded-xl overflow-hidden border border-[#d7e4de] bg-white max-w-[132px] aspect-video group">
-                      <img src={attachedImageUrl} alt="Attachment preview" className="w-full h-full object-cover" />
-                      <button
-                        onClick={() => setAttachedImageUrl(null)}
-                        className="absolute top-1 right-1 bg-black/60 hover:bg-black text-white rounded-full w-6 h-6 flex items-center justify-center transition-colors"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
-                  <div className="flex items-end gap-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      ref={fileInputRef}
-                      onChange={handleImageUpload}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                      className={`hover:bg-opacity-70 transition-all shrink-0 rounded-full h-11 w-11 ${isGroupView ? "text-[#949BA4]" : "text-[#54656f]"}`}
-                      title="Attach image"
-                    >
-                      {uploading ? (
-                        <span className="h-4 w-4 rounded-full border-2 border-[#075e54]/20 border-t-[#075e54] animate-spin" />
-                      ) : (
-                        <Camera className="h-5 w-5" />
-                      )}
-                    </Button>
-                    <div className="relative flex-1">
-                      {/* Mention Autocomplete Popup */}
-                      {showMention && mentionMembers.length > 0 && (
-                        <div className={`absolute bottom-full left-0 right-0 mb-2 rounded-xl shadow-xl border overflow-hidden z-50 ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-white border-[#e2e8f0]"}`}>
-                          {mentionMembers.map((m, idx) => (
-                            <button
-                              key={m.userId || "all"}
-                              type="button"
-                              onClick={() => insertMention(m)}
-                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                                idx === mentionIndex
-                                  ? isGroupView ? "bg-[#404249] text-white" : "bg-[#f0f9ff] text-[#0369a1]"
-                                  : isGroupView ? "hover:bg-[#35373C] text-[#DCDDDE]" : "hover:bg-slate-50 text-[#18251f]"
-                              }`}
-                            >
-                              {m.username === "all" ? (
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center">
-                                  <span className="text-[10px] font-black text-white">ALL</span>
-                                </div>
-                              ) : (
-                                <img
-                                  src={m.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=64"}
-                                  alt={m.username}
-                                  className="w-8 h-8 rounded-full object-cover"
-                                />
-                              )}
-                              <div className="min-w-0">
-                                <p className="text-sm font-bold truncate">
-                                  {m.username === "all" ? "@all" : `@${m.username}`}
-                                </p>
-                                {m.displayName && m.username !== "all" && (
-                                  <p className="text-[11px] text-slate-400 truncate">{m.displayName}</p>
-                                )}
-                              </div>
-                            </button>
-                          ))}
-                          <div className={`px-4 py-1.5 border-t ${isGroupView ? "bg-[#1E1F22] border-[#3F4147]" : "bg-slate-50 border-slate-100"}`}>
-                            <p className={`text-[10px] font-medium ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                              ↑↓ navigate • Enter/Tab select • Esc close
-                            </p>
-                          </div>
+                {(() => {
+                  const isOwner = selectedConv?.ownerId === me?.id;
+                  const isGroup = selectedConv?.type === "group";
+                  const hasSendPermission = !isGroup || isOwner || myPerms?.permissions?.sendMessages;
+                  
+                  const canPostAnnounce = isOwner || myPerms?.permissions?.postAnnouncements;
+                  const isAnnounceChannel = selectedChannel?.type === "announce";
+                  const cannotChatInAnnounce = isAnnounceChannel && !canPostAnnounce;
+
+                  if (cannotChatInAnnounce) {
+                    return (
+                      <div className={`px-2 sm:px-4 md:px-6 py-4 border-t shrink-0 flex items-center justify-center text-xs font-bold gap-2 ${isGroupView ? "border-[#3F4147] bg-[#1E1F22] text-[#949BA4]" : "border-[#d8cec1] bg-[#f0e7dd] text-slate-500"}`}>
+                        <Megaphone className="w-4 h-4 text-amber-500 animate-pulse" />
+                        Only announcement posters can send messages in this channel.
+                      </div>
+                    );
+                  }
+
+                  if (!hasSendPermission) {
+                    return (
+                      <div className={`px-2 sm:px-4 md:px-6 py-4 border-t shrink-0 flex items-center justify-center text-xs font-bold gap-2 ${isGroupView ? "border-[#3F4147] bg-[#1E1F22] text-[#949BA4]" : "border-[#d8cec1] bg-[#f0e7dd] text-slate-500"}`}>
+                        <ShieldAlert className="w-4 h-4 text-red-500 animate-pulse" />
+                        You do not have permission to send messages in this group.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className={`px-2 sm:px-4 md:px-6 py-2 sm:py-3 pb-3 sm:pb-4 border-t shrink-0 ${isGroupView ? "border-[#3F4147] bg-[#1E1F22]" : "border-[#d8cec1] bg-[#f0e7dd]"}`}>
+                      {attachedImageUrl && (
+                        <div className="relative mb-2 ml-12 inline-block rounded-xl overflow-hidden border border-[#d7e4de] bg-white max-w-[132px] aspect-video group">
+                          <img src={attachedImageUrl} alt="Attachment preview" className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => setAttachedImageUrl(null)}
+                            className="absolute top-1 right-1 bg-black/60 hover:bg-black text-white rounded-full w-6 h-6 flex items-center justify-center transition-colors"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       )}
-                      <Textarea
-                        ref={textareaRef}
-                        rows={1}
-                        placeholder="Message"
-                        value={messageText}
-                        onChange={handleMessageChange}
-                        onKeyDown={handleMentionKeyDown}
-                        className={`min-h-11 max-h-32 resize-none border-0 focus-visible:ring-1 rounded-3xl px-4 py-3 text-[15px] font-medium shadow-sm ${isGroupView ? "bg-[#383A40] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2]" : "bg-white focus-visible:ring-[#25d366] text-[#18251f]"}`}
-                      />
+                      <div className="flex items-end gap-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          ref={fileInputRef}
+                          onChange={handleImageUpload}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploading}
+                          className={`hover:bg-opacity-70 transition-all shrink-0 rounded-full h-11 w-11 ${isGroupView ? "text-[#949BA4]" : "text-[#54656f]"}`}
+                          title="Attach image"
+                        >
+                          {uploading ? (
+                            <span className="h-4 w-4 rounded-full border-2 border-[#075e54]/20 border-t-[#075e54] animate-spin" />
+                          ) : (
+                            <Camera className="h-5 w-5" />
+                          )}
+                        </Button>
+                        <div className="relative flex-1">
+                          {/* Mention Autocomplete Popup */}
+                          {showMention && mentionMembers.length > 0 && (
+                            <div className={`absolute bottom-full left-0 right-0 mb-2 rounded-xl shadow-xl border overflow-hidden z-50 ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-white border-[#e2e8f0]"}`}>
+                              {mentionMembers.map((m, idx) => (
+                                <button
+                                  key={m.userId || "all"}
+                                  type="button"
+                                  onClick={() => insertMention(m)}
+                                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                                    idx === mentionIndex
+                                      ? isGroupView ? "bg-[#404249] text-white" : "bg-[#f0f9ff] text-[#0369a1]"
+                                      : isGroupView ? "hover:bg-[#35373C] text-[#DCDDDE]" : "hover:bg-slate-50 text-[#18251f]"
+                                  }`}
+                                >
+                                  {m.username === "all" ? (
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center">
+                                      <span className="text-[10px] font-black text-white">ALL</span>
+                                    </div>
+                                  ) : (
+                                    <img
+                                      src={m.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=64"}
+                                      alt={m.username}
+                                      className="w-8 h-8 rounded-full object-cover"
+                                    />
+                                  )}
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-bold truncate">
+                                      {m.username === "all" ? "@all" : `@${m.username}`}
+                                    </p>
+                                    {m.displayName && m.username !== "all" && (
+                                      <p className="text-[11px] text-slate-400 truncate">{m.displayName}</p>
+                                    )}
+                                  </div>
+                                </button>
+                              ))}
+                              <div className={`px-4 py-1.5 border-t ${isGroupView ? "bg-[#1E1F22] border-[#3F4147]" : "bg-slate-50 border-slate-100"}`}>
+                                <p className={`text-[10px] font-medium ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                                  ↑↓ navigate • Enter/Tab select • Esc close
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          <Textarea
+                            ref={textareaRef}
+                            rows={1}
+                            placeholder="Message"
+                            value={messageText}
+                            onChange={handleMessageChange}
+                            onKeyDown={handleMentionKeyDown}
+                            className={`min-h-11 max-h-32 resize-none border-0 focus-visible:ring-1 rounded-3xl px-4 py-3 text-[15px] font-medium shadow-sm ${isGroupView ? "bg-[#383A40] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2]" : "bg-white focus-visible:ring-[#25d366] text-[#18251f]"}`}
+                          />
+                        </div>
+                        <Button
+                          onClick={handleSend}
+                          disabled={(!messageText.trim() && !attachedImageUrl) || sendMessage.isPending || uploading}
+                          className={`${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] shadow-indigo-900/20" : "bg-[#00a884] hover:bg-[#008f72] shadow-emerald-900/10"} text-white rounded-full h-11 w-11 p-0 shrink-0 shadow-md`}
+                          title="Send"
+                        >
+                          <SendHorizontal className="h-5 w-5" />
+                        </Button>
+                      </div>
                     </div>
-                    <Button
-                      onClick={handleSend}
-                      disabled={(!messageText.trim() && !attachedImageUrl) || sendMessage.isPending || uploading}
-                      className={`${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] shadow-indigo-900/20" : "bg-[#00a884] hover:bg-[#008f72] shadow-emerald-900/10"} text-white rounded-full h-11 w-11 p-0 shrink-0 shadow-md`}
-                      title="Send"
-                    >
-                      <SendHorizontal className="h-5 w-5" />
-                    </Button>
-                  </div>
-                    </>
-                  )}
-                </div>
+                  );
+                })()}
               </>
             )}
           </div>
@@ -2791,19 +3010,27 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           <div className="flex gap-2 mb-4">
             <button
               onClick={() => setNewChannelType("text")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                 newChannelType === "text" ? "bg-[#5865F2] text-white" : "bg-[#2B2D31] text-[#949BA4] hover:bg-[#35373C]"
               }`}
             >
-              <Hash className="w-4 h-4" /> Text
+              <Hash className="w-3.5 h-3.5" /> Text
             </button>
             <button
               onClick={() => setNewChannelType("voice")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                 newChannelType === "voice" ? "bg-[#5865F2] text-white" : "bg-[#2B2D31] text-[#949BA4] hover:bg-[#35373C]"
               }`}
             >
-              <Volume2 className="w-4 h-4" /> Voice
+              <Volume2 className="w-3.5 h-3.5" /> Voice
+            </button>
+            <button
+              onClick={() => setNewChannelType("announce")}
+              className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                newChannelType === "announce" ? "bg-[#5865F2] text-white" : "bg-[#2B2D31] text-[#949BA4] hover:bg-[#35373C]"
+              }`}
+            >
+              <Megaphone className="w-3.5 h-3.5" /> Announce
             </button>
           </div>
           <Button
@@ -2910,6 +3137,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               manageMessages: false,
                               kickMembers: false,
                               inviteMembers: false,
+                              inviteBot: false,
+                              postAnnouncements: false,
                               ...(r.permissions as Record<string, boolean>),
                             });
                           }}
@@ -3246,6 +3475,22 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               ))}
             </div>
           </ScrollArea>
+          {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.inviteBot) && (
+            <div className="mb-4">
+              <Button
+                variant="outline"
+                size="sm"
+                className={`w-full text-xs font-bold rounded-xl py-2 px-3 flex items-center justify-center gap-2 border ${
+                  isGroupView
+                    ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]"
+                    : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => { setShowMembers(false); setShowInviteBotModal(true); }}
+              >
+                🤖 Invite Bot to Group
+              </Button>
+            </div>
+          )}
           {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.inviteMembers) && (
             <>
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-2">Add friends:</p>
@@ -3464,7 +3709,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               : "fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6"
           }`}
         >
-          <div className="w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden bg-white border border-[#eae8f5] rounded-3xl shadow-2xl transition-all duration-300">
+          <div className={`w-full ${showCallChat ? "max-w-6xl" : "max-w-4xl"} h-[80vh] flex flex-col overflow-hidden bg-white border border-[#eae8f5] rounded-3xl shadow-2xl transition-all duration-300`}>
             {/* Call Header */}
             <div className="px-5 py-4 border-b border-[#eae8f5] bg-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
@@ -3483,6 +3728,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               </div>
               
               <div className="flex items-center gap-2">
+                {/* Toggle Chat Button */}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={`h-9 w-9 rounded-full hover:bg-slate-100 ${showCallChat ? "text-[#6366f1] bg-violet-50 hover:bg-violet-100" : "text-slate-500 hover:text-slate-900"}`}
+                  onClick={() => setShowCallChat(!showCallChat)}
+                  title="Toggle Chat"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                </Button>
+
                 {/* Minimize Button */}
                 <Button
                   size="icon"
@@ -3496,24 +3752,117 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               </div>
             </div>
 
-            {/* Jitsi Component Container */}
-            <div className="flex-1 flex overflow-hidden p-4 min-h-0 bg-slate-50">
-              <JitsiCall
-                roomName={
-                  callContext.channelId
-                    ? `${slugify(callContext.conversationName)}-${slugify(callContext.channelName ?? "voice")}`
-                    : `arcadia-studio-dm-${slugify(callContext.conversationName)}-${String(callContext.conversationId).padStart(3, "0")}`
-                }
-                displayName={me?.displayName ?? me?.username ?? "Anonymous"}
-                avatarUrl={me?.avatarUrl}
-                audioOnly={callType === "voice"}
-                onClose={handleHangUp}
-                subject={
-                  callContext.channelId
-                    ? `${callContext.conversationName} - ${callContext.channelName}`
-                    : callContext.conversationName
-                }
-              />
+            {/* Jitsi Component Container with optional side chat */}
+            <div className="flex-1 flex overflow-hidden p-4 min-h-0 bg-slate-50 gap-4">
+              <div className="flex-1 flex min-h-0">
+                <JitsiCall
+                  roomName={
+                    callContext.channelId
+                      ? `${slugify(callContext.conversationName)}-${slugify(callContext.channelName ?? "voice")}`
+                      : `arcadia-studio-dm-${slugify(callContext.conversationName)}-${String(callContext.conversationId).padStart(3, "0")}`
+                  }
+                  displayName={me?.displayName ?? me?.username ?? "Anonymous"}
+                  avatarUrl={me?.avatarUrl}
+                  audioOnly={callType === "voice"}
+                  onClose={handleHangUp}
+                  subject={
+                    callContext.channelId
+                      ? `${callContext.conversationName} - ${callContext.channelName}`
+                      : callContext.conversationName
+                  }
+                />
+              </div>
+
+              {showCallChat && (
+                <div className="w-80 bg-white border border-[#eae8f5] rounded-2xl flex flex-col min-h-0 overflow-hidden shadow-sm shrink-0">
+                  {/* Chat Header */}
+                  <div className="px-4 py-3 border-b border-[#eae8f5] bg-slate-50 flex items-center justify-between shrink-0">
+                    <span className="text-xs font-black text-[#110e3d] uppercase tracking-wider flex items-center gap-1.5">
+                      <MessageSquare className="w-4 h-4 text-[#6366f1]" /> Call Chat
+                    </span>
+                    <button 
+                      onClick={() => setShowCallChat(false)}
+                      className="text-slate-400 hover:text-slate-700 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Messages List */}
+                  <ScrollArea className="flex-1 p-3 min-h-0 bg-slate-50/30">
+                    <div className="space-y-3">
+                      {callMessages.length === 0 ? (
+                        <div className="text-center text-[10px] text-slate-400 font-bold py-12">
+                          No messages yet. Send a message to start chatting!
+                        </div>
+                      ) : (
+                        callMessages.map((msg) => {
+                          const isOwn = msg.senderId === me?.id;
+                          const name = msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
+                          return (
+                            <div key={msg.id} className={`flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
+                              <span className="text-[9px] text-slate-400 font-bold mb-0.5 px-1">{name}</span>
+                              <div className={`max-w-[85%] rounded-xl px-3 py-1.5 text-xs ${
+                                isOwn 
+                                  ? "bg-[#6366f1] text-white rounded-tr-none" 
+                                  : "bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/50"
+                              }`}>
+                                <p className="break-all whitespace-pre-wrap">{msg.content}</p>
+                                {msg.imageUrl && (
+                                  <img src={msg.imageUrl} alt="attached" className="rounded-lg max-w-full mt-1.5 object-cover" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                      <div ref={callChatEndRef} />
+                    </div>
+                  </ScrollArea>
+
+                  {/* Input Form */}
+                  <div className="p-3 border-t border-[#eae8f5] bg-white shrink-0">
+                    {(() => {
+                      const isCallConvGroup = selectedConv?.id === callContext?.conversationId && selectedConv?.type === "group";
+                      const isCallGroupOwner = selectedConv?.id === callContext?.conversationId && selectedConv?.ownerId === me?.id;
+                      const hasCallSendPermission = !isCallConvGroup || isCallGroupOwner || myPerms?.permissions?.sendMessages;
+
+                      if (!hasCallSendPermission) {
+                        return (
+                          <div className="text-center text-[10px] text-red-500 font-bold py-2">
+                            You do not have permission to send messages.
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <form 
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            handleSendCallMessage();
+                          }}
+                          className="flex gap-2"
+                        >
+                          <Input
+                            placeholder="Type a message..."
+                            value={callMessageText}
+                            onChange={(e) => setCallMessageText(e.target.value)}
+                            className="h-8 rounded-lg text-xs"
+                          />
+                          <Button 
+                            type="submit" 
+                            size="icon" 
+                            className="h-8 w-8 bg-[#6366f1] hover:bg-indigo-700 text-white shrink-0 rounded-lg"
+                            disabled={!callMessageText.trim()}
+                          >
+                            <SendHorizontal className="h-4 w-4" />
+                          </Button>
+                        </form>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -3639,6 +3988,448 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               onClick={handleDeleteCategory}
             >
               Delete Category
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Developer & Bot Settings Dialog */}
+      <Dialog open={showDeveloperSettings} onOpenChange={setShowDeveloperSettings}>
+        <DialogContent className="max-w-3xl bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-6 text-white flex flex-col h-[85vh] max-h-[750px]">
+          <DialogHeader className="border-b border-[#3F4147] pb-3 shrink-0">
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-white">
+              <Cpu className="w-5 h-5 text-[#5865F2]" /> Developer Console & Bot Settings
+            </DialogTitle>
+            <DialogDescription className="text-xs font-bold text-[#949BA4]">
+              Build custom bots, configure webhooks, and migrate Discord/Telegram bots to your server.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Tabs Navigation */}
+          <div className="flex gap-2 border-b border-[#3F4147] py-2 shrink-0">
+            <button
+              onClick={() => setDeveloperTab("list")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                developerTab === "list" ? "bg-[#5865F2] text-white" : "text-[#949BA4] hover:text-white hover:bg-[#35373C]"
+              }`}
+            >
+              My Bots ({myBots.length})
+            </button>
+            <button
+              onClick={() => setDeveloperTab("create")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                developerTab === "create" ? "bg-[#5865F2] text-white" : "text-[#949BA4] hover:text-white hover:bg-[#35373C]"
+              }`}
+            >
+              Create Bot
+            </button>
+            <button
+              onClick={() => setDeveloperTab("tutorial")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                developerTab === "tutorial" ? "bg-[#5865F2] text-white" : "text-[#949BA4] hover:text-white hover:bg-[#35373C]"
+              }`}
+            >
+              📖 SDK & Migration Tutorial
+            </button>
+          </div>
+
+          {/* Tabs Content */}
+          <div className="flex-1 min-h-0 overflow-y-auto pt-4 pr-1">
+            {developerTab === "list" && (
+              <div className="space-y-4">
+                {myBots.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 space-y-2">
+                    <p className="text-sm font-bold">No bots created yet.</p>
+                    <p className="text-xs">Head over to the "Create Bot" tab to register your first bot!</p>
+                  </div>
+                ) : (
+                  myBots.map((bot: any) => (
+                    <div key={bot.id} className="bg-[#2B2D31] border border-[#3F4147] rounded-xl p-4 space-y-4 shadow-md">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="w-10 h-10 border border-[#3F4147]">
+                            <AvatarImage src={`https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(bot.name)}`} />
+                            <AvatarFallback className="bg-slate-800 text-white font-extrabold text-xs">B</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h4 className="text-sm font-extrabold text-white flex items-center gap-1.5">
+                              {bot.name}
+                              <span className="text-[9px] bg-[#5865F2]/20 text-[#5865F2] px-1 py-0 h-3.5 flex items-center rounded border border-[#5865F2]/40 font-black">BOT</span>
+                            </h4>
+                            <p className="text-[10px] text-slate-400 font-bold capitalize">Category: {bot.category}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${bot.status === "online" ? "bg-emerald-500 shadow-emerald-500/50 shadow-md" : "bg-zinc-500"}`} />
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{bot.status}</span>
+                        </div>
+                      </div>
+
+                      {/* Bot Token */}
+                      <div className="space-y-1.5 bg-[#1E1F22] rounded-xl p-3 border border-[#3F4147]">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                          <Key className="w-3.5 h-3.5 text-amber-400" /> Bot Token (Keep Private)
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type={visibleTokens[bot.id] ? "text" : "password"}
+                            readOnly
+                            value={bot.token}
+                            className="flex-1 px-3 py-1.5 text-xs bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] rounded-lg outline-none font-mono font-semibold"
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setVisibleTokens(prev => ({ ...prev, [bot.id]: !prev[bot.id] }))}
+                            className="text-xs text-[#DCDDDE] hover:bg-[#35373C] px-2 h-8"
+                          >
+                            {visibleTokens[bot.id] ? "Hide" : "Show"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              navigator.clipboard.writeText(bot.token);
+                              setCopiedTokenBotId(bot.id);
+                              toast({ title: "Token Copied!", description: "Keep it secure!" });
+                              setTimeout(() => setCopiedTokenBotId(null), 2000);
+                            }}
+                            className="text-xs text-[#DCDDDE] hover:bg-[#35373C] px-2 h-8 flex items-center gap-1.5"
+                          >
+                            {copiedTokenBotId === bot.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            Copy
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Webhook Configuration */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          Webhook Event Endpoint URL
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="http://your-bot-server.com/webhooks/events"
+                            defaultValue={bot.webhookUrl || ""}
+                            onChange={(e) => {
+                              setEditingBot(bot);
+                              setBotWebhookInput(e.target.value);
+                            }}
+                            className="flex-1 px-3 py-2 text-xs bg-[#1E1F22] border border-[#3F4147] text-[#DCDDDE] rounded-xl outline-none focus:ring-1 focus:ring-[#5865F2] font-semibold"
+                          />
+                          <Button
+                            onClick={async () => {
+                              const targetBot = editingBot?.id === bot.id ? editingBot : bot;
+                              const url = editingBot?.id === bot.id ? botWebhookInput : bot.webhookUrl;
+                              try {
+                                const res = await fetch(`/api/bots/${targetBot.id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ webhookUrl: url }),
+                                });
+                                if (!res.ok) throw new Error();
+                                await refetchMyBots();
+                                toast({ title: "Webhook updated!" });
+                              } catch {
+                                toast({ title: "Failed to update webhook", variant: "destructive" });
+                              }
+                            }}
+                            className="bg-[#5865F2] text-white hover:bg-[#4752C4] text-xs font-bold rounded-xl h-9 px-4 shrink-0"
+                          >
+                            Save Webhook
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-normal font-medium">
+                          Whenever a message is sent in group chats this bot is invited to, we will send an HTTP POST event with message content to this URL.
+                        </p>
+                      </div>
+
+                      {/* Delete bot */}
+                      <div className="flex justify-end pt-1">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={async () => {
+                            if (!confirm(`Are you sure you want to delete bot "${bot.name}"? This action is permanent.`)) return;
+                            try {
+                              const res = await fetch(`/api/bots/${bot.id}`, { method: "DELETE" });
+                              if (!res.ok) throw new Error();
+                              await refetchMyBots();
+                              toast({ title: "Bot deleted!" });
+                            } catch {
+                              toast({ title: "Failed to delete bot", variant: "destructive" });
+                            }
+                          }}
+                          className="bg-[#da373c] text-white hover:bg-[#a92b2f] text-[10px] font-bold rounded-lg py-1 px-3 h-8 flex items-center gap-1.5"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Delete Bot
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {developerTab === "create" && (
+              <div className="max-w-md mx-auto bg-[#2B2D31] border border-[#3F4147] rounded-xl p-5 space-y-4 my-4">
+                <h3 className="text-sm font-extrabold text-white flex items-center gap-1.5">
+                  <Plus className="w-4 h-4 text-[#5865F2]" /> Register New Bot Account
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Bot Name</label>
+                    <Input
+                      placeholder="My Awesome Bot"
+                      value={botNameInput}
+                      onChange={(e) => setBotNameInput(e.target.value)}
+                      className="bg-[#1E1F22] border-[#3F4147] text-[#DCDDDE] rounded-xl text-xs font-semibold focus-visible:ring-[#5865F2]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Category</label>
+                    <select
+                      value={botCategoryInput}
+                      onChange={(e) => setBotCategoryInput(e.target.value)}
+                      className="w-full bg-[#1E1F22] border border-[#3F4147] text-[#DCDDDE] rounded-xl px-3 py-2 text-xs font-semibold focus:ring-1 focus:ring-[#5865F2] outline-none"
+                    >
+                      <option value="General">General</option>
+                      <option value="Moderation">Moderation</option>
+                      <option value="Utility">Utility</option>
+                      <option value="Games">Games</option>
+                      <option value="Fun">Fun</option>
+                    </select>
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      if (!botNameInput.trim()) return;
+                      try {
+                        const res = await fetch("/api/bots", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ name: botNameInput, category: botCategoryInput }),
+                        });
+                        if (!res.ok) throw new Error();
+                        setBotNameInput("");
+                        setBotCategoryInput("General");
+                        setDeveloperTab("list");
+                        await refetchMyBots();
+                        toast({ title: "Bot registered successfully!" });
+                      } catch {
+                        toast({ title: "Failed to register bot", variant: "destructive" });
+                      }
+                    }}
+                    disabled={!botNameInput.trim()}
+                    className="w-full bg-[#5865F2] text-white hover:bg-[#4752C4] font-bold text-xs rounded-xl h-10 mt-2 shadow-md shadow-[#5865F2]/20"
+                  >
+                    Register Bot
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {developerTab === "tutorial" && (
+              <div className="space-y-6 text-slate-300 text-xs leading-relaxed font-semibold">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-black text-white flex items-center gap-1.5">
+                    🚀 Pointing Existing Bots (Migration)
+                  </h3>
+                  <p>
+                    You can point any bot (like Discord or Telegram bots) to this platform by changing its **API base URL** without modifying its logic.
+                  </p>
+                </div>
+
+                <div className="space-y-3 border-l-2 border-[#5865F2] pl-3">
+                  <h4 className="text-white font-extrabold text-xs">👾 Discord Bot (Discord.js / Python Discord)</h4>
+                  <p>
+                    Instead of hitting `https://discord.com/api/v10`, point the API library base URL to your server's endpoint:
+                  </p>
+                  <pre className="bg-[#1E1F22] rounded-xl p-3 border border-[#3F4147] text-[11px] font-mono text-emerald-400 overflow-x-auto">
+{`// Discord.js client configuration example
+const client = new Client({
+  // Set rest options to point api to your workspace server
+  rest: {
+    api: "http://${window.location.host}/api/v10",
+  }
+});
+
+client.login("YOUR_BOT_TOKEN");`}
+                  </pre>
+                  <p>
+                    To send messages, use standard Discord channel posting. The channel ID maps to the **Conversation ID** (visible in your address bar or logs) or **Channel ID** of groups.
+                  </p>
+                </div>
+
+                <div className="space-y-3 border-l-2 border-emerald-500 pl-3">
+                  <h4 className="text-white font-extrabold text-xs">✈️ Telegram Bot (Telegram Bot API)</h4>
+                  <p>
+                    Send messages by directing POST requests to your local endpoint using the Telegram URL layout:
+                  </p>
+                  <pre className="bg-[#1E1F22] rounded-xl p-3 border border-[#3F4147] text-[11px] font-mono text-emerald-400 overflow-x-auto">
+{`// Telegram base API replacement
+// Request POST: http://${window.location.host}/api/bot/telegram/bot{YOUR_BOT_TOKEN}/sendMessage
+// Request Body JSON:
+{
+  "chat_id": 123, // Use your Conversation ID
+  "text": "Hello from migrated Telegram Bot!"
+}`}
+                  </pre>
+                </div>
+
+                <div className="space-y-3 border-l-2 border-amber-500 pl-3">
+                  <h4 className="text-white font-extrabold text-xs">🔗 Heartbeat & Custom Webhooks (Generic Bots)</h4>
+                  <p>
+                    For custom scripts, write a simple script that sends heartbeats to stay online and listens for webhook payloads.
+                  </p>
+                  <p className="font-extrabold text-white text-[11px] mt-2">1. Heartbeat Connection Ping (Interval: 15 seconds):</p>
+                  <pre className="bg-[#1E1F22] rounded-xl p-3 border border-[#3F4147] text-[11px] font-mono text-emerald-400 overflow-x-auto">
+{`// Keep bot online by pinging
+setInterval(() => {
+  fetch("http://${window.location.host}/api/bots/connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "YOUR_BOT_TOKEN" })
+  }).then(res => res.json())
+    .then(data => console.log("Bot status:", data.status));
+}, 15000);`}
+                  </pre>
+                  <p className="font-extrabold text-white text-[11px] mt-2">2. Webhook Event format (Received on your server):</p>
+                  <pre className="bg-[#1E1F22] rounded-xl p-3 border border-[#3F4147] text-[11px] font-mono text-emerald-400 overflow-x-auto">
+{`// Payload sent to your webhook URL
+{
+  "event": "MESSAGE_CREATE",
+  "bot": { "id": 1, "name": "Helper" },
+  "message": {
+    "conversationId": 12,
+    "channelId": null,
+    "content": "Hello bot!",
+    "sender": { "id": 4, "username": "Zaidan", "role": "member" }
+  }
+}`}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-[#3F4147] pt-4 shrink-0 flex justify-end">
+            <Button
+              className="bg-[#5865F2] hover:bg-[#4752C4] font-bold text-xs rounded-xl"
+              onClick={() => setShowDeveloperSettings(false)}
+            >
+              Close Console
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite Bot to Group Dialog */}
+      <Dialog open={showInviteBotModal} onOpenChange={setShowInviteBotModal}>
+        <DialogContent className="max-w-md bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
+          <DialogHeader className="pb-3 border-b border-[#3F4147]">
+            <DialogTitle className="text-sm font-black flex items-center gap-2">
+              🤖 Invite Bot to Group
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-400 font-bold">
+              Select an available bot to invite to this group conversation.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Invited bots list first */}
+          {conversationBots.length > 0 && (
+            <div className="py-2 border-b border-[#3F4147]">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Invited Bots in this Group</p>
+              <div className="space-y-1.5">
+                {conversationBots.map((bot) => (
+                  <div key={bot.id} className="flex items-center justify-between bg-[#2B2D31] border border-[#3F4147] px-3 py-1.5 rounded-xl">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Avatar className="w-6 h-6 border border-[#3F4147]">
+                        <AvatarImage src={bot.avatarUrl ?? undefined} />
+                        <AvatarFallback className="text-[9px] bg-slate-800 text-white font-extrabold">B</AvatarFallback>
+                      </Avatar>
+                      <span className="text-xs font-bold text-[#DCDDDE] truncate">{bot.name}</span>
+                    </div>
+                    {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.kickMembers) && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-[10px] text-slate-400 hover:text-[#ef4444] hover:bg-red-50/10 rounded-lg font-bold"
+                        onClick={async () => {
+                          if (!selectedId) return;
+                          try {
+                            const res = await fetch(`/api/conversations/${selectedId}/bots/${bot.id}`, { method: "DELETE" });
+                            if (!res.ok) throw new Error();
+                            await refetchConversationBots();
+                            await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/members`] });
+                            toast({ title: "Bot removed!" });
+                          } catch {
+                            toast({ title: "Failed to remove bot", variant: "destructive" });
+                          }
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Available bots checklist */}
+          <div className="py-3">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Available System Bots</p>
+            <ScrollArea className="h-44 pr-1">
+              <div className="space-y-1.5">
+                {systemBots.filter(bot => !conversationBots.some(cb => cb.id === bot.id)).length === 0 ? (
+                  <p className="text-xs text-slate-400 italic text-center py-8">No other available bots.</p>
+                ) : (
+                  systemBots.filter(bot => !conversationBots.some(cb => cb.id === bot.id)).map((bot) => (
+                    <button
+                      key={bot.id}
+                      onClick={async () => {
+                        if (!selectedId) return;
+                        try {
+                          const res = await fetch(`/api/conversations/${selectedId}/bots`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ botId: bot.id }),
+                          });
+                          if (!res.ok) throw new Error();
+                          await refetchConversationBots();
+                          await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/members`] });
+                          toast({ title: "Bot invited successfully!" });
+                        } catch {
+                          toast({ title: "Failed to invite bot", variant: "destructive" });
+                        }
+                      }}
+                      className="w-full flex items-center justify-between bg-[#2B2D31] border border-[#3F4147] hover:border-[#5865F2] px-3 py-2 rounded-xl text-left transition-all group"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Avatar className="w-7 h-7 border border-[#3F4147]">
+                          <AvatarImage src={bot.avatarUrl ?? undefined} />
+                          <AvatarFallback className="text-[9px] bg-slate-800 text-white font-extrabold">B</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-xs font-bold text-[#DCDDDE] truncate group-hover:text-white">{bot.name}</p>
+                          <p className="text-[9px] text-slate-400 font-bold capitalize">{bot.category}</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-black text-[#5865F2] group-hover:text-white transition-colors">+ Invite</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#3F4147]">
+            <Button
+              className="bg-[#5865F2] hover:bg-[#4752C4] font-bold text-xs rounded-xl"
+              onClick={() => setShowInviteBotModal(false)}
+            >
+              Done
             </Button>
           </div>
         </DialogContent>

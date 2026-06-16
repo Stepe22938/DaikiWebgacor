@@ -19,6 +19,7 @@ import {
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 import { hasPermission } from "../lib/permissions";
+import { dispatchBotWebhooks } from "./bots";
 import {
   ListConversationsResponse,
   GetConversationResponse,
@@ -865,6 +866,18 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
 
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  if (conv.type === "group") {
+    const isOwner = conv.ownerId === user.id;
+    const hasSendPerm = isOwner || (await hasPermission(id, user.id, "sendMessages"));
+    if (!hasSendPerm) {
+      res.status(403).json({ error: "You do not have permission to send messages in this group" });
+      return;
+    }
+  }
+
   const parsed = SendMessageBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
@@ -883,8 +896,15 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     .set({ updatedAt: new Date() })
     .where(eq(conversationsTable.id, id));
 
+  // Webhook notify bots in this conversation
+  dispatchBotWebhooks(id, null, parsed.data.content ?? "", parsed.data.imageUrl ?? null, {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    role: user.role,
+  }).catch((err) => console.error("[Webhook Dispatch error]:", err));
+
   // Trigger AI Response in background if it's a DM with Meta AI or mentions the AI
-  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
   if (conv) {
     const aiUser = await ensureZaidanAiUser();
     const isDmWithAi = conv.type === "dm" && (
@@ -1031,6 +1051,31 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
   });
   if (!channel) { res.status(404).json({ error: "Channel not found" }); return; }
 
+  const conv = await db.query.conversationsTable.findFirst({
+    where: eq(conversationsTable.id, id),
+  });
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  const isOwner = conv.ownerId === user.id;
+
+  // Enforce sendMessages permission check for groups
+  if (conv.type === "group") {
+    const hasSendPerm = isOwner || (await hasPermission(id, user.id, "sendMessages"));
+    if (!hasSendPerm) {
+      res.status(403).json({ error: "You do not have permission to send messages in this group" });
+      return;
+    }
+  }
+
+  // Enforce announcement permission check
+  if (channel.type === "announce") {
+    const hasAnnouncePerm = isOwner || (await hasPermission(id, user.id, "postAnnouncements"));
+    if (!hasAnnouncePerm) {
+      res.status(403).json({ error: "Only announcement posters can send messages in this channel" });
+      return;
+    }
+  }
+
   const parsed = SendMessageBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
@@ -1046,6 +1091,14 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
     .returning();
 
   await db.update(conversationsTable).set({ updatedAt: new Date() }).where(eq(conversationsTable.id, id));
+
+  // Webhook notify bots in this conversation
+  dispatchBotWebhooks(id, channelId, parsed.data.content ?? "", parsed.data.imageUrl ?? null, {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    role: user.role,
+  }).catch((err) => console.error("[Webhook Dispatch error]:", err));
 
   // Trigger AI Response in background if mentions AI
   const mentionsAi = parsed.data.content?.toLowerCase().includes("@zaidan ai") ||
@@ -1105,6 +1158,8 @@ router.get("/conversations/:id/my-permissions", async (req, res): Promise<void> 
     kickMembers: isOwner || (await hasPermission(id, user.id, "kickMembers")),
     sendMessages: isOwner || (await hasPermission(id, user.id, "sendMessages")),
     inviteMembers: isOwner || (await hasPermission(id, user.id, "inviteMembers")),
+    inviteBot: isOwner || (await hasPermission(id, user.id, "inviteBot")),
+    postAnnouncements: isOwner || (await hasPermission(id, user.id, "postAnnouncements")),
   };
 
   res.json({ isOwner, permissions });

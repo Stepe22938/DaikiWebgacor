@@ -15,4 +15,6 @@ export const AdminUserUpdateRole = {
   staff: 'staff',
   dev: 'dev',
   dev_website: 'dev_website',
+  bot: 'bot',
+  ai: 'ai',
 } as const;

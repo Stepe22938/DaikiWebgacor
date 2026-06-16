@@ -232,7 +232,7 @@ const AUTH_STYLES = `
   .cl-socialButtonsBlockButtonText {
     display: none !important;
   }
-  .arcadia-social-label {
+  .cl-socialButtonsBlockButton::after {
     display: inline-flex !important;
     color: #1e293b !important;
     font-weight: 800 !important;
@@ -241,8 +241,14 @@ const AUTH_STYLES = `
     line-height: 1 !important;
     pointer-events: none !important;
   }
-  .cl-socialButtonsBlockButton::after {
-    display: none !important;
+  .cl-socialButtonsBlockButton__google::after {
+    content: "Continue with Google" !important;
+  }
+  .cl-socialButtonsBlockButton__discord::after {
+    content: "Continue with Discord" !important;
+  }
+  .cl-socialButtonsBlockButton__facebook::after {
+    content: "Continue with Facebook" !important;
   }
   @media (max-width: 1023px) {
     .cl-rootBox,
@@ -257,8 +263,7 @@ const AUTH_STYLES = `
       min-height: 40px !important;
       border-radius: 12px !important;
     }
-    .cl-socialButtonsBlockButtonText,
-    .arcadia-social-label {
+    .cl-socialButtonsBlockButton::after {
       color: #172033 !important;
       font-size: 11.5px !important;
       font-weight: 800 !important;
@@ -277,33 +282,6 @@ function AuthPageLayout({ children, mode }: { children: React.ReactNode; mode: "
   const logoSrc = realmLogoUrl || `${basePath}/logo.svg`;
   const authAction = mode === "sign-in" ? "Enter" : "Join";
   const authEyebrow = mode === "sign-in" ? "Welcome Back" : "New Legend";
-
-  useEffect(() => {
-    const providerLabels = ["Continue with Google", "Continue with Discord", "Continue with Facebook"];
-
-    const syncSocialLabels = () => {
-      document.querySelectorAll<HTMLElement>(".cl-socialButtonsBlockButton").forEach((button, index) => {
-        const label = providerLabels[index] ?? "Continue";
-        button.querySelectorAll(".cl-socialButtonsBlockButtonText").forEach((textNode) => {
-          textNode.setAttribute("aria-hidden", "true");
-        });
-
-        let customLabel = button.querySelector<HTMLSpanElement>(".arcadia-social-label");
-        if (!customLabel) {
-          customLabel = document.createElement("span");
-          customLabel.className = "arcadia-social-label";
-          button.appendChild(customLabel);
-        }
-        customLabel.textContent = label;
-      });
-    };
-
-    syncSocialLabels();
-    const observer = new MutationObserver(syncSocialLabels);
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    return () => observer.disconnect();
-  }, []);
 
 
 

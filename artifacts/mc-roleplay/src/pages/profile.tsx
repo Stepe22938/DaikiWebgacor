@@ -218,6 +218,8 @@ const ROLE_LABELS: Record<PublicUser["role"], string> = {
   staff: "Staff",
   dev: "Developer",
   dev_website: "Dev Website",
+  bot: "Bot",
+  ai: "AI Assistant",
 };
 
 const PRIVILEGED_ROLES: PublicUser["role"][] = ["admin", "staff", "dev", "dev_website"];

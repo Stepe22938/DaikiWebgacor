@@ -121,7 +121,7 @@ import {
 
 type DevStatus = "planned" | "in_progress" | "completed" | "paused";
 type AnnType = "update" | "event" | "maintenance" | "general";
-type UserRole = "member" | "admin" | "staff" | "dev" | "dev_website";
+type UserRole = "member" | "admin" | "staff" | "dev" | "dev_website" | "bot" | "ai";
 type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 
 interface DevForm { title: string; description: string; category: string; status: DevStatus; progress: string; order: string; }
@@ -194,6 +194,8 @@ const ROLE_LABELS: Record<UserRole, string> = {
   staff: "Staff",
   dev: "Dev",
   dev_website: "Dev Website",
+  bot: "Bot",
+  ai: "AI Assistant",
 };
 
 const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
@@ -202,6 +204,8 @@ const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
   staff: "bg-sky-500/15 text-sky-300",
   dev: "bg-emerald-500/15 text-emerald-300",
   dev_website: "bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30",
+  bot: "bg-gray-500/15 text-gray-300",
+  ai: "bg-purple-500/15 text-purple-300 border border-purple-500/30",
 };
 
 export default function Admin() {
