@@ -17,6 +17,7 @@ import {
   getActiveTierForUser,
   getEffectiveBoostState,
   getGroupBoostState,
+  getNitroEntitlements,
   getTierPolicy,
 } from "../lib/tierBoosts";
 
@@ -88,10 +89,12 @@ router.get("/me/membership", async (req, res): Promise<void> => {
 
   const response = {
     tier: boostState.tierPolicy.tier,
+    currentTier: boostState.tierPolicy.tier,
     tierLabel: boostState.tierPolicy.label,
     maxUploadBytes: boostState.tierPolicy.maxUploadBytes,
     baseBoostCount: boostState.tierPolicy.baseBoostCount,
     stickerSyncMode: boostState.tierPolicy.stickerSyncMode,
+    nitro: getNitroEntitlements(boostState.tierPolicy.tier),
     purchasedBoostCount: boostState.purchasedBoostCount,
     totalBoostCount: boostState.totalBoostCount,
     activeSubscription: subscription

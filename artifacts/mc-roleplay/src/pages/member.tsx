@@ -3899,9 +3899,17 @@ function MembershipTab() {
   const [selectedPackageSku, setSelectedPackageSku] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState("none");
   const [requestNote, setRequestNote] = useState("");
+  const [stickerName, setStickerName] = useState("");
+  const [stickerGroupId, setStickerGroupId] = useState("none");
+  const [uploadingSticker, setUploadingSticker] = useState(false);
+  const stickerFileRef = useRef<HTMLInputElement | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ["/api/me/membership"],
     queryFn: () => customFetch<any>("/api/me/membership"),
+  });
+  const { data: stickerLibrary } = useQuery({
+    queryKey: ["/api/stickers", "owned"],
+    queryFn: () => customFetch<any>("/api/stickers?mode=owned"),
   });
   const paymentRequestMutation = useMutation({
     mutationFn: async () => customFetch<any>("/api/payment-requests", {
@@ -3921,6 +3929,18 @@ function MembershipTab() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err?.message || "Gagal membuat ticket pembayaran.", variant: "destructive" });
+    },
+  });
+  const deleteStickerMutation = useMutation({
+    mutationFn: async (stickerId: number) => customFetch<any>(`/api/stickers/${stickerId}`, {
+      method: "DELETE",
+    }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/stickers", "owned"] });
+      toast({ title: "Sticker dihapus" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Gagal hapus sticker.", variant: "destructive" });
     },
   });
 
@@ -3955,6 +3975,48 @@ function MembershipTab() {
     : 0;
   const groupOptions = Array.isArray(data.groups) ? data.groups : [];
   const paymentTickets = Array.isArray(data.paymentTickets) ? data.paymentTickets : [];
+  const nitro = data.nitro ?? {
+    stickerSyncMode: data.stickerSyncMode,
+    maxStickerCount: 0,
+    maxStickerFileBytes: 0,
+    canUseAnimatedStickers: false,
+    perks: [],
+  };
+  const ownedStickers = Array.isArray(stickerLibrary?.stickers) ? stickerLibrary.stickers : [];
+
+  async function handleStickerUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    if (!stickerName.trim()) {
+      toast({ title: "Nama sticker wajib diisi", variant: "destructive" });
+      return;
+    }
+
+    setUploadingSticker(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("name", stickerName.trim());
+      if (data.currentTier === "free") {
+        if (stickerGroupId === "none") throw new Error("Pilih group dulu untuk sticker lokal.");
+        formData.append("conversationId", stickerGroupId);
+      }
+
+      const response = await fetch("/api/stickers/upload", { method: "POST", body: formData });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Gagal upload sticker");
+
+      setStickerName("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/stickers", "owned"] });
+      toast({ title: "Sticker berhasil dibuat", description: "Sticker masuk ke library kamu." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "Gagal upload sticker.", variant: "destructive" });
+    } finally {
+      setUploadingSticker(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -3967,7 +4029,7 @@ function MembershipTab() {
               <h3 className="text-lg font-black text-[#110e3d]">{data.tierLabel}</h3>
             </div>
             <p className="text-xs font-semibold text-slate-500">
-              Sticker sync: {data.stickerSyncMode === "global_cross_server" ? "Global / Cross-Server" : "Lokal Server"}
+              Nitro-style sync: {nitro.stickerSyncMode === "global_cross_server" ? "Global / Cross-Server" : "Lokal Server"}
             </p>
           </CardContent>
         </Card>
@@ -3994,10 +4056,10 @@ function MembershipTab() {
 
         <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
           <CardContent className="p-5 space-y-2">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Shared Storage</p>
-            <h3 className="text-lg font-black text-[#110e3d]">{formatBytesCompact(data.sharedStorage.remainingBytes)} sisa</h3>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sticker Slots</p>
+            <h3 className="text-lg font-black text-[#110e3d]">{ownedStickers.length} / {nitro.maxStickerCount}</h3>
             <p className="text-xs font-semibold text-slate-500">
-              {formatBytesCompact(data.sharedStorage.usedBytes)} / {formatBytesCompact(data.sharedStorage.capacityBytes)} terpakai
+              {formatBytesCompact(nitro.maxStickerFileBytes)} per sticker
             </p>
           </CardContent>
         </Card>
@@ -4050,9 +4112,23 @@ function MembershipTab() {
 
         <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Katalog Boost</CardTitle>
+            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Nitro-Style Perks</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="rounded-xl border border-violet-100 bg-violet-50 p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">Sticker Sync</p>
+              <p className="mt-1 text-sm font-extrabold text-[#110e3d]">
+                {nitro.stickerSyncMode === "global_cross_server" ? "Global / Cross-Server" : "Lokal per Group"}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-600">
+                {nitro.canUseAnimatedStickers ? "Animated stickers enabled." : "Static stickers only."}
+              </p>
+            </div>
+            {nitro.perks?.map((perk: string) => (
+              <div key={perk} className="rounded-xl border border-[#eae8f5] bg-white p-4 text-xs font-bold text-slate-600">
+                {perk}
+              </div>
+            ))}
             {data.packages.map((pkg: any) => (
               <div key={pkg.sku} className="rounded-xl border border-[#eae8f5] bg-white p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -4068,6 +4144,80 @@ function MembershipTab() {
                 </div>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Sticker Creator</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <input ref={stickerFileRef} type="file" accept="image/png,image/webp,image/jpeg,image/gif" className="hidden" onChange={handleStickerUpload} />
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sticker Name</Label>
+              <Input value={stickerName} onChange={(e) => setStickerName(e.target.value.slice(0, 40))} placeholder="contoh: happy_cat" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs text-slate-800" />
+            </div>
+            {data.currentTier === "free" && (
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Group</Label>
+                <Select value={stickerGroupId} onValueChange={setStickerGroupId}>
+                  <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold">
+                    <SelectValue placeholder="Pilih group target" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                    <SelectItem value="none">Pilih group</SelectItem>
+                    {groupOptions.map((group: any) => (
+                      <SelectItem key={`sticker-target-${group.id}`} value={String(group.id)}>
+                        {group.name ?? `Group #${group.id}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-600">
+              {data.currentTier === "free" ? "User biasa bikin sticker lokal per group." : data.currentTier === "premium_plus" ? "Premium+ bisa bikin sticker global dan animated." : "Premium bisa bikin sticker global lintas group."}
+            </div>
+            <Button onClick={() => stickerFileRef.current?.click()} disabled={uploadingSticker || !stickerName.trim()} className="bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs h-10 px-4 shadow-md shadow-violet-500/5">
+              {uploadingSticker ? "Uploading..." : "Upload Sticker"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-extrabold text-[#110e3d]">My Sticker Library</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {ownedStickers.length === 0 ? (
+                <div className="sm:col-span-2 xl:col-span-3 rounded-xl border border-dashed border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-500">
+                  Belum ada sticker. Bikin satu dulu biar bisa dipakai di chat.
+                </div>
+              ) : (
+                ownedStickers.map((sticker: any) => (
+                  <div key={sticker.id} className="rounded-xl border border-[#eae8f5] bg-white p-3">
+                    <div className="aspect-square overflow-hidden rounded-xl border border-[#eae8f5] bg-slate-50">
+                      <img src={sticker.assetUrl} alt={sticker.name} className="h-full w-full object-contain" />
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      <div>
+                        <p className="truncate text-xs font-extrabold text-[#110e3d]">{sticker.name}</p>
+                        <p className="text-[10px] font-semibold text-slate-500">{sticker.scope === "global_cross_server" ? "Global Nitro Sticker" : `Local • ${sticker.conversationName ?? "Group"}`}</p>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-600">{formatBytesCompact(sticker.sizeBytes)}</span>
+                        <Button variant="outline" onClick={() => deleteStickerMutation.mutate(sticker.id)} disabled={deleteStickerMutation.isPending} className="h-8 rounded-lg border-red-200 bg-red-50 px-3 text-[10px] font-black text-red-600 hover:bg-red-100">
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

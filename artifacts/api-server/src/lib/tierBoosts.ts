@@ -21,6 +21,9 @@ export type TierPolicy = {
   maxUploadBytes: number;
   baseBoostCount: number;
   stickerSyncMode: StickerSyncMode;
+  maxStickerCount: number;
+  maxStickerFileBytes: number;
+  canUseAnimatedStickers: boolean;
 };
 
 export const TIER_POLICIES: Record<UserTierKey, TierPolicy> = {
@@ -30,6 +33,9 @@ export const TIER_POLICIES: Record<UserTierKey, TierPolicy> = {
     maxUploadBytes: 200 * 1024 * 1024,
     baseBoostCount: 0,
     stickerSyncMode: "local_server",
+    maxStickerCount: 12,
+    maxStickerFileBytes: 512 * 1024,
+    canUseAnimatedStickers: false,
   },
   premium: {
     tier: "premium",
@@ -37,6 +43,9 @@ export const TIER_POLICIES: Record<UserTierKey, TierPolicy> = {
     maxUploadBytes: 500 * 1024 * 1024,
     baseBoostCount: 0,
     stickerSyncMode: "global_cross_server",
+    maxStickerCount: 48,
+    maxStickerFileBytes: 2 * 1024 * 1024,
+    canUseAnimatedStickers: false,
   },
   premium_plus: {
     tier: "premium_plus",
@@ -44,6 +53,9 @@ export const TIER_POLICIES: Record<UserTierKey, TierPolicy> = {
     maxUploadBytes: 1024 * 1024 * 1024,
     baseBoostCount: 3,
     stickerSyncMode: "global_cross_server",
+    maxStickerCount: 96,
+    maxStickerFileBytes: 4 * 1024 * 1024,
+    canUseAnimatedStickers: true,
   },
 };
 
@@ -198,6 +210,36 @@ export function getGroupBoostPerks(boostCount: number) {
       : ["10 channels", "10 roles"],
     maxChannels: level === 3 ? 80 : level === 2 ? 40 : level === 1 ? 20 : 10,
     maxRoles: level === 3 ? 100 : level === 2 ? 50 : level === 1 ? 25 : 10,
+  };
+}
+
+export function getNitroEntitlements(tier: string | null | undefined) {
+  const policy = getTierPolicy(tier);
+  return {
+    tier: policy.tier,
+    tierLabel: policy.label,
+    nitroLike: policy.tier === "premium" || policy.tier === "premium_plus",
+    stickerSyncMode: policy.stickerSyncMode,
+    maxStickerCount: policy.maxStickerCount,
+    maxStickerFileBytes: policy.maxStickerFileBytes,
+    canUseAnimatedStickers: policy.canUseAnimatedStickers,
+    perks: policy.tier === "premium_plus"
+      ? [
+          "Global stickers across all groups",
+          "Animated stickers",
+          "3x server boosts included",
+          "1GB upload limit",
+        ]
+      : policy.tier === "premium"
+      ? [
+          "Global stickers across all groups",
+          "Bigger upload limit",
+          "Nitro-style cross-server perks",
+        ]
+      : [
+          "Local server stickers only",
+          "Basic upload limit",
+        ],
   };
 }
 

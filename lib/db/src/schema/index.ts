@@ -17,3 +17,4 @@ export * from "./music";
 export * from "./knowledge";
 export * from "./bots";
 export * from "./memberships";
+export * from "./stickers";

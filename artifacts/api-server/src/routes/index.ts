@@ -20,6 +20,7 @@ import musicRouter from "./music";
 import botsRouter from "./bots";
 import membershipsRouter from "./memberships";
 import paymentsRouter from "./payments";
+import stickersRouter from "./stickers";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(musicRouter);
 router.use(botsRouter);
 router.use(membershipsRouter);
 router.use(paymentsRouter);
+router.use(stickersRouter);
 
 export default router;

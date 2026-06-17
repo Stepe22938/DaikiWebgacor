@@ -936,6 +936,7 @@ function MessageBubble({
   const name = msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
   const [isZoomed, setIsZoomed] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const isStickerMessage = !!msg.imageUrl && msg.imageUrl.includes("/api/stickers/");
 
   return (
     <>
@@ -984,7 +985,7 @@ function MessageBubble({
             )}
           </div>
           <div
-            className={`relative max-w-full overflow-hidden rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm whitespace-pre-wrap [overflow-wrap:anywhere] ${
+            className={`relative max-w-full overflow-hidden rounded-2xl ${isStickerMessage ? "px-2 py-2 bg-transparent shadow-none" : "px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm whitespace-pre-wrap [overflow-wrap:anywhere]"} ${
               isOwn
                 ? isGroup ? "bg-[#5865F2] text-white rounded-tr-[4px]" : "bg-[#dcf8c6] text-[#18251f] rounded-tr-[4px]"
                 : isGroup ? "bg-[#2B2D31] text-[#DCDDDE] rounded-tl-[4px]" : "bg-white border border-[#dfe8e3] text-[#18251f] rounded-tl-[4px]"
@@ -992,13 +993,13 @@ function MessageBubble({
           >
             {msg.imageUrl && !imageFailed && (
               <div 
-                className="mb-2 max-w-sm rounded-lg overflow-hidden cursor-zoom-in hover:brightness-95 transition-all duration-200"
+                className={`${isStickerMessage ? "mb-0 max-w-[160px] sm:max-w-[180px]" : "mb-2 max-w-sm"} rounded-lg overflow-hidden cursor-zoom-in hover:brightness-95 transition-all duration-200`}
                 onClick={() => setIsZoomed(true)}
               >
                 <img
                   src={msg.imageUrl}
                   alt="Chat attachment"
-                  className="w-full h-auto object-cover max-h-64 rounded-md border border-black/5"
+                  className={`w-full h-auto ${isStickerMessage ? "object-contain max-h-40 border-0 drop-shadow-sm" : "object-cover max-h-64 rounded-md border border-black/5"}`}
                   onError={() => setImageFailed(true)}
                 />
               </div>
@@ -1041,7 +1042,7 @@ function MessageBubble({
               </div>
             )}
             {msg.content && <span className="block min-w-0 pb-3 pr-10 [overflow-wrap:anywhere]">{msg.content}</span>}
-            <span className={`absolute bottom-1.5 right-3 text-[10px] font-semibold ${isGroup ? "text-[#949BA4]" : "text-[#66756f]"}`}>
+            <span className={`absolute ${isStickerMessage ? "bottom-0.5 right-1.5" : "bottom-1.5 right-3"} text-[10px] font-semibold ${isGroup ? "text-[#949BA4]" : "text-[#66756f]"}`}>
               {format(new Date(msg.createdAt), "HH:mm")}
             </span>
           </div>
@@ -1137,6 +1138,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<UploadedAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showStickerPicker, setShowStickerPicker] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1488,6 +1490,15 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     refetchInterval: 5000,
   });
 
+  const { data: stickerLibrary } = useQuery<{ entitlements?: any; stickers?: Array<any> }>({
+    queryKey: ["stickers", selectedId, isGroup ? "group" : "dm"],
+    queryFn: () => customFetch<{ entitlements?: any; stickers?: Array<any> }>(
+      isGroup && selectedId ? `/api/stickers?conversationId=${selectedId}` : "/api/stickers",
+    ),
+    enabled: selectedId !== null,
+    refetchInterval: 10000,
+  });
+
   const channelEditorSections = useMemo(() => {
     const byPosition = (a: Channel, b: Channel) => a.position - b.position || a.id - b.id;
     const messageChannels = (items: Channel[]) => items.filter((ch) => ch.type === "text" || ch.type === "announce").sort(byPosition);
@@ -1736,6 +1747,10 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     }
     if (!isGroup) setSelectedChannelId(null);
   }, [isGroup, channels, selectedChannelId]);
+
+  useEffect(() => {
+    setShowStickerPicker(false);
+  }, [selectedId, selectedChannelId]);
 
   // Hide typing indicator when AI responds.
   useEffect(() => {
@@ -2013,6 +2028,36 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
     } catch {
       toast({ title: "Failed to delete message", variant: "destructive" });
+    }
+  }
+
+  async function handleSendSticker(sticker: { assetUrl: string; name: string }) {
+    if (selectedId === null) return;
+    try {
+      const payload = {
+        content: "",
+        imageUrl: sticker.assetUrl,
+      };
+
+      if (isGroup && selectedChannelId) {
+        const res = await fetch(`/api/conversations/${selectedId}/channels/${selectedChannelId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("Failed to send sticker");
+        await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+      } else {
+        await sendMessage.mutateAsync({ id: selectedId, data: payload as any });
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+      }
+
+      setShowStickerPicker(false);
+      setAttachedImageUrl(null);
+      setAttachedFile(null);
+      toast({ title: "Sticker sent", description: sticker.name });
+    } catch {
+      toast({ title: "Failed to send sticker", variant: "destructive" });
     }
   }
 
@@ -3146,6 +3191,45 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             <File className="h-5 w-5" />
                           )}
                         </Button>
+                        <div className="relative shrink-0">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setShowStickerPicker((open) => !open)}
+                            className={`hover:bg-opacity-70 transition-all rounded-full h-11 w-11 ${isGroupView ? "text-[#949BA4]" : "text-[#54656f]"}`}
+                            title="Open sticker picker"
+                          >
+                            <Sparkles className="h-5 w-5" />
+                          </Button>
+                          {showStickerPicker && (
+                            <div className={`absolute bottom-full left-0 mb-2 w-72 rounded-2xl border shadow-2xl z-50 ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#e2e8f0] bg-white"}`}>
+                              <div className={`px-3 py-2.5 border-b ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
+                                <p className={`text-[10px] font-black uppercase tracking-widest ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Sticker Picker</p>
+                              </div>
+                              <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto p-3">
+                                {(stickerLibrary?.stickers?.length ?? 0) === 0 ? (
+                                  <div className={`col-span-3 rounded-xl border border-dashed p-3 text-center text-xs font-semibold ${isGroupView ? "border-[#3F4147] text-[#949BA4]" : "border-[#dbe4ea] text-slate-500"}`}>
+                                    Belum ada sticker.
+                                  </div>
+                                ) : (
+                                  stickerLibrary!.stickers!.map((sticker) => (
+                                    <button
+                                      key={sticker.id}
+                                      type="button"
+                                      onClick={() => handleSendSticker(sticker)}
+                                      className={`rounded-xl border p-2 transition-colors ${isGroupView ? "border-[#3F4147] bg-[#35373C] hover:bg-[#404249]" : "border-[#e2e8f0] bg-slate-50 hover:bg-slate-100"}`}
+                                      title={sticker.name}
+                                    >
+                                      <img src={sticker.assetUrl} alt={sticker.name} className="h-16 w-full object-contain" />
+                                      <span className={`mt-1 block truncate text-[10px] font-black ${isGroupView ? "text-[#DCDDDE]" : "text-[#18251f]"}`}>{sticker.name}</span>
+                                    </button>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         <div className="relative flex-1">
                           {/* Mention Autocomplete Popup */}
                           {showMention && mentionMembers.length > 0 && (
