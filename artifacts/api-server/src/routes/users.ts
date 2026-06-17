@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
+import { getActiveTierForUser } from "../lib/tierBoosts";
 
 async function attachEquippedCosmetics<T extends { id: number }>(users: T[]): Promise<(T & { equippedBorder: string | null; equippedBadge: string | null; equippedBackground: string | null })[]> {
   if (users.length === 0) return [];
@@ -255,6 +256,24 @@ async function getOrCreateUser(clerkId: string, username: string, avatarUrl?: st
   return ensureUserTag(user);
 }
 
+async function syncUserSubscriptionRole(user: typeof usersTable.$inferSelect) {
+  if (["admin", "staff", "dev", "dev_website"].includes(user.role)) {
+    return user;
+  }
+  const activeSub = await getActiveTierForUser(user.id);
+  const expectedRole = activeSub ? activeSub.tier : "member";
+
+  if (user.role !== expectedRole) {
+    const [updated] = await db
+      .update(usersTable)
+      .set({ role: expectedRole, updatedAt: new Date() })
+      .where(eq(usersTable.id, user.id))
+      .returning();
+    return updated ?? user;
+  }
+  return user;
+}
+
 router.get("/me", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) {
@@ -267,7 +286,8 @@ router.get("/me", async (req, res): Promise<void> => {
   const username = profile.username ?? auth.userId;
 
   const user = await getOrCreateUser(auth.userId, username, profile.avatarUrl, profile.displayName);
-  const userWithCosmetics = await attachEquippedCosmeticsToSingle(user);
+  const syncedUser = await syncUserSubscriptionRole(user);
+  const userWithCosmetics = await attachEquippedCosmeticsToSingle(syncedUser);
   res.json(GetMeResponse.parse(serializeDates(userWithCosmetics)));
 });
 

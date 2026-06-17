@@ -6,12 +6,14 @@ import {
   conversationMembersTable,
   conversationsTable,
   db,
+  groupBoostAssignmentsTable,
   ticketsTable,
   usersTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
 import {
+  applyBoostSlotToConversation,
   ensureBoostPackageSeeds,
   ensureDefaultSharedStoragePool,
   getActiveTierForUser,
@@ -19,6 +21,7 @@ import {
   getGroupBoostState,
   getNitroEntitlements,
   getTierPolicy,
+  revokeGroupBoostAssignment,
 } from "../lib/tierBoosts";
 
 const router: IRouter = Router();
@@ -44,15 +47,33 @@ router.get("/me/membership", async (req, res): Promise<void> => {
   const subscription = await getActiveTierForUser(user.id);
   const boostState = await getEffectiveBoostState(user.id);
 
-  const [packages, ownedSlots, assignedSlots, groups, paymentTickets] = await Promise.all([
+  const [packages, ownedSlotsWithAssignments, assignedSlots, groups, paymentTickets] = await Promise.all([
     db.query.boostPackagesTable.findMany({
       where: eq(boostPackagesTable.active, true),
       orderBy: [asc(boostPackagesTable.boostCount)],
     }),
-    db.query.boostSlotsTable.findMany({
-      where: eq(boostSlotsTable.ownerUserId, user.id),
-      orderBy: [desc(boostSlotsTable.createdAt)],
-    }),
+    db
+      .select({
+        id: boostSlotsTable.id,
+        status: boostSlotsTable.status,
+        assignedUserId: boostSlotsTable.assignedUserId,
+        activatedAt: boostSlotsTable.activatedAt,
+        expiresAt: boostSlotsTable.expiresAt,
+        revokedAt: boostSlotsTable.revokedAt,
+        createdAt: boostSlotsTable.createdAt,
+        assignmentId: groupBoostAssignmentsTable.id,
+        assignmentStatus: groupBoostAssignmentsTable.status,
+        conversationId: groupBoostAssignmentsTable.conversationId,
+        conversationName: conversationsTable.name,
+      })
+      .from(boostSlotsTable)
+      .leftJoin(groupBoostAssignmentsTable, and(
+        eq(boostSlotsTable.id, groupBoostAssignmentsTable.slotId),
+        eq(groupBoostAssignmentsTable.status, "active"),
+      ))
+      .leftJoin(conversationsTable, eq(groupBoostAssignmentsTable.conversationId, conversationsTable.id))
+      .where(eq(boostSlotsTable.ownerUserId, user.id))
+      .orderBy(desc(boostSlotsTable.createdAt)),
     db.query.boostSlotsTable.findMany({
       where: eq(boostSlotsTable.assignedUserId, user.id),
       orderBy: [desc(boostSlotsTable.createdAt)],
@@ -126,13 +147,18 @@ router.get("/me/membership", async (req, res): Promise<void> => {
       priceIdr: pkg.priceIdr,
       durationDays: pkg.durationDays,
     })),
-    ownedBoostSlots: ownedSlots.map((slot) => ({
+    ownedBoostSlots: ownedSlotsWithAssignments.map((slot) => ({
       id: slot.id,
       status: slot.status,
       assignedUserId: slot.assignedUserId,
       activatedAt: slot.activatedAt,
       expiresAt: slot.expiresAt,
       revokedAt: slot.revokedAt,
+      assignment: slot.assignmentId && slot.assignmentStatus === "active" ? {
+        id: slot.assignmentId,
+        conversationId: slot.conversationId,
+        conversationName: slot.conversationName,
+      } : null,
     })),
     assignedBoostSlots: assignedSlots.map((slot) => ({
       id: slot.id,
@@ -158,6 +184,90 @@ router.get("/me/membership", async (req, res): Promise<void> => {
   };
 
   res.json(serializeDates(response));
+});
+
+router.post("/me/membership/boosts/apply", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const slotId = typeof req.body.slotId === "number" ? req.body.slotId : null;
+  const conversationId = typeof req.body.conversationId === "number" ? req.body.conversationId : null;
+
+  if (!slotId || !conversationId) {
+    res.status(400).json({ error: "slotId dan conversationId diperlukan." });
+    return;
+  }
+
+  const slot = await db.query.boostSlotsTable.findFirst({ where: eq(boostSlotsTable.id, slotId) });
+  if (!slot) {
+    res.status(404).json({ error: "Boost slot tidak ditemukan." });
+    return;
+  }
+  if (slot.ownerUserId !== user.id) {
+    res.status(403).json({ error: "Kamu bukan pemilik boost slot ini." });
+    return;
+  }
+  if (slot.status === "expired") {
+    res.status(400).json({ error: "Boost slot ini sudah expired." });
+    return;
+  }
+
+  const member = await db.query.conversationMembersTable.findFirst({
+    where: and(
+      eq(conversationMembersTable.conversationId, conversationId),
+      eq(conversationMembersTable.userId, user.id),
+    ),
+  });
+  if (!member) {
+    res.status(403).json({ error: "Kamu bukan member group ini." });
+    return;
+  }
+
+  try {
+    await applyBoostSlotToConversation({
+      slotId,
+      actorUserId: user.id,
+      conversationId,
+    });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Gagal menerapkan boost." });
+  }
+});
+
+router.post("/me/membership/boosts/revoke", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const slotId = typeof req.body.slotId === "number" ? req.body.slotId : null;
+  if (!slotId) {
+    res.status(400).json({ error: "slotId diperlukan." });
+    return;
+  }
+
+  const slot = await db.query.boostSlotsTable.findFirst({ where: eq(boostSlotsTable.id, slotId) });
+  if (!slot) {
+    res.status(404).json({ error: "Boost slot tidak ditemukan." });
+    return;
+  }
+  if (slot.ownerUserId !== user.id) {
+    res.status(403).json({ error: "Kamu bukan pemilik boost slot ini." });
+    return;
+  }
+
+  try {
+    await revokeGroupBoostAssignment({
+      slotId,
+      actorUserId: user.id,
+    });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Gagal mencabut boost." });
+  }
 });
 
 export default router;

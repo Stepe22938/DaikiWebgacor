@@ -1471,6 +1471,14 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     refetchInterval: 5000,
   });
 
+  // Fetch group boost level
+  const { data: groupBoosts = null } = useQuery<any>({
+    queryKey: ["group-boosts", selectedId],
+    queryFn: () => customFetch<any>(`/api/conversations/${selectedId}/boosts`),
+    enabled: selectedId !== null && selectedConv?.type === "group",
+    refetchInterval: 10000,
+  });
+
   const { data: profileOverview } = useQuery<ProfileOverview>({
     queryKey: ["profile-overview", profilePreviewUser?.id, selectedId],
     queryFn: () => customFetch<ProfileOverview>(`/api/users/${profilePreviewUser!.id}/overview${selectedId ? `?conversationId=${selectedId}` : ""}`),
@@ -2615,7 +2623,15 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             </ScrollArea>
 
             {/* Developer Settings Footer */}
-            <div className="p-3 border-t border-[#3F4147] bg-[#1E1F22] shrink-0">
+            <div className="p-3 border-t border-[#3F4147] bg-[#1E1F22] shrink-0 space-y-2">
+              <Button
+                size="sm"
+                onClick={() => setLocation("/member?tab=membership")}
+                className="w-full flex items-center justify-center gap-2 h-9 rounded-xl text-xs font-black transition-all bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-md shadow-violet-900/40"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse fill-amber-300" />
+                Premium & Boosts
+              </Button>
               <Button
                 size="sm"
                 variant="outline"
@@ -2951,8 +2967,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                         </Avatar>
                       </div>
                       <div className="min-w-0 flex-1 text-left">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <p className="font-extrabold text-[13px] sm:text-sm leading-none truncate max-w-[34vw] sm:max-w-none">{selectedName}</p>
+                          {selectedConv.type === "group" && groupBoosts && groupBoosts.activeBoostCount > 0 && (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-violet-600/30 border border-violet-500/50 text-[9px] font-black text-violet-300 uppercase tracking-wide cursor-help shrink-0"
+                              title={`Group Level ${groupBoosts.level} (${groupBoosts.activeBoostCount} boosts)`}
+                            >
+                              <Sparkles className="h-3 w-3 text-violet-400 fill-violet-400 animate-pulse" />
+                              Lvl {groupBoosts.level}
+                            </span>
+                          )}
                           {selectedConv.type === "group" && (selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels || myPerms?.permissions?.manageRoles) && (
                             <button
                               onClick={(e) => { e.stopPropagation(); openEditGroup(); }}
@@ -3373,6 +3398,91 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     <p className={`text-xs font-medium leading-relaxed ${isGroupView ? "text-[#DCDDDE]" : "text-slate-600"}`}>
                       {(selectedConv as any).description || "No description yet."}
                     </p>
+                  </div>
+                )}
+
+                {/* Boost Status (Group only) */}
+                {selectedConv.type === "group" && groupBoosts && (
+                  <div className={`px-5 py-4 border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+                    <p className={`text-[10px] font-black uppercase tracking-wider mb-2.5 flex items-center gap-1.5 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                      <Sparkles className="h-3.5 w-3.5 text-violet-400 fill-violet-400 animate-pulse" /> Group Boost Status
+                    </p>
+                    <div className="bg-gradient-to-br from-[#1b1238] to-[#0d0721] border border-violet-500/30 rounded-2xl p-4 space-y-3 shadow-inner">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-black text-violet-300 uppercase tracking-widest leading-none">LEVEL {groupBoosts.level}</p>
+                          <p className="text-lg font-black text-white leading-none mt-1.5">{groupBoosts.activeBoostCount} Boosts</p>
+                        </div>
+                        <span className="rounded-full bg-violet-600/30 border border-violet-500/50 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 text-violet-300">
+                          {groupBoosts.level === 3 ? "MAX" : `Level ${groupBoosts.level}`}
+                        </span>
+                      </div>
+
+                      {groupBoosts.level < 3 && (() => {
+                        const thresholds = [0, 2, 7, 14];
+                        const currentLevel = groupBoosts.level;
+                        const nextLevel = currentLevel + 1;
+                        const minVal = thresholds[currentLevel];
+                        const maxVal = thresholds[nextLevel];
+                        const val = groupBoosts.activeBoostCount;
+                        const progressPercent = Math.min(100, Math.round(((val - minVal) / (maxVal - minVal)) * 100));
+
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between text-[9px] font-extrabold text-violet-300">
+                              <span>Next Level: Lvl {nextLevel}</span>
+                              <span>{val} / {maxVal} boosts</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-violet-950/70 border border-violet-800/30 rounded-full overflow-hidden">
+                              <div className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      <div className="border-t border-violet-500/10 pt-2.5 space-y-1">
+                        <p className="text-[9px] font-black text-violet-400 uppercase tracking-widest">Active Perks</p>
+                        <ul className="text-[10px] font-bold text-violet-200/90 space-y-0.5 list-disc list-inside">
+                          <li>Max channels: {groupBoosts.maxChannels}</li>
+                          <li>Max roles: {groupBoosts.maxRoles}</li>
+                        </ul>
+                      </div>
+
+                      <div className="border-t border-violet-500/10 pt-2.5 space-y-2">
+                        <p className="text-[9px] font-black text-violet-400 uppercase tracking-widest">Active Boosters</p>
+                        {(!groupBoosts.assignments || groupBoosts.assignments.length === 0) &&
+                         (!groupBoosts.premiumPlusBoosters || groupBoosts.premiumPlusBoosters.length === 0) ? (
+                          <p className="text-[10px] font-bold text-violet-300/60 italic">Belum ada booster aktif.</p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1 select-none">
+                            {/* Manual slot assignments */}
+                            {groupBoosts.assignments?.map((assignment: any) => (
+                              <div key={`manual-${assignment.id}`} className="flex items-center gap-1.5 text-[10px] font-extrabold text-violet-200">
+                                <span className="text-violet-400 animate-pulse">✨</span>
+                                <span className="truncate flex-1" title={assignment.userDisplayName || assignment.userUsername}>
+                                  {assignment.userDisplayName || assignment.userUsername || "Mystery Booster"}
+                                </span>
+                                <span className="text-[9px] font-semibold text-violet-400/80 shrink-0">
+                                  {assignment.expiresAt ? format(new Date(assignment.expiresAt), "dd MMM") : "Slot"}
+                                </span>
+                              </div>
+                            ))}
+                            {/* Premium+ Auto Boosters */}
+                            {groupBoosts.premiumPlusBoosters?.map((booster: any) => (
+                              <div key={`auto-${booster.userId}`} className="flex items-center gap-1.5 text-[10px] font-extrabold text-[#ffd700]">
+                                <span className="text-amber-400 animate-pulse">💎</span>
+                                <span className="truncate flex-1" title={booster.userDisplayName || booster.userUsername}>
+                                  {booster.userDisplayName || booster.userUsername}
+                                </span>
+                                <span className="text-[8px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-1 py-0.2 rounded border border-amber-500/20 shrink-0">
+                                  Auto
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
 

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { customFetch, useGetMe, useUpdateMe } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, useEffect } from "react";
-import { User, LogOut, Settings, MessageSquare, Users, Home, ChevronDown, Gamepad2, ShieldAlert } from "lucide-react";
+import { User, LogOut, Settings, MessageSquare, Users, Home, ChevronDown, Gamepad2, ShieldAlert, Crown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -116,6 +116,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     {me?.role && ["admin", "staff", "dev", "dev_website"].includes(me.role) && (
                       <Link href="/admin" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
                         <ShieldAlert className="w-4.5 h-4.5 text-amber-500" /> Admin Portal
+                      </Link>
+                    )}
+                    {me?.role && ["premium", "premium_plus", "admin", "dev_website"].includes(me.role) && (
+                      <Link href="/premium" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-purple-600 hover:text-purple-700 hover:bg-purple-500/10 rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                        <Crown className="w-4.5 h-4.5 text-purple-500" /> Premium Area
                       </Link>
                     )}
                   </div>

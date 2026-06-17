@@ -9,6 +9,7 @@ import {
   groupBoostAssignmentsTable,
   storagePoolsTable,
   userTierSubscriptionsTable,
+  usersTable,
 } from "@workspace/db";
 
 export type UserTierKey = "free" | "premium" | "premium_plus";
@@ -387,8 +388,20 @@ export async function transferBoostSlot(params: {
 
 export async function getGroupBoostState(conversationId: number, at = new Date()) {
   const rows = await db
-    .select()
+    .select({
+      id: groupBoostAssignmentsTable.id,
+      slotId: groupBoostAssignmentsTable.slotId,
+      conversationId: groupBoostAssignmentsTable.conversationId,
+      appliedByUserId: groupBoostAssignmentsTable.appliedByUserId,
+      status: groupBoostAssignmentsTable.status,
+      appliedAt: groupBoostAssignmentsTable.appliedAt,
+      expiresAt: groupBoostAssignmentsTable.expiresAt,
+      revokedAt: groupBoostAssignmentsTable.revokedAt,
+      userDisplayName: usersTable.displayName,
+      userUsername: usersTable.username,
+    })
     .from(groupBoostAssignmentsTable)
+    .leftJoin(usersTable, eq(groupBoostAssignmentsTable.appliedByUserId, usersTable.id))
     .where(and(
       eq(groupBoostAssignmentsTable.conversationId, conversationId),
       eq(groupBoostAssignmentsTable.status, "active"),
@@ -396,7 +409,11 @@ export async function getGroupBoostState(conversationId: number, at = new Date()
     ));
 
   const premiumPlusMembers = await db
-    .select({ userId: conversationMembersTable.userId })
+    .select({
+      userId: conversationMembersTable.userId,
+      userDisplayName: usersTable.displayName,
+      userUsername: usersTable.username,
+    })
     .from(conversationMembersTable)
     .innerJoin(userTierSubscriptionsTable, and(
       eq(userTierSubscriptionsTable.userId, conversationMembersTable.userId),
@@ -406,13 +423,19 @@ export async function getGroupBoostState(conversationId: number, at = new Date()
       or(isNull(userTierSubscriptionsTable.endsAt), sql`${userTierSubscriptionsTable.endsAt} > ${at}`),
       isNull(userTierSubscriptionsTable.revokedAt),
     ))
+    .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
     .where(eq(conversationMembersTable.conversationId, conversationId))
-    .groupBy(conversationMembersTable.userId);
+    .groupBy(
+      conversationMembersTable.userId,
+      usersTable.displayName,
+      usersTable.username
+    );
 
   const premiumPlusMemberBoostCount = premiumPlusMembers.length;
   const activeBoostCount = rows.length + premiumPlusMemberBoostCount;
   return {
     assignments: rows,
+    premiumPlusBoosters: premiumPlusMembers,
     slotAssignments: rows.length,
     premiumPlusMemberBoostCount,
     activeBoostCount,

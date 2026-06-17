@@ -15,6 +15,7 @@ import Admin from "@/pages/admin";
 import Friends from "@/pages/friends";
 import Profile from "@/pages/profile";
 import Messages from "@/pages/messages";
+import Premium from "@/pages/premium";
 import NotFound from "@/pages/not-found";
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
@@ -663,6 +664,22 @@ function MessagesProtected() {
   );
 }
 
+function PremiumProtected() {
+  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
+    return <Premium />;
+  }
+  return (
+    <>
+      <Show when="signed-in">
+        <Premium />
+      </Show>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+    </>
+  );
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
   const realmSettings = useRealmSettings();
@@ -703,6 +720,7 @@ function ClerkProviderWithRoutes() {
             <Route path="/friends" component={FriendsProtected} />
             <Route path="/profile/:id" component={ProfileProtected} />
             <Route path="/messages" component={MessagesProtected} />
+            <Route path="/premium" component={PremiumProtected} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
             <Route component={NotFound} />

@@ -97,6 +97,66 @@ router.post("/payment-requests", async (req, res): Promise<void> => {
     conversationName = conversation?.name ?? "Unnamed Group";
   }
 
+  // Auto-grant the requested tier subscription
+  if (requestedTier) {
+    const endsAt = new Date();
+    endsAt.setMonth(endsAt.getMonth() + 1);
+    await db.insert(userTierSubscriptionsTable).values({
+      userId: user.id,
+      tier: requestedTier,
+      status: "active",
+      source: "payment_auto",
+      startsAt: new Date(),
+      endsAt,
+      autoRenews: false,
+      notes: "Auto-granted on payment request",
+    });
+
+    if (!["admin", "staff", "dev", "dev_website"].includes(user.role)) {
+      await db.update(usersTable)
+        .set({ role: requestedTier, updatedAt: new Date() })
+        .where(eq(usersTable.id, user.id));
+    }
+  }
+
+  // Auto-grant requested boost packages
+  let createdOrderPackageSku: string | null = null;
+  let createdOrderBoostCount = 0;
+  if (requestedPackageSku) {
+    await ensureBoostPackageSeeds();
+    const created = await createBoostOrderWithSlots({
+      buyerUserId: user.id,
+      packageSku: requestedPackageSku,
+      notes: "Auto-granted on payment request",
+    });
+    createdOrderPackageSku = created.package.sku;
+    createdOrderBoostCount = created.package.boostCount;
+  }
+
+  // Auto-apply boosts to the conversation if specified
+  if (requestedConversationId && createdOrderBoostCount > 0) {
+    const availableSlots = await db
+      .select({ id: boostSlotsTable.id })
+      .from(boostSlotsTable)
+      .where(and(
+        eq(boostSlotsTable.ownerUserId, user.id),
+        eq(boostSlotsTable.status, "available"),
+      ))
+      .orderBy(asc(boostSlotsTable.id));
+
+    const boostApplications = Math.min(availableSlots.length, createdOrderBoostCount);
+    for (const slot of availableSlots.slice(0, boostApplications)) {
+      await applyBoostSlotToConversation({
+        slotId: slot.id,
+        actorUserId: user.id,
+        ownerOverrideUserId: user.id,
+        conversationId: requestedConversationId,
+      });
+    }
+  }
+
+  const adminNotes = `Auto-granted tier=${requestedTier ?? "-"} boostPackage=${requestedPackageSku ?? "-"}`;
+
   const [ticket] = await db.insert(ticketsTable).values({
     creatorId: user.id,
     ticketType: "payment",
@@ -107,11 +167,13 @@ router.post("/payment-requests", async (req, res): Promise<void> => {
       conversationName,
       note,
     }),
-    status: "open",
-    paymentStatus: "pending_review",
+    status: "resolved",
+    paymentStatus: "paid",
     requestedTier,
     requestedPackageSku,
     requestedConversationId,
+    grantedAt: new Date(),
+    adminNotes,
   }).returning();
 
   res.status(201).json(serializeDates(ticket));
@@ -201,6 +263,13 @@ router.patch("/admin/payments/:id", async (req, res): Promise<void> => {
         autoRenews: false,
         notes: `Granted from payment ticket #${ticket.id}`,
       });
+
+      const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, ticket.creatorId) });
+      if (targetUser && !["admin", "staff", "dev", "dev_website"].includes(targetUser.role)) {
+        await db.update(usersTable)
+          .set({ role: grantTier, updatedAt: new Date() })
+          .where(eq(usersTable.id, ticket.creatorId));
+      }
     }
 
     let createdOrderPackageSku: string | null = null;
@@ -289,6 +358,13 @@ router.post("/admin/membership-grants", async (req, res): Promise<void> => {
       autoRenews: false,
       notes: `Manual grant by admin #${admin.id}`,
     });
+
+    const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userId) });
+    if (targetUser && !["admin", "staff", "dev", "dev_website"].includes(targetUser.role)) {
+      await db.update(usersTable)
+        .set({ role: grantTier, updatedAt: new Date() })
+        .where(eq(usersTable.id, userId));
+    }
   }
 
   if (grantPackageSku) {
