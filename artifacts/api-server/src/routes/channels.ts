@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 import { hasPermission } from "../lib/permissions";
+import { getGroupBoostState } from "../lib/tierBoosts";
 
 const router: IRouter = Router();
 const channelTypes = ["text", "voice", "announce"] as const;
@@ -284,6 +285,16 @@ router.post("/conversations/:id/channels", async (req, res): Promise<void> => {
   const channelType = (type ?? "text") as ChannelType;
   if (!channelTypes.includes(channelType)) {
     res.status(400).json({ error: "Invalid channel type" }); return;
+  }
+
+  const existingChannelCount = await db
+    .select({ id: channelsTable.id })
+    .from(channelsTable)
+    .where(eq(channelsTable.conversationId, id));
+  const boostState = await getGroupBoostState(id);
+  if (existingChannelCount.length >= boostState.maxChannels) {
+    res.status(400).json({ error: `Group ini mentok di ${boostState.maxChannels} channels untuk boost level ${boostState.level}.` });
+    return;
   }
 
   // Verify category if provided

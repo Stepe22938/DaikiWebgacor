@@ -16,3 +16,4 @@ export * from "./wallet";
 export * from "./music";
 export * from "./knowledge";
 export * from "./bots";
+export * from "./memberships";

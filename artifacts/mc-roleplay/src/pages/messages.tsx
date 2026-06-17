@@ -38,7 +38,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Phone,
   Video,
@@ -1067,6 +1067,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: me } = useGetMe();
+  const [, setLocation] = useLocation();
   const { data: realmSettings = {} } = useQuery({
     queryKey: ["/api/settings"],
     queryFn: () => customFetch<any>("/api/settings"),
@@ -1386,6 +1387,42 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   const selectedConv = conversations.find((c) => c.id === selectedId) ?? null;
   const isGroup = selectedConv?.type === "group";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const rawGroupId = params.get("group");
+    if (!rawGroupId) return;
+
+    const groupId = Number(rawGroupId);
+    if (!Number.isFinite(groupId) || groupId <= 0) return;
+
+    const targetGroup = conversations.find((conversation) => conversation.id === groupId && conversation.type === "group");
+    if (!targetGroup) return;
+
+    setSelectedId((current) => current === targetGroup.id ? current : targetGroup.id);
+  }, [conversations]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!window.location.pathname.startsWith("/member")) return;
+
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", "messages");
+
+    if (selectedConv?.type === "group") {
+      params.set("group", String(selectedConv.id));
+    } else {
+      params.delete("group");
+    }
+
+    const nextUrl = `/member?${params.toString()}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    if (nextUrl !== currentUrl) {
+      setLocation(nextUrl);
+    }
+  }, [selectedConv, setLocation]);
 
   const { data: messages = [], isLoading: msgsLoading } = useListMessages(selectedId ?? 0, {
     query: {

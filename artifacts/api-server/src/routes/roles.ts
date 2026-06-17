@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 import { hasPermission } from "../lib/permissions";
+import { getGroupBoostState } from "../lib/tierBoosts";
 
 const router: IRouter = Router();
 
@@ -88,6 +89,16 @@ router.post("/conversations/:id/roles", async (req, res): Promise<void> => {
   }
 
   const roleColor = (color && typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color)) ? color : "#949BA4";
+
+  const existingRoleCount = await db
+    .select({ id: rolesTable.id })
+    .from(rolesTable)
+    .where(eq(rolesTable.conversationId, id));
+  const boostState = await getGroupBoostState(id);
+  if (existingRoleCount.length >= boostState.maxRoles) {
+    res.status(400).json({ error: `Group ini mentok di ${boostState.maxRoles} roles untuk boost level ${boostState.level}.` });
+    return;
+  }
 
   // Get max position
   const [maxPos] = await db

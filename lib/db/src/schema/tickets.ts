@@ -1,13 +1,21 @@
 import { pgTable, serial, integer, text, varchar, timestamp, boolean, unique } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
+import { conversationsTable } from "./conversations";
 
 export const ticketsTable = pgTable("tickets", {
   id: serial("id").primaryKey(),
   creatorId: integer("creator_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  ticketType: varchar("ticket_type", { length: 20 }).notNull().default("support"), // support | payment
   reason: varchar("reason", { length: 100 }).notNull(),
   description: text("description").notNull(),
   status: varchar("status", { length: 20 }).notNull().default("open"), // open, in_progress, resolved, closed
   adminId: integer("admin_id").references(() => usersTable.id, { onDelete: "set null" }),
+  paymentStatus: varchar("payment_status", { length: 20 }), // pending_review | paid | rejected | cancelled
+  requestedTier: varchar("requested_tier", { length: 20 }),
+  requestedPackageSku: varchar("requested_package_sku", { length: 50 }),
+  requestedConversationId: integer("requested_conversation_id").references(() => conversationsTable.id, { onDelete: "set null" }),
+  adminNotes: text("admin_notes"),
+  grantedAt: timestamp("granted_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -142,6 +142,13 @@ interface TicketReasonForm {
   isActive: boolean;
   order: string;
 }
+interface ManualGrantForm {
+  userId: string;
+  grantTier: string;
+  grantPackageSku: string;
+  targetConversationId: string;
+  applyBoostCount: string;
+}
 
 const emptyDev: DevForm = { title: "", description: "", category: "", status: "planned", progress: "", order: "" };
 const emptyAnn: AnnForm = { title: "", content: "", type: "general", pinned: false, imageUrl: "" };
@@ -159,6 +166,13 @@ const emptyTicketReason: TicketReasonForm = {
   description: "",
   isActive: true,
   order: "0",
+};
+const emptyManualGrant: ManualGrantForm = {
+  userId: "",
+  grantTier: "",
+  grantPackageSku: "",
+  targetConversationId: "",
+  applyBoostCount: "0",
 };
 
 function getInitials(name: string | null | undefined): string {
@@ -214,6 +228,7 @@ export default function Admin() {
   const canManageAdmin = role === "admin" || role === "dev_website";
   const canManageAnnouncements = role === "admin" || role === "staff" || role === "dev_website";
   const canManageTickets = role === "admin" || role === "dev" || role === "dev_website";
+  const canManagePayments = role === "admin" || role === "dev_website";
   const canManageDevWebsiteRole = role === "dev_website";
   const isDevWebsite = role === "dev_website";
   const canQueryAdmin = role === "admin" || isDevWebsite;
@@ -223,6 +238,16 @@ export default function Admin() {
     query: { enabled: canQueryAdmin } as any,
   });
   const { data: tickets = [], isLoading: ticketsLoading } = useListTickets();
+  const { data: paymentTickets = [], isLoading: paymentTicketsLoading } = useQuery({
+    queryKey: ["/api/admin/payments"],
+    queryFn: () => customFetch<any[]>("/api/admin/payments"),
+    enabled: canManagePayments,
+  });
+  const { data: paymentMembershipData } = useQuery({
+    queryKey: ["/api/me/membership", "admin-preview"],
+    queryFn: () => customFetch<any>("/api/me/membership"),
+    enabled: canManagePayments,
+  });
   const { data: ticketReasons = [], isLoading: ticketReasonsLoading } = useListAdminTicketReasons({
     query: { enabled: canQueryAdmin } as any,
   });
@@ -237,6 +262,20 @@ export default function Admin() {
   const bulkFollow = useAdminBulkCreateFollowers();
   const adminUpdateUser = useAdminUpdateUser();
   const updateTicket = useUpdateTicket();
+  const paymentActionMutation = useMutation({
+    mutationFn: async ({ id, body }: { id: number; body: any }) => customFetch(`/api/admin/payments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    }),
+  });
+  const manualGrantMutation = useMutation({
+    mutationFn: async (body: any) => customFetch("/api/admin/membership-grants", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    }),
+  });
   const createTicketReason = useCreateTicketReason();
   const updateTicketReason = useUpdateTicketReason();
   const deleteTicketReason = useDeleteTicketReason();
@@ -274,6 +313,7 @@ export default function Admin() {
   const [ticketReasonDialogOpen, setTicketReasonDialogOpen] = useState(false);
   const [deletingTicketReasonId, setDeletingTicketReasonId] = useState<number | null>(null);
   const [selectedTicketChat, setSelectedTicketChat] = useState<any | null>(null);
+  const [manualGrantForm, setManualGrantForm] = useState<ManualGrantForm>(emptyManualGrant);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingBackground, setUploadingBackground] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -636,7 +676,7 @@ export default function Admin() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "developments", "announcements", "tickets", "forms", "users", "credits", "settings", "gacha"].includes(tab)) {
+    if (tab && ["dashboard", "developments", "announcements", "tickets", "payments", "forms", "users", "credits", "settings", "gacha"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [window.location.search]);
@@ -730,6 +770,51 @@ export default function Admin() {
       invalidate("/api/tickets");
     } catch {
       toast({ title: "Error", description: "Failed to update ticket.", variant: "destructive" });
+    }
+  };
+
+  const handlePaymentDecision = async (ticket: any, paymentStatus: "paid" | "rejected") => {
+    try {
+      await paymentActionMutation.mutateAsync({
+        id: ticket.id,
+        body: {
+          paymentStatus,
+          grantTier: ticket.requestedTier ?? undefined,
+          grantPackageSku: ticket.requestedPackageSku ?? undefined,
+          targetConversationId: ticket.requestedConversationId ?? undefined,
+        },
+      });
+      toast({
+        title: paymentStatus === "paid" ? "Payment approved" : "Payment rejected",
+        description: paymentStatus === "paid"
+          ? "Tier / boost berhasil digrant sesuai ticket."
+          : "Ticket pembayaran ditolak.",
+      });
+      invalidate("/api/admin/payments", "/api/tickets", "/api/me/membership");
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "Failed to process payment.", variant: "destructive" });
+    }
+  };
+
+  const handleManualGrant = async () => {
+    if (!manualGrantForm.userId || (!manualGrantForm.grantTier && !manualGrantForm.grantPackageSku)) {
+      toast({ title: "Error", description: "Pilih user dan grant dulu.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      await manualGrantMutation.mutateAsync({
+        userId: Number(manualGrantForm.userId),
+        grantTier: manualGrantForm.grantTier || undefined,
+        grantPackageSku: manualGrantForm.grantPackageSku || undefined,
+        targetConversationId: manualGrantForm.targetConversationId ? Number(manualGrantForm.targetConversationId) : undefined,
+        applyBoostCount: manualGrantForm.applyBoostCount ? Number(manualGrantForm.applyBoostCount) : 0,
+      });
+      toast({ title: "Manual grant berhasil", description: "Premium / boost sudah dikasih ke user target." });
+      setManualGrantForm(emptyManualGrant);
+      invalidate("/api/admin/payments", "/api/me/membership", "/api/users");
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "Failed to grant membership.", variant: "destructive" });
     }
   };
 
@@ -1057,6 +1142,18 @@ export default function Admin() {
                     <Ticket className="w-4.5 h-4.5" /> Tickets
                   </button>
                 )}
+                {canManagePayments && (
+                  <button
+                    onClick={() => handleTabChange("payments")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "payments"
+                        ? "bg-violet-50 text-[#6366f1]"
+                        : "text-slate-500 hover:bg-slate-55 hover:text-slate-900"
+                    }`}
+                  >
+                    <Wallet className="w-4.5 h-4.5" /> Payments
+                  </button>
+                )}
                 {canManageAdmin && (
                   <button
                     onClick={() => handleTabChange("forms")}
@@ -1235,6 +1332,16 @@ export default function Admin() {
                     }`}
                   >
                     <Ticket className="w-4.5 h-4.5" /> Tickets
+                  </button>
+                )}
+                {canManagePayments && (
+                  <button
+                    onClick={() => handleTabChangeMobile("payments")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "payments" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-55"
+                    }`}
+                  >
+                    <Wallet className="w-4.5 h-4.5" /> Payments
                   </button>
                 )}
                 {canManageAdmin && (
@@ -1738,6 +1845,133 @@ export default function Admin() {
                   </div>
                 </Card>
               )}
+            </div>
+          )}
+
+          {activeTab === "payments" && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-xl font-extrabold text-[#110e3d]">Payments</h2>
+                  <p className="text-xs text-slate-400 font-bold mt-1">Verifikasi pembayaran, grant premium, dan tempel boost ke group.</p>
+                </div>
+                <span className="text-xs bg-slate-200 text-slate-600 font-bold px-3 py-1 rounded-xl shrink-0">{paymentTickets.length} payment tickets</span>
+              </div>
+
+              <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl overflow-hidden">
+                  <div className="p-6 border-b border-[#eae8f5]">
+                    <h4 className="font-extrabold text-sm text-[#110e3d]">Payment Queue</h4>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1">Ticket pembayaran dari member akan muncul di sini.</p>
+                  </div>
+                  <div className="p-5 space-y-3">
+                    {paymentTicketsLoading ? <Skeleton className="h-48 w-full rounded-2xl" /> : paymentTickets.length === 0 ? (
+                      <div className="text-center py-16 text-slate-400 bg-slate-50 border border-[#eae8f5] rounded-2xl">Belum ada payment ticket.</div>
+                    ) : (
+                      paymentTickets.map((ticket: any) => (
+                        <div key={ticket.id} className="rounded-2xl border border-[#eae8f5] p-5 space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h5 className="text-sm font-extrabold text-[#110e3d]">#{ticket.id} - {ticket.creatorDisplayName || ticket.creatorUsername}</h5>
+                              <p className="text-[10px] text-slate-400 font-bold mt-1">
+                                {ticket.requestedTier ? `Tier ${ticket.requestedTier}` : ticket.requestedPackageSku}
+                                {ticket.requestedConversationName ? ` • Group ${ticket.requestedConversationName}` : ""}
+                              </p>
+                            </div>
+                            <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                              ticket.paymentStatus === "paid" ? "bg-emerald-100 text-emerald-700" :
+                              ticket.paymentStatus === "rejected" ? "bg-red-100 text-red-700" :
+                              "bg-amber-100 text-amber-700"
+                            }`}>
+                              {ticket.paymentStatus ?? "pending_review"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 whitespace-pre-wrap leading-relaxed font-medium">{ticket.description}</p>
+                          {ticket.adminNotes && (
+                            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600">
+                              Admin note: {ticket.adminNotes}
+                            </div>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              disabled={paymentActionMutation.isPending || !!ticket.grantedAt}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold rounded-xl h-8 px-3.5"
+                              onClick={() => handlePaymentDecision(ticket, "paid")}
+                            >
+                              {ticket.grantedAt ? "Already Granted" : "Approve & Grant"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={paymentActionMutation.isPending}
+                              className="border-red-100 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-xl h-8 px-3.5"
+                              onClick={() => handlePaymentDecision(ticket, "rejected")}
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </Card>
+
+                <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl overflow-hidden">
+                  <div className="p-6 border-b border-[#eae8f5]">
+                    <h4 className="font-extrabold text-sm text-[#110e3d]">Manual Premium / Boost Grant</h4>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1">Admin bisa kasih premium atau boost langsung tanpa nunggu ticket.</p>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target User ID</Label>
+                      <Input value={manualGrantForm.userId} onChange={(e) => setManualGrantForm({ ...manualGrantForm, userId: e.target.value })} placeholder="Contoh: 12" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Grant Tier</Label>
+                        <Select value={manualGrantForm.grantTier || "none"} onValueChange={(v) => setManualGrantForm({ ...manualGrantForm, grantTier: v === "none" ? "" : v })}>
+                          <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold"><SelectValue /></SelectTrigger>
+                          <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                            <SelectItem value="none">No Tier</SelectItem>
+                            <SelectItem value="premium">Premium</SelectItem>
+                            <SelectItem value="premium_plus">Premium+</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Boost Package</Label>
+                        <Select value={manualGrantForm.grantPackageSku || "none"} onValueChange={(v) => setManualGrantForm({ ...manualGrantForm, grantPackageSku: v === "none" ? "" : v })}>
+                          <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold"><SelectValue /></SelectTrigger>
+                          <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                            <SelectItem value="none">No Boost</SelectItem>
+                            {(paymentMembershipData?.packages ?? []).map((pkg: any) => (
+                              <SelectItem key={pkg.sku} value={pkg.sku}>{pkg.displayName}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Group ID</Label>
+                        <Input value={manualGrantForm.targetConversationId} onChange={(e) => setManualGrantForm({ ...manualGrantForm, targetConversationId: e.target.value })} placeholder="Opsional, misal 55" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Apply Boost Count</Label>
+                        <Input value={manualGrantForm.applyBoostCount} onChange={(e) => setManualGrantForm({ ...manualGrantForm, applyBoostCount: e.target.value })} type="number" placeholder="0" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" />
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleManualGrant}
+                      disabled={manualGrantMutation.isPending}
+                      className="bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs h-10 px-4 shadow-md shadow-violet-500/5"
+                    >
+                      {manualGrantMutation.isPending ? "Granting..." : "Grant Manual"}
+                    </Button>
+                  </div>
+                </Card>
+              </div>
             </div>
           )}
 

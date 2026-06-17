@@ -3,10 +3,11 @@ import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getAuth } from "../lib/auth";
-import { db, conversationMembersTable, messagesTable, usersTable } from "@workspace/db";
+import { db, conversationMembersTable, messagesTable, storageObjectsTable, storagePoolsTable, usersTable } from "@workspace/db";
 import { getDriveDownloadResponse, uploadFileToDrive } from "../lib/googleDrive";
+import { canUserUploadBytes, DEFAULT_SHARED_STORAGE_KEY, ensureDefaultSharedStoragePool } from "../lib/tierBoosts";
 
 const router: IRouter = Router();
 const tempUploadDir = path.resolve(import.meta.dirname, "../../tmp/drive-uploads");
@@ -50,12 +51,45 @@ router.post("/drive/upload", upload.single("file"), async (req, res): Promise<vo
   if (!file) { res.status(400).json({ error: "No file uploaded" }); return; }
 
   try {
+    const uploadPolicy = await canUserUploadBytes(user.id, file.size);
+    if (!uploadPolicy.allowed) {
+      res.status(400).json({ error: uploadPolicy.reason });
+      return;
+    }
+
     const driveFile = await uploadFileToDrive({
       filePath: file.path,
       fileName: file.originalname || file.filename,
       mimeType: file.mimetype || "application/octet-stream",
       size: file.size,
     });
+
+    const pool = await ensureDefaultSharedStoragePool();
+    if (!pool) {
+      throw new Error(`Storage pool ${DEFAULT_SHARED_STORAGE_KEY} tidak ditemukan.`);
+    }
+
+    await db.insert(storageObjectsTable).values({
+      poolId: pool.id,
+      ownerUserId: user.id,
+      providerFileId: driveFile.id,
+      objectKey: driveFile.id,
+      originalName: driveFile.name,
+      mimeType: driveFile.mimeType,
+      sizeBytes: driveFile.size,
+      validationStatus: "validated",
+      visibilityScope: "private",
+      uploadedVia: "proxy",
+      validatedAt: new Date(),
+    });
+
+    await db.update(storagePoolsTable)
+      .set({
+        usedBytes: sql`${storagePoolsTable.usedBytes} + ${driveFile.size}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(storagePoolsTable.id, pool.id));
+
     const downloadUrl = `/api/drive/files/${encodeURIComponent(driveFile.id)}/download`;
     res.json({
       driveFileId: driveFile.id,
@@ -65,6 +99,8 @@ router.post("/drive/upload", upload.single("file"), async (req, res): Promise<vo
       mimeType: driveFile.mimeType,
       size: driveFile.size,
       imageUrl: driveFile.mimeType.startsWith("image/") ? downloadUrl : null,
+      tier: uploadPolicy.policy.tier,
+      maxUploadBytes: uploadPolicy.policy.maxUploadBytes,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to upload to Google Drive";

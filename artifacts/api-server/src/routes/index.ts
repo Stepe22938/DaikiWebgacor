@@ -18,6 +18,8 @@ import badgesRouter from "./badges";
 import gachaRouter from "./gacha";
 import musicRouter from "./music";
 import botsRouter from "./bots";
+import membershipsRouter from "./memberships";
+import paymentsRouter from "./payments";
 
 const router: IRouter = Router();
 
@@ -40,5 +42,7 @@ router.use(badgesRouter);
 router.use(gachaRouter);
 router.use(musicRouter);
 router.use(botsRouter);
+router.use(membershipsRouter);
+router.use(paymentsRouter);
 
 export default router;

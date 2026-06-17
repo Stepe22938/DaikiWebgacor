@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -109,7 +109,7 @@ export default function Member() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet", "music", "messages"].includes(tab)) {
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet", "membership", "music", "messages"].includes(tab)) {
       setActiveTab(tab);
     } else if (!tab) {
       setActiveTab("dashboard");
@@ -395,6 +395,16 @@ export default function Member() {
                   <Wallet className="w-4.5 h-4.5 text-emerald-500" /> My Wallet
                 </button>
                 <button
+                  onClick={() => handleTabChange("membership")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "membership"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Activity className="w-4.5 h-4.5 text-cyan-500" /> Membership & Boost
+                </button>
+                <button
                   onClick={() => handleTabChange("music")}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
                     activeTab === "music"
@@ -591,6 +601,14 @@ export default function Member() {
                   <Wallet className="w-4.5 h-4.5 text-emerald-500" /> My Wallet
                 </button>
                 <button
+                  onClick={() => handleTabChangeMobile("membership")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "membership" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Activity className="w-4.5 h-4.5 text-cyan-500" /> Membership & Boost
+                </button>
+                <button
                   onClick={() => handleTabChangeMobile("music")}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
                     activeTab === "music" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
@@ -701,7 +719,7 @@ export default function Member() {
               <span>Guild Portal</span>
               <span>/</span>
               <span className="text-[#110e3d] capitalize">
-                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : "Arcadia Credits"}
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "membership" ? "Membership & Boost" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : "Arcadia Credits"}
               </span>
             </div>
           </div>
@@ -1378,6 +1396,16 @@ export default function Member() {
                 <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Manage your diamonds and view transaction logs</p>
               </div>
               <WalletTab />
+            </div>
+          )}
+
+          {activeTab === "membership" && (
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-black text-[#110e3d]">Membership & Boost</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Tier aktif, batas upload, boost aktif, dan shared storage</p>
+              </div>
+              <MembershipTab />
             </div>
           )}
 
@@ -3843,6 +3871,435 @@ function WalletTab() {
 }
 
 // ─── MusicTab Component ───────────────────────────────────────────────────────────
+function formatBytesCompact(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+function formatIdr(amount: number) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function MembershipTab() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [requestMode, setRequestMode] = useState<"tier" | "boost">("tier");
+  const [selectedTier, setSelectedTier] = useState("premium");
+  const [selectedPackageSku, setSelectedPackageSku] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState("none");
+  const [requestNote, setRequestNote] = useState("");
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["/api/me/membership"],
+    queryFn: () => customFetch<any>("/api/me/membership"),
+  });
+  const paymentRequestMutation = useMutation({
+    mutationFn: async () => customFetch<any>("/api/payment-requests", {
+      method: "POST",
+      body: JSON.stringify({
+        tier: requestMode === "tier" ? selectedTier : undefined,
+        packageSku: requestMode === "boost" ? selectedPackageSku : undefined,
+        conversationId: requestMode === "boost" && selectedGroupId !== "none" ? Number(selectedGroupId) : undefined,
+        note: requestNote.trim() || undefined,
+      }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: async () => {
+      toast({ title: "Ticket pembayaran dibuat", description: "Sekarang admin bisa cek pembayaranmu di tab Payments." });
+      setRequestNote("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/me/membership"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Gagal membuat ticket pembayaran.", variant: "destructive" });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Card key={index} className="rounded-2xl border-[#eae8f5] shadow-sm">
+            <CardContent className="p-5 space-y-3">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-3 w-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <Card className="rounded-2xl border-red-200 bg-red-50 shadow-sm">
+        <CardContent className="p-5 text-sm font-bold text-red-600">
+          Gagal memuat membership menu.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const usedPercent = data.sharedStorage.capacityBytes > 0
+    ? Math.min(100, Math.round((data.sharedStorage.usedBytes / data.sharedStorage.capacityBytes) * 100))
+    : 0;
+  const groupOptions = Array.isArray(data.groups) ? data.groups : [];
+  const paymentTickets = Array.isArray(data.paymentTickets) ? data.paymentTickets : [];
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardContent className="p-5 space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tier Aktif</p>
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-amber-500" />
+              <h3 className="text-lg font-black text-[#110e3d]">{data.tierLabel}</h3>
+            </div>
+            <p className="text-xs font-semibold text-slate-500">
+              Sticker sync: {data.stickerSyncMode === "global_cross_server" ? "Global / Cross-Server" : "Lokal Server"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardContent className="p-5 space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Max Upload</p>
+            <h3 className="text-lg font-black text-[#110e3d]">{formatBytesCompact(data.maxUploadBytes)}</h3>
+            <p className="text-xs font-semibold text-slate-500">
+              Proxy upload aktif: {data.sharedStorage.proxyUploadsEnabled ? "Ya" : "Tidak"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardContent className="p-5 space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Boost Aktif</p>
+            <h3 className="text-lg font-black text-[#110e3d]">{data.totalBoostCount} total boost</h3>
+            <p className="text-xs font-semibold text-slate-500">
+              Base {data.baseBoostCount} + purchased {data.purchasedBoostCount}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardContent className="p-5 space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Shared Storage</p>
+            <h3 className="text-lg font-black text-[#110e3d]">{formatBytesCompact(data.sharedStorage.remainingBytes)} sisa</h3>
+            <p className="text-xs font-semibold text-slate-500">
+              {formatBytesCompact(data.sharedStorage.usedBytes)} / {formatBytesCompact(data.sharedStorage.capacityBytes)} terpakai
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Storage Pool 5TB</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                <span>{data.sharedStorage.name}</span>
+                <span>{usedPercent}% used</span>
+              </div>
+              <Progress value={usedPercent} className="h-2.5" />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Validation</p>
+                <p className="mt-1 text-sm font-extrabold text-[#110e3d]">{data.sharedStorage.validationMode}</p>
+              </div>
+              <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Owned Slots</p>
+                <p className="mt-1 text-sm font-extrabold text-[#110e3d]">{data.ownedBoostSlots.length}</p>
+              </div>
+              <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Assigned To You</p>
+                <p className="mt-1 text-sm font-extrabold text-[#110e3d]">{data.assignedBoostSlots.length}</p>
+              </div>
+            </div>
+            {data.activeSubscription ? (
+              <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 text-xs font-semibold text-slate-600">
+                Tier subscription aktif dari <span className="font-black text-[#110e3d]">{format(new Date(data.activeSubscription.startsAt), "dd MMM yyyy")}</span>
+                {data.activeSubscription.endsAt ? (
+                  <> sampai <span className="font-black text-[#110e3d]">{format(new Date(data.activeSubscription.endsAt), "dd MMM yyyy")}</span></>
+                ) : (
+                  <> tanpa tanggal akhir</>
+                )}
+                .
+              </div>
+            ) : (
+              <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-500">
+                Belum ada subscription berbayar aktif. Sistem sekarang pakai policy default untuk user biasa.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Katalog Boost</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.packages.map((pkg: any) => (
+              <div key={pkg.sku} className="rounded-xl border border-[#eae8f5] bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-extrabold text-[#110e3d]">{pkg.displayName}</p>
+                    <p className="text-xs font-semibold text-slate-500">
+                      {pkg.boostCount} boost • durasi {pkg.durationDays} hari
+                    </p>
+                  </div>
+                  <span className="text-xs font-black text-emerald-600 whitespace-nowrap">
+                    {formatIdr(pkg.priceIdr)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Request Pembayaran</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Jenis Request</Label>
+                <Select value={requestMode} onValueChange={(value) => setRequestMode(value as "tier" | "boost")}>
+                  <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                    <SelectItem value="tier">Premium / Premium+</SelectItem>
+                    <SelectItem value="boost">Boost Group</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {requestMode === "tier" ? (
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tier</Label>
+                  <Select value={selectedTier} onValueChange={setSelectedTier}>
+                    <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                      <SelectItem value="premium">Premium</SelectItem>
+                      <SelectItem value="premium_plus">Premium+</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Boost Package</Label>
+                  <Select value={selectedPackageSku} onValueChange={setSelectedPackageSku}>
+                    <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold">
+                      <SelectValue placeholder="Pilih package boost" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                      {data.packages.map((pkg: any) => (
+                        <SelectItem key={pkg.sku} value={pkg.sku}>
+                          {pkg.displayName} - {formatIdr(pkg.priceIdr)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            {requestMode === "boost" && (
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Group</Label>
+                <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
+                  <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold">
+                    <SelectValue placeholder="Pilih group target" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                    <SelectItem value="none">Nanti diatur admin</SelectItem>
+                    {groupOptions.map((group: any) => (
+                      <SelectItem key={group.id} value={String(group.id)}>
+                        {group.name ?? `Group #${group.id}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Catatan</Label>
+              <Textarea
+                value={requestNote}
+                onChange={(e) => setRequestNote(e.target.value)}
+                placeholder="Masukin bukti bayar / catatan tambahan biar admin gampang cek."
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800"
+                rows={4}
+              />
+            </div>
+
+            <Button
+              onClick={() => {
+                if (requestMode === "boost" && !selectedPackageSku) {
+                  toast({ title: "Pilih package boost dulu", variant: "destructive" });
+                  return;
+                }
+                paymentRequestMutation.mutate();
+              }}
+              disabled={paymentRequestMutation.isPending}
+              className="bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs h-10 px-4 shadow-md shadow-violet-500/5"
+            >
+              {paymentRequestMutation.isPending ? "Membuat ticket..." : "Buka Ticket Pembayaran"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Boosted Groups & Payment Queue</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">Premium+ Auto Boost</p>
+                  <h4 className="mt-1 text-sm font-extrabold text-[#110e3d]">
+                    {data.currentTier === "premium_plus"
+                      ? "Kamu sedang boost semua group yang kamu ikuti"
+                      : "Fitur ini aktif otomatis buat member Premium+"}
+                  </h4>
+                  <p className="mt-1 text-xs font-semibold text-slate-600">
+                    Tiap member Premium+ kasih +1 boost otomatis ke semua group yang dia join. Boost manual dari package tetap ikut dihitung.
+                  </p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${data.currentTier === "premium_plus" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                  {data.currentTier === "premium_plus" ? "Active" : "Locked"}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {groupOptions.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-500">
+                  Kamu belum punya group target buat boost.
+                </div>
+              ) : (
+                groupOptions.map((group: any) => (
+                  <div key={group.id} className="rounded-xl border border-[#eae8f5] bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-extrabold text-[#110e3d]">{group.name ?? `Group #${group.id}`}</p>
+                        <p className="text-xs font-semibold text-slate-500">
+                          Level {group.level} • {group.activeBoostCount} boost aktif
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-violet-50 text-[#6366f1]">
+                        {group.maxChannels} channels
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">Premium+ Auto Boost</p>
+                  <h4 className="mt-1 text-sm font-extrabold text-[#110e3d]">
+                    {data.currentTier === "premium_plus"
+                      ? "Kamu sedang boost semua group yang kamu ikuti"
+                      : "Fitur ini aktif otomatis buat member Premium+"}
+                  </h4>
+                  <p className="mt-1 text-xs font-semibold text-slate-600">
+                    Tiap member Premium+ kasih +1 boost otomatis ke semua group yang dia join. Boost manual dari package tetap ikut dihitung.
+                  </p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${data.currentTier === "premium_plus" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                  {data.currentTier === "premium_plus" ? "Active" : "Locked"}
+                </span>
+              </div>
+
+              {groupOptions.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {groupOptions.map((group: any) => (
+                    <div key={`premium-plus-group-${group.id}`} className="rounded-xl border border-violet-100 bg-white/90 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-extrabold text-[#110e3d]">{group.name ?? `Group #${group.id}`}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-600">
+                              Level {group.level}
+                            </span>
+                            <span className="rounded-full bg-violet-100 px-2 py-1 text-[10px] font-black uppercase text-violet-700">
+                              Auto {group.premiumPlusMemberBoostCount ?? 0}
+                            </span>
+                            <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase text-emerald-700">
+                              Total {group.activeBoostCount}
+                            </span>
+                          </div>
+                        </div>
+                        <Link
+                          href={`/member?tab=messages&group=${group.id}`}
+                          className="inline-flex shrink-0 items-center rounded-lg bg-[#6366f1] px-3 py-1.5 text-[10px] font-black text-white transition-colors hover:bg-violet-600"
+                        >
+                          Buka Group
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-[#eae8f5] pt-4 space-y-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Payment Requests</p>
+              {paymentTickets.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-500">
+                  Belum ada ticket pembayaran.
+                </div>
+              ) : (
+                paymentTickets.slice(0, 4).map((ticket: any) => (
+                  <div key={ticket.id} className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-extrabold text-[#110e3d]">Payment Ticket #{ticket.id}</p>
+                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                        ticket.paymentStatus === "paid" ? "bg-emerald-100 text-emerald-700" :
+                        ticket.paymentStatus === "rejected" ? "bg-red-100 text-red-700" :
+                        "bg-amber-100 text-amber-700"
+                      }`}>
+                        {ticket.paymentStatus ?? "pending_review"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500 font-semibold">
+                      {ticket.requestedTier ? `Tier ${ticket.requestedTier}` : ticket.requestedPackageSku}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function MusicTab() {
   const { data: me } = useGetMe();
   const { toast } = useToast();
