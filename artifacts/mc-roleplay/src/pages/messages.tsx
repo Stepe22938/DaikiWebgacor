@@ -1,12 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
-  useListConversations,
-  getListConversationsQueryOptions,
   useCreateOrGetDm,
   useCreateGroup,
   useDeleteConversation,
-  useListMessages,
-  getListMessagesQueryOptions,
   useSendMessage,
   useDeleteMessage,
   useListConversationMembers,
@@ -87,6 +83,27 @@ import {
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
+const QUERY_TIMEOUT_MS = 10_000;
+
+function createQuerySignal(signal?: AbortSignal, timeoutMs = QUERY_TIMEOUT_MS): AbortSignal | undefined {
+  if (typeof AbortSignal === "undefined") return signal;
+
+  const timeoutFactory = (AbortSignal as typeof AbortSignal & {
+    timeout?: (ms: number) => AbortSignal;
+    any?: (signals: AbortSignal[]) => AbortSignal;
+  }).timeout;
+  const anyFactory = (AbortSignal as typeof AbortSignal & {
+    timeout?: (ms: number) => AbortSignal;
+    any?: (signals: AbortSignal[]) => AbortSignal;
+  }).any;
+
+  if (timeoutFactory && anyFactory) {
+    return signal ? anyFactory([signal, timeoutFactory(timeoutMs)]) : timeoutFactory(timeoutMs);
+  }
+
+  if (!signal) return undefined;
+  return signal;
+}
 
 type UploadedAttachment = {
   driveFileId: string;
@@ -1067,7 +1084,7 @@ function MessageBubble({
 export default function MessagesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: me } = useGetMe();
+  const { data: me, isLoading: meLoading } = useGetMe();
   const [, setLocation] = useLocation();
   const { data: realmSettings = {} } = useQuery({
     queryKey: ["/api/settings"],
@@ -1162,6 +1179,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [showCallChat, setShowCallChat] = useState(false);
   const [callMessageText, setCallMessageText] = useState("");
   const callChatEndRef = useRef<HTMLDivElement>(null);
+  const meReady = Boolean(me?.id);
 
   useEffect(() => {
     if (!me?.id) return;
@@ -1383,8 +1401,21 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const { data: conversations = [], isLoading: convsLoading } = useListConversations({
-    query: { ...getListConversationsQueryOptions(), refetchInterval: 5000 },
+  const {
+    data: conversations = [],
+    isLoading: convsLoading,
+    isError: convsError,
+    error: conversationsError,
+    refetch: refetchConversations,
+  } = useQuery<ConversationSummary[]>({
+    queryKey: ["/api/conversations", "messages-page"],
+    queryFn: ({ signal }) =>
+      customFetch<ConversationSummary[]>("/api/conversations", {
+        signal: createQuerySignal(signal),
+      }),
+    enabled: meReady,
+    refetchInterval: 5000,
+    retry: 1,
   });
 
   const selectedConv = conversations.find((c) => c.id === selectedId) ?? null;
@@ -1426,31 +1457,60 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     }
   }, [selectedConv, setLocation]);
 
-  const { data: messages = [], isLoading: msgsLoading } = useListMessages(selectedId ?? 0, {
-    query: {
-      ...getListMessagesQueryOptions(selectedId ?? 0),
-      enabled: selectedId !== null && !isGroup,
-      refetchInterval: 2000,
-    },
+  const {
+    data: messages = [],
+    isLoading: msgsLoading,
+    isError: dmMsgsError,
+    error: dmMessagesError,
+    refetch: refetchDmMessages,
+  } = useQuery<Message[]>({
+    queryKey: ["/api/conversations", selectedId, "messages"],
+    queryFn: ({ signal }) =>
+      customFetch<Message[]>(`/api/conversations/${selectedId}/messages`, {
+        signal: createQuerySignal(signal),
+      }),
+    enabled: selectedId !== null && !isGroup,
+    refetchInterval: 2000,
+    retry: 1,
   });
 
   // Channel-scoped messages for groups
-  const { data: channelMessages = [], isLoading: channelMsgsLoading } = useQuery<Message[]>({
+  const {
+    data: channelMessages = [],
+    isLoading: channelMsgsLoading,
+    isError: groupMsgsError,
+    error: groupMessagesError,
+    refetch: refetchGroupMessages,
+  } = useQuery<Message[]>({
     queryKey: ["channel-messages", selectedId, selectedChannelId],
-    queryFn: async () => {
-      const res = await fetch(`/api/conversations/${selectedId}/channels/${selectedChannelId}/messages`);
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/conversations/${selectedId}/channels/${selectedChannelId}/messages`, {
+        signal: createQuerySignal(signal),
+      });
       if (!res.ok) return [];
       return res.json();
     },
     enabled: isGroup && selectedId !== null && selectedChannelId !== null,
     refetchInterval: 2000,
+    retry: 1,
   });
 
   // Use channel messages for groups, regular messages for DMs
   const activeMessages = isGroup ? channelMessages : messages;
   const activeMsgsLoading = isGroup ? channelMsgsLoading : msgsLoading;
+  const activeMsgsError = isGroup ? groupMsgsError : dmMsgsError;
+  const activeMessagesError = isGroup ? groupMessagesError : dmMessagesError;
+  const refetchActiveMessages = isGroup ? refetchGroupMessages : refetchDmMessages;
 
-  const { data: friends = [] } = useGetMyFriends();
+  const { data: friends = [] } = useQuery<any[]>({
+    queryKey: ["/api/me/friends", "messages-page"],
+    queryFn: ({ signal }) =>
+      customFetch<any[]>("/api/me/friends", {
+        signal: createQuerySignal(signal),
+      }),
+    enabled: meReady,
+    retry: 1,
+  });
 
   const { data: members = [] } = useListConversationMembers(selectedId ?? 0, {
     query: {
@@ -1462,13 +1522,16 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   // Fetch channels for the selected group
   const { data: channels = [] } = useQuery<Channel[]>({
     queryKey: ["channels", selectedId],
-    queryFn: async () => {
-      const res = await fetch(`/api/conversations/${selectedId}/channels`);
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/conversations/${selectedId}/channels`, {
+        signal: createQuerySignal(signal),
+      });
       if (!res.ok) return [];
       return res.json();
     },
     enabled: selectedId !== null,
     refetchInterval: 5000,
+    retry: 1,
   });
 
   // Fetch group boost level
@@ -1489,13 +1552,16 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   // Fetch categories for the selected group
   const { data: categories = [] } = useQuery<ChannelCategory[]>({
     queryKey: ["channel-categories", selectedId],
-    queryFn: async () => {
-      const res = await fetch(`/api/conversations/${selectedId}/categories`);
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/conversations/${selectedId}/categories`, {
+        signal: createQuerySignal(signal),
+      });
       if (!res.ok) return [];
       return res.json();
     },
     enabled: selectedId !== null,
     refetchInterval: 5000,
+    retry: 1,
   });
 
   const { data: stickerLibrary } = useQuery<{ entitlements?: any; stickers?: Array<any> }>({
@@ -2593,7 +2659,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             {/* Scrollable list of chats */}
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-2 space-y-1">
-                {convsLoading ? (
+                {meLoading || convsLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <div key={i} className="flex items-center gap-3 px-3 py-2.5">
                       <Skeleton className="w-9 h-9 rounded-xl" />
@@ -2603,6 +2669,20 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       </div>
                     </div>
                   ))
+                ) : convsError ? (
+                  <div className="px-3 py-4 space-y-3">
+                    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-xs font-semibold leading-relaxed text-red-100">
+                      Gagal memuat chat list. {conversationsError instanceof Error ? conversationsError.message : "Request timeout atau backend lagi nyangkut."}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full rounded-xl border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+                      onClick={() => void refetchConversations()}
+                    >
+                      Coba Lagi
+                    </Button>
+                  </div>
                 ) : conversations.length === 0 ? (
                   <div className="text-center text-xs py-12 font-bold px-4 leading-relaxed text-[#949BA4]">
                     No conversations yet.<br />
@@ -3082,6 +3162,23 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           />
                         </div>
                       ))}
+                    </div>
+                  ) : activeMsgsError ? (
+                    <div className="flex min-h-[260px] items-center justify-center px-3">
+                      <div className={`w-full max-w-md rounded-2xl border px-4 py-4 text-center shadow-sm ${isGroupView ? "border-red-500/30 bg-red-500/10 text-red-100" : "border-red-200 bg-red-50 text-red-700"}`}>
+                        <p className="text-sm font-extrabold">Chat gagal dimuat</p>
+                        <p className="mt-1 text-xs font-semibold leading-relaxed">
+                          {activeMessagesError instanceof Error ? activeMessagesError.message : "Request timeout atau server chat lagi ngadat."}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={`mt-3 rounded-xl ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white" : "border-red-200 text-red-700 hover:bg-red-100"}`}
+                          onClick={() => void refetchActiveMessages()}
+                        >
+                          Muat Ulang Chat
+                        </Button>
+                      </div>
                     </div>
                   ) : activeMessages.length === 0 ? (
                     <div className={`text-center text-xs py-16 font-bold ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>

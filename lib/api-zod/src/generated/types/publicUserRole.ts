@@ -11,6 +11,8 @@ export type PublicUserRole = typeof PublicUserRole[keyof typeof PublicUserRole];
 
 export const PublicUserRole = {
   member: 'member',
+  premium: 'premium',
+  premium_plus: 'premium_plus',
   admin: 'admin',
   staff: 'staff',
   dev: 'dev',

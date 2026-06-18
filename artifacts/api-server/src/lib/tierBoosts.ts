@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   boostOrdersTable,
   boostPackagesTable,
@@ -42,7 +42,7 @@ export const TIER_POLICIES: Record<UserTierKey, TierPolicy> = {
     tier: "premium",
     label: "Premium",
     maxUploadBytes: 500 * 1024 * 1024,
-    baseBoostCount: 0,
+    baseBoostCount: 3,
     stickerSyncMode: "global_cross_server",
     maxStickerCount: 48,
     maxStickerFileBytes: 2 * 1024 * 1024,
@@ -67,7 +67,10 @@ export const BOOST_PACKAGE_SEEDS = [
   { sku: "boost-4", displayName: "4 Boost", boostCount: 4, priceIdr: 27000, durationDays: 30 },
   { sku: "boost-5", displayName: "5 Boost", boostCount: 5, priceIdr: 34000, durationDays: 30 },
   { sku: "boost-14-bundle", displayName: "Bundle 14 Boost", boostCount: 14, priceIdr: 97000, durationDays: 30 },
+  { sku: "tier-included-base", displayName: "Tier Included Boosts", boostCount: 1, priceIdr: 0, durationDays: 30, active: false },
 ] as const;
+
+const TIER_INCLUDED_ORDER_PREFIX = "tier-included:";
 
 export const DEFAULT_SHARED_STORAGE_KEY = "shared-5tb";
 export const DEFAULT_SHARED_STORAGE_CAPACITY_BYTES = 5 * 1024 * 1024 * 1024 * 1024;
@@ -124,6 +127,116 @@ export async function ensureBoostPackageSeeds() {
   }
 }
 
+export async function syncTierIncludedBoostSlotsForUser(userId: number, at = new Date()) {
+  await ensureBoostPackageSeeds();
+
+  const subscription = await getActiveTierForUser(userId, at);
+  const activePolicy = getTierPolicy(subscription?.tier);
+  const activeTierBoostCount = subscription ? activePolicy.baseBoostCount : 0;
+
+  const tierOrders = await db
+    .select({
+      orderId: boostOrdersTable.id,
+      slotId: boostSlotsTable.id,
+      slotStatus: boostSlotsTable.status,
+      slotExpiresAt: boostSlotsTable.expiresAt,
+    })
+    .from(boostOrdersTable)
+    .leftJoin(boostSlotsTable, eq(boostSlotsTable.orderId, boostOrdersTable.id))
+    .where(and(
+      eq(boostOrdersTable.buyerUserId, userId),
+      sql`${boostOrdersTable.notes} like ${`${TIER_INCLUDED_ORDER_PREFIX}%`}`,
+    ));
+
+  if (!subscription || activeTierBoostCount <= 0) {
+    const tierSlotIds = tierOrders.map((row) => row.slotId).filter((value): value is number => typeof value === "number");
+    if (tierSlotIds.length > 0) {
+      await db.update(groupBoostAssignmentsTable)
+        .set({
+          status: "revoked",
+          revokedAt: at,
+          updatedAt: at,
+        })
+        .where(and(
+          inArray(groupBoostAssignmentsTable.slotId, tierSlotIds),
+          eq(groupBoostAssignmentsTable.status, "active"),
+        ));
+
+      await db.update(boostSlotsTable)
+        .set({
+          status: "expired",
+          expiresAt: at,
+          updatedAt: at,
+        })
+        .where(and(
+          inArray(boostSlotsTable.id, tierSlotIds),
+          sql`${boostSlotsTable.status} <> 'expired'`,
+        ));
+    }
+    return;
+  }
+
+  const tierPackage = await db.query.boostPackagesTable.findFirst({
+    where: eq(boostPackagesTable.sku, "tier-included-base"),
+  });
+  if (!tierPackage) return;
+
+  const tierOrderNote = `${TIER_INCLUDED_ORDER_PREFIX}${subscription.id}`;
+  let tierOrder = await db.query.boostOrdersTable.findFirst({
+    where: and(
+      eq(boostOrdersTable.buyerUserId, userId),
+      eq(boostOrdersTable.notes, tierOrderNote),
+    ),
+  });
+
+  if (!tierOrder) {
+    const created = await db.insert(boostOrdersTable).values({
+      buyerUserId: userId,
+      packageId: tierPackage.id,
+      totalBoostCount: activeTierBoostCount,
+      totalPriceIdr: 0,
+      paymentStatus: "paid",
+      purchasedAt: subscription.startsAt,
+      notes: tierOrderNote,
+    }).returning();
+    tierOrder = created[0];
+  }
+
+  const currentSlots = await db.query.boostSlotsTable.findMany({
+    where: eq(boostSlotsTable.orderId, tierOrder.id),
+    orderBy: [asc(boostSlotsTable.id)],
+  });
+
+  const desiredExpiry = subscription.endsAt ?? addMonthsClamped(subscription.startsAt, 1);
+
+  if (currentSlots.length < activeTierBoostCount) {
+    await db.insert(boostSlotsTable).values(
+      Array.from({ length: activeTierBoostCount - currentSlots.length }, () => ({
+        orderId: tierOrder!.id,
+        ownerUserId: userId,
+        status: "available",
+        expiresAt: desiredExpiry,
+      })),
+    );
+  }
+
+  const refreshedSlots = await db.query.boostSlotsTable.findMany({
+    where: eq(boostSlotsTable.orderId, tierOrder.id),
+    orderBy: [asc(boostSlotsTable.id)],
+  });
+
+  for (const slot of refreshedSlots) {
+    const nextStatus = slot.status === "expired" && desiredExpiry > at ? "available" : slot.status;
+    await db.update(boostSlotsTable)
+      .set({
+        expiresAt: desiredExpiry,
+        status: nextStatus,
+        updatedAt: at,
+      })
+      .where(eq(boostSlotsTable.id, slot.id));
+  }
+}
+
 export async function ensureDefaultSharedStoragePool() {
   await db.insert(storagePoolsTable).values({
     key: DEFAULT_SHARED_STORAGE_KEY,
@@ -171,10 +284,12 @@ export async function getActivePurchasedBoostCount(userId: number, at = new Date
   const activeSlots = await db
     .select({ count: sql<number>`count(*)` })
     .from(boostSlotsTable)
+    .innerJoin(boostOrdersTable, eq(boostSlotsTable.orderId, boostOrdersTable.id))
     .where(and(
-      eq(boostSlotsTable.assignedUserId, userId),
-      eq(boostSlotsTable.status, "active"),
-      sql`${boostSlotsTable.expiresAt} > ${at}`,
+      eq(boostSlotsTable.ownerUserId, userId),
+      sql`${boostOrdersTable.notes} not like ${`${TIER_INCLUDED_ORDER_PREFIX}%`}`,
+      sql`${boostSlotsTable.status} <> 'expired'`,
+      or(isNull(boostSlotsTable.expiresAt), sql`${boostSlotsTable.expiresAt} > ${at}`),
     ));
 
   return Number(activeSlots[0]?.count ?? 0);

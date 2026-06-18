@@ -22,6 +22,7 @@ import {
   getNitroEntitlements,
   getTierPolicy,
   revokeGroupBoostAssignment,
+  syncTierIncludedBoostSlotsForUser,
 } from "../lib/tierBoosts";
 
 const router: IRouter = Router();
@@ -43,6 +44,7 @@ router.get("/me/membership", async (req, res): Promise<void> => {
   }
 
   await ensureBoostPackageSeeds();
+  await syncTierIncludedBoostSlotsForUser(user.id);
   const pool = await ensureDefaultSharedStoragePool();
   const subscription = await getActiveTierForUser(user.id);
   const boostState = await getEffectiveBoostState(user.id);
@@ -101,12 +103,18 @@ router.get("/me/membership", async (req, res): Promise<void> => {
     }),
   ]);
 
-  const groupsWithBoosts = await Promise.all(groups.map(async (group) => ({
-    id: group.id,
-    name: group.name,
-    ownerId: group.ownerId,
-    ...(await getGroupBoostState(group.id)),
-  })));
+  const groupsWithBoosts = await Promise.all(groups.map(async (group) => {
+    const state = await getGroupBoostState(group.id);
+    return {
+      id: group.id,
+      name: group.name,
+      ownerId: group.ownerId,
+      myManualBoostCount: Array.isArray(state.assignments)
+        ? state.assignments.filter((assignment) => assignment.appliedByUserId === user.id).length
+        : 0,
+      ...state,
+    };
+  }));
 
   const response = {
     tier: boostState.tierPolicy.tier,
@@ -191,6 +199,7 @@ router.post("/me/membership/boosts/apply", async (req, res): Promise<void> => {
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  await syncTierIncludedBoostSlotsForUser(user.id);
 
   const slotId = typeof req.body.slotId === "number" ? req.body.slotId : null;
   const conversationId = typeof req.body.conversationId === "number" ? req.body.conversationId : null;
@@ -237,11 +246,65 @@ router.post("/me/membership/boosts/apply", async (req, res): Promise<void> => {
   }
 });
 
+router.post("/me/membership/boosts/apply-bulk", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  await syncTierIncludedBoostSlotsForUser(user.id);
+
+  const conversationId = typeof req.body.conversationId === "number" ? req.body.conversationId : null;
+  const boostCount = typeof req.body.boostCount === "number" ? req.body.boostCount : null;
+
+  if (!conversationId || !boostCount || boostCount < 1) {
+    res.status(400).json({ error: "conversationId dan boostCount diperlukan." });
+    return;
+  }
+
+  const member = await db.query.conversationMembersTable.findFirst({
+    where: and(
+      eq(conversationMembersTable.conversationId, conversationId),
+      eq(conversationMembersTable.userId, user.id),
+    ),
+  });
+  if (!member) {
+    res.status(403).json({ error: "Kamu bukan member group ini." });
+    return;
+  }
+
+  const availableSlots = await db.query.boostSlotsTable.findMany({
+    where: and(
+      eq(boostSlotsTable.ownerUserId, user.id),
+      eq(boostSlotsTable.status, "available"),
+    ),
+    orderBy: [asc(boostSlotsTable.id)],
+  });
+
+  if (availableSlots.length < boostCount) {
+    res.status(400).json({ error: `Boost available kamu cuma ${availableSlots.length}.` });
+    return;
+  }
+
+  try {
+    for (const slot of availableSlots.slice(0, boostCount)) {
+      await applyBoostSlotToConversation({
+        slotId: slot.id,
+        actorUserId: user.id,
+        conversationId,
+      });
+    }
+    res.json({ success: true, appliedCount: boostCount });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Gagal menerapkan boost." });
+  }
+});
+
 router.post("/me/membership/boosts/revoke", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  await syncTierIncludedBoostSlotsForUser(user.id);
 
   const slotId = typeof req.body.slotId === "number" ? req.body.slotId : null;
   if (!slotId) {

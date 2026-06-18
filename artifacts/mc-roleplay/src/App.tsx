@@ -736,6 +736,10 @@ function App() {
   const isReplitClerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.includes("Y2xlcmsubG9jYWx0aG9zdCQ");
   const isRunningLocally = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname.startsWith("192.168.");
 
+  if (isRunningLocally && typeof window !== "undefined" && !localStorage.getItem("switch_clerk_id")) {
+    localStorage.setItem("switch_clerk_id", "local_dev_user");
+  }
+
   if (hasNoKey || (isReplitClerkKey && isRunningLocally)) {
     return <ClerkConfigWarning hasNoKey={hasNoKey} />;
   }

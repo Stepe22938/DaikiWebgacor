@@ -158,6 +158,8 @@ type ClerkProfile = {
   avatarUrl: string | null;
 };
 
+const CLERK_PROFILE_TIMEOUT_MS = 5000;
+
 function getEmailLocalPart(email: string | null | undefined) {
   return email?.split("@")[0]?.trim() || null;
 }
@@ -189,7 +191,12 @@ async function getClerkProfile(clerkId: string, claims: Record<string, unknown> 
   const claimDisplayName = getDisplayNameFromClaims(claims);
 
   try {
-    const clerkUser = await clerkClient.users.getUser(clerkId);
+    const clerkUser = await Promise.race([
+      clerkClient.users.getUser(clerkId),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Clerk profile request timed out")), CLERK_PROFILE_TIMEOUT_MS),
+      ),
+    ]);
     const primaryEmail = clerkUser.primaryEmailAddress?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress ?? null;
     const fullName = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim();
     const displayName =
