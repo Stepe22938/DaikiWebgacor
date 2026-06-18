@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { ClerkProvider, SignIn, SignUp, Show, useClerk, useAuth } from "@clerk/react";
 import { MultisessionAppSupport } from "@clerk/react/internal";
 import { useSignUp } from "@clerk/react/legacy";
 import { publishableKeyFromHost } from "@clerk/react/internal";
@@ -583,14 +583,21 @@ function ClerkMissingUsernameAutoCompleter() {
 }
 
 function HomeRedirect() {
+  const { isSignedIn, isLoaded } = useAuth();
+
+  if (!isLoaded) {
+    return null;
+  }
+
+  if (isSignedIn) {
+    return <Redirect to="/member" />;
+  }
+
   return <Home />;
 }
 
 
 function MemberProtected() {
-  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
-    return <Member />;
-  }
   return (
     <>
       <Show when="signed-in">
@@ -604,9 +611,6 @@ function MemberProtected() {
 }
 
 function AdminProtected() {
-  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
-    return <Admin />;
-  }
   return (
     <>
       <Show when="signed-in">
@@ -620,9 +624,6 @@ function AdminProtected() {
 }
 
 function FriendsProtected() {
-  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
-    return <Friends />;
-  }
   return (
     <>
       <Show when="signed-in">
@@ -636,9 +637,6 @@ function FriendsProtected() {
 }
 
 function ProfileProtected() {
-  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
-    return <Profile />;
-  }
   return (
     <>
       <Show when="signed-in">
@@ -665,9 +663,6 @@ function MessagesProtected() {
 }
 
 function PremiumProtected() {
-  if (typeof window !== "undefined" && localStorage.getItem("switch_clerk_id")) {
-    return <Premium />;
-  }
   return (
     <>
       <Show when="signed-in">
@@ -735,10 +730,6 @@ function App() {
   const hasNoKey = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   const isReplitClerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.includes("Y2xlcmsubG9jYWx0aG9zdCQ");
   const isRunningLocally = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname.startsWith("192.168.");
-
-  if (isRunningLocally && typeof window !== "undefined" && !localStorage.getItem("switch_clerk_id")) {
-    localStorage.setItem("switch_clerk_id", "local_dev_user");
-  }
 
   if (hasNoKey || (isReplitClerkKey && isRunningLocally)) {
     return <ClerkConfigWarning hasNoKey={hasNoKey} />;

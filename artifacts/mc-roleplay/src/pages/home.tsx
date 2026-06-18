@@ -164,8 +164,8 @@ export default function Home() {
               {/* Launcher Play Button */}
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button size="lg" asChild className="w-full h-12 text-sm font-extrabold bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-500 hover:to-indigo-500 hover:scale-[1.02] active:scale-[0.98] transition-all rounded-xl shadow-xl shadow-indigo-600/10 border border-violet-400/20">
-                  <Link href="/sign-up" className="flex items-center justify-center gap-1.5">
-                    Begin Journey <ChevronRight className="w-4 h-4" />
+                  <Link href={user ? "/member" : "/sign-up"} className="flex items-center justify-center gap-1.5">
+                    {user ? "Open Player Hub" : "Begin Journey"} <ChevronRight className="w-4 h-4" />
                   </Link>
                 </Button>
               </div>

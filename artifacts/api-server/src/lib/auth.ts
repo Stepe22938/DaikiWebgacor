@@ -26,29 +26,5 @@ export function getAuth(req: Request): ClerkAuth {
   }
 
   const auth = getClerkAuth(req);
-  if (auth.userId) return auth;
-
-  const host = req.headers.host?.toLowerCase() ?? "";
-  const isLocalHost =
-    host.includes("localhost") ||
-    host.includes("127.0.0.1") ||
-    host.includes("0.0.0.0");
-
-  if (process.env.NODE_ENV !== "production" && isLocalHost) {
-    const clerkId = "local_dev_user";
-    return {
-      userId: clerkId,
-      sessionId: "local-dev-session",
-      orgId: null,
-      actor: null,
-      sessionClaims: {
-        sub: clerkId,
-      },
-      claims: {
-        sub: clerkId,
-      },
-    } as unknown as ClerkAuth;
-  }
-
   return auth;
 }

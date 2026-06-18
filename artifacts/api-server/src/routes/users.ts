@@ -15,6 +15,7 @@ import {
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
 import { getActiveTierForUser } from "../lib/tierBoosts";
+import { ensureAuthUser } from "../lib/userSync";
 
 async function attachEquippedCosmetics<T extends { id: number }>(users: T[]): Promise<(T & { equippedBorder: string | null; equippedBadge: string | null; equippedBackground: string | null })[]> {
   if (users.length === 0) return [];
@@ -289,11 +290,7 @@ router.get("/me", async (req, res): Promise<void> => {
   }
 
   const clerkUser = auth as { userId: string; sessionClaims?: Record<string, unknown> };
-  const profile = await getClerkProfile(auth.userId, clerkUser.sessionClaims);
-  const username = profile.username ?? auth.userId;
-
-  const user = await getOrCreateUser(auth.userId, username, profile.avatarUrl, profile.displayName);
-  const syncedUser = await syncUserSubscriptionRole(user);
+  const syncedUser = await ensureAuthUser(auth.userId, clerkUser.sessionClaims);
   const userWithCosmetics = await attachEquippedCosmeticsToSingle(syncedUser);
   res.json(GetMeResponse.parse(serializeDates(userWithCosmetics)));
 });

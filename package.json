@@ -5,6 +5,8 @@
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "dev": "pnpm --filter @workspace/api-server --filter @workspace/mc-roleplay --parallel dev",
+    "dev:local-stack": "scripts\\start-local-stack.cmd",
+    "dev:api-job": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\run-api-job.ps1",
     "seed": "pnpm --filter @workspace/db exec node seed.js",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",

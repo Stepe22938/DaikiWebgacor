@@ -83,7 +83,16 @@ declare global {
 }
 
 export default function Member() {
-  const { data: user, isLoading: userLoading } = useGetMe();
+  const {
+    data: user,
+    isLoading: userLoading,
+    error: userError,
+    refetch: refetchUser,
+  } = useGetMe({
+    query: {
+      retry: false,
+    },
+  });
   const { user: clerkUser } = useUser();
   const { data: announcements, isLoading: announcementsLoading } = useListAnnouncements();
   const { data: developments, isLoading: developmentsLoading } = useListDevelopments();
@@ -107,6 +116,14 @@ export default function Member() {
   const [copied, setCopied] = useState(false);
   const realmName = realmSettings.realmName || "Arcadia Guild";
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
+  const selfDisplayName =
+    user?.displayName?.trim() ||
+    user?.username?.trim() ||
+    clerkUser?.fullName?.trim() ||
+    clerkUser?.username?.trim() ||
+    clerkUser?.primaryEmailAddress?.emailAddress?.split("@")[0]?.trim() ||
+    "Player";
+  const selfAvatarUrl = user?.avatarUrl || clerkUser?.imageUrl || undefined;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -275,6 +292,51 @@ export default function Member() {
     return (
       <div className="p-8 text-slate-500 font-bold bg-[#f4f3f8] min-h-screen flex items-center justify-center">
         Loading Guild Portal...
+      </div>
+    );
+  }
+
+  if (userError || !user) {
+    const errorMessage =
+      userError instanceof Error
+        ? userError.message
+        : "Koneksi ke server API gagal. Cek backend port 5000 dan DATABASE_URL.";
+
+    return (
+      <div className="bg-[#f4f3f8] min-h-screen flex items-center justify-center p-6">
+        <div className="w-full max-w-xl rounded-3xl border border-red-200 bg-white p-8 shadow-xl shadow-red-100/60">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+              <ShieldAlert className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-lg font-black text-[#110e3d]">Guild Portal gagal dimuat</h1>
+              <p className="text-sm font-semibold text-slate-500">
+                Frontend hidup, tapi data member dari backend belum kebaca.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {errorMessage}
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button
+              onClick={() => {
+                void refetchUser();
+              }}
+              className="bg-[#6366f1] hover:bg-[#5558e8] text-white"
+            >
+              Coba Lagi
+            </Button>
+            <Link href="/" className="inline-flex">
+              <Button variant="outline" className="font-bold">
+                Kembali ke Home
+              </Button>
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -517,13 +579,13 @@ export default function Member() {
         <div className="p-4 border-t border-[#eae8f5] space-y-3">
           <div className="flex items-center gap-3 px-2 py-1">
             <Avatar className="h-9 w-9 border border-[#eae8f5]">
-              <AvatarImage src={user?.avatarUrl || undefined} />
+              <AvatarImage src={selfAvatarUrl} />
               <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
-                {getInitials(user?.displayName || user?.username)}
+                {getInitials(selfDisplayName)}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-[#110e3d] truncate">{user?.displayName || user?.username}</p>
+              <p className="text-xs font-bold text-[#110e3d] truncate">{selfDisplayName}</p>
               <p className="text-[10px] text-slate-400 font-bold capitalize">{user?.role?.replace('_', ' ') || "Member"}</p>
             </div>
           </div>

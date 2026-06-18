@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
-import { useClerk } from "@clerk/react";
+import { useClerk, useUser } from "@clerk/react";
 import {
   useFollowUser,
   useGetPublicProfileBadges,
@@ -291,6 +291,7 @@ function StatCard({
 
 function ProfileSidebar() {
   const { signOut } = useClerk();
+  const { user: clerkUser } = useUser();
   const { data: me } = useGetMe();
   const { data: realmSettings = {} } = useQuery({
     queryKey: ["/api/settings"],
@@ -301,6 +302,14 @@ function ProfileSidebar() {
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
   const role = me?.role;
   const showAdminPortal = role && ["admin", "staff", "dev", "dev_website"].includes(role);
+  const selfDisplayName =
+    me?.displayName?.trim() ||
+    me?.username?.trim() ||
+    clerkUser?.fullName?.trim() ||
+    clerkUser?.username?.trim() ||
+    clerkUser?.primaryEmailAddress?.emailAddress?.split("@")[0]?.trim() ||
+    "Player";
+  const selfAvatarUrl = me?.avatarUrl || clerkUser?.imageUrl || undefined;
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col justify-between border-r border-[#eae8f5] bg-white shadow-sm">
@@ -432,13 +441,13 @@ function ProfileSidebar() {
       <div className="p-4 border-t border-[#eae8f5] space-y-3 shrink-0 bg-white">
         <div className="flex items-center gap-3 px-2 py-1">
           <Avatar className="h-9 w-9 border border-[#eae8f5]">
-            <AvatarImage src={me?.avatarUrl || undefined} />
+            <AvatarImage src={selfAvatarUrl} />
             <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
-              {getInitials(me?.displayName || me?.username)}
+              {getInitials(selfDisplayName)}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-[#110e3d] truncate">{me?.displayName || me?.username}</p>
+            <p className="text-xs font-bold text-[#110e3d] truncate">{selfDisplayName}</p>
             <p className="text-[10px] text-slate-400 font-bold capitalize">{me?.role?.replace('_', ' ') || "Member"}</p>
           </div>
         </div>

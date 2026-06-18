@@ -8,7 +8,7 @@ import {
   useGetMe,
   customFetch,
 } from "@workspace/api-client-react";
-import { useClerk } from "@clerk/react";
+import { useClerk, useUser } from "@clerk/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -135,6 +135,7 @@ function UserCard({ user, onFollowToggle }: { user: PublicUser; onFollowToggle: 
 
 export default function Friends() {
   const { data: me, isLoading: meLoading } = useGetMe();
+  const { user: clerkUser } = useUser();
   const { data: members, isLoading: membersLoading } = useListMembers();
   const { data: following, isLoading: followingLoading } = useGetMyFollowing();
   const { data: followers, isLoading: followersLoading } = useGetMyFollowers();
@@ -152,6 +153,14 @@ export default function Friends() {
   const { signOut } = useClerk();
   const realmName = realmSettings.realmName || "Arcadia Guild";
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
+  const selfDisplayName =
+    me?.displayName?.trim() ||
+    me?.username?.trim() ||
+    clerkUser?.fullName?.trim() ||
+    clerkUser?.username?.trim() ||
+    clerkUser?.primaryEmailAddress?.emailAddress?.split("@")[0]?.trim() ||
+    "Player";
+  const selfAvatarUrl = me?.avatarUrl || clerkUser?.imageUrl || undefined;
 
   const handleCopyIP = () => {
     navigator.clipboard.writeText("play.arcadiamc.net");
@@ -306,14 +315,14 @@ export default function Friends() {
           <div className="flex items-center gap-3 px-2 py-1">
             <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${me?.equippedBorder ? me.equippedBorder : "border border-[#eae8f5]"}`}>
               <Avatar className="h-9 w-9 shrink-0">
-                <AvatarImage src={me?.avatarUrl || undefined} />
+                <AvatarImage src={selfAvatarUrl} />
                 <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
-                  {getInitials(me?.displayName || me?.username)}
+                  {getInitials(selfDisplayName)}
                 </AvatarFallback>
               </Avatar>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-[#110e3d] truncate">{me?.displayName || me?.username}</p>
+              <p className="text-xs font-bold text-[#110e3d] truncate">{selfDisplayName}</p>
               <p className="text-[10px] text-slate-400 font-bold capitalize">{me?.role?.replace('_', ' ') || "Member"}</p>
             </div>
           </div>

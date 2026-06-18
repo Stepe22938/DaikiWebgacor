@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { useClerk, Show } from "@clerk/react";
+import { useClerk, Show, useUser } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { customFetch, useGetMe, useUpdateMe } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { signOut } = useClerk();
+  const { user: clerkUser } = useUser();
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const { data: me } = useGetMe();
   const { data: realmSettings = {} } = useQuery({
@@ -26,6 +27,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const realmName = realmSettings.realmName || "Arcadia Studio";
   const realmLogoUrl = realmSettings.realmLogoUrl || `${basePath}/logo.svg`;
+  const displayName =
+    me?.displayName?.trim() ||
+    me?.username?.trim() ||
+    clerkUser?.fullName?.trim() ||
+    clerkUser?.username?.trim() ||
+    clerkUser?.primaryEmailAddress?.emailAddress?.split("@")[0]?.trim() ||
+    "Player";
+  const avatarUrl = me?.avatarUrl || clerkUser?.imageUrl || null;
+  const userTag = me?.userTag || (me?.username ? `@${me.username}` : clerkUser?.username ? `@${clerkUser.username}` : "");
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -75,10 +85,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 aria-label="User menu"
               >
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-muted relative p-0.5 overflow-visible ${me?.equippedBorder || "border-2 border-primary/50 group-hover:border-primary"}`}>
-                  {me?.avatarUrl ? (
-                    <img src={me.avatarUrl} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Avatar" className="w-full h-full rounded-full object-cover" />
                   ) : (
-                    <span className="text-sm font-bold text-primary">{getInitials(me?.displayName || me?.username)}</span>
+                    <span className="text-sm font-bold text-primary">{getInitials(displayName)}</span>
                   )}
                 </div>
                 <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
@@ -87,8 +97,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <div className="absolute right-0 mt-2 w-64 rounded-xl border border-border bg-card/95 backdrop-blur-md p-2 shadow-xl animate-in fade-in slide-in-from-top-2 duration-200 z-50 divide-y divide-border/50 flex flex-col">
                   {/* User Info Header */}
                   <div className="px-3 py-2.5 pb-3">
-                    <p className="text-sm font-bold text-foreground truncate">{me?.displayName || me?.username}</p>
-                    <p className="text-xs text-muted-foreground truncate">{me?.userTag || (me?.username ? `@${me.username}` : "")}</p>
+                    <p className="text-sm font-bold text-foreground truncate">{displayName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{userTag}</p>
                     {me?.mcUsername && (
                       <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400">
                         <Gamepad2 className="w-3.5 h-3.5" /> {me.mcUsername}

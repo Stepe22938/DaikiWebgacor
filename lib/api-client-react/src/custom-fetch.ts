@@ -1,5 +1,6 @@
 export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
+  timeoutMs?: number;
 };
 
 export type ErrorType<T = unknown> = ApiError<T>;
@@ -10,6 +11,7 @@ export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
+const DEFAULT_FETCH_TIMEOUT_MS = 15000;
 
 // ---------------------------------------------------------------------------
 // Module-level configuration
@@ -89,6 +91,38 @@ function mergeHeaders(...sources: Array<HeadersInit | undefined>): Headers {
   }
 
   return headers;
+}
+
+function createRequestSignal(
+  signal: AbortSignal | null | undefined,
+  timeoutMs: number,
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(new Error(`Request timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
+
+  const abortFromParent = () => {
+    controller.abort(signal?.reason);
+  };
+
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+    } else {
+      signal.addEventListener("abort", abortFromParent, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timeout);
+      if (signal) {
+        signal.removeEventListener("abort", abortFromParent);
+      }
+    },
+  };
 }
 
 function getMediaType(headers: Headers): string | null {
@@ -327,7 +361,13 @@ export async function customFetch<T = unknown>(
   options: CustomFetchOptions = {},
 ): Promise<T> {
   input = applyBaseUrl(input);
-  const { responseType = "auto", headers: headersInit, ...init } = options;
+  const {
+    responseType = "auto",
+    timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+    headers: headersInit,
+    signal: requestSignal,
+    ...init
+  } = options;
 
   const method = resolveMethod(input, init.method);
 
@@ -367,7 +407,14 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const { signal, cleanup } = createRequestSignal(requestSignal, timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(input, { ...init, method, headers, signal });
+  } finally {
+    cleanup();
+  }
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

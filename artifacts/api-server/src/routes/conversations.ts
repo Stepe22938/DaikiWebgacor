@@ -1698,8 +1698,9 @@ async function ensureTtsReady() {
   }
 }
 
-// Pre-warm TTS on startup
-ensureTtsReady().catch((err) => console.error("[Zaidan AI TTS] Pre-warm failed:", err));
+// Defer TTS initialization until the first voice/TTS request.
+// This keeps API startup lighter and avoids boot-time failures from
+// optional voice dependencies taking the whole server down.
 
 // Zaidan AI Voice Call endpoint - returns AI response + audio in one request
 router.post("/conversations/zaidanai/voice", async (req, res): Promise<void> => {
