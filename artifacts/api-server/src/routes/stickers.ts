@@ -14,6 +14,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
+import { hasPermission } from "../lib/permissions";
 import { getDriveDownloadResponse, uploadFileToDrive } from "../lib/googleDrive";
 import { getUserUploadPolicy, ensureDefaultSharedStoragePool } from "../lib/tierBoosts";
 
@@ -39,6 +40,28 @@ async function assertConversationMember(conversationId: number, userId: number) 
       eq(conversationMembersTable.userId, userId),
     ),
   });
+}
+
+async function assertConversationOwnerOrManageMessages(conversationId: number, userId: number) {
+  const conv = await db.query.conversationsTable.findFirst({
+    where: eq(conversationsTable.id, conversationId),
+  });
+  if (!conv) return false;
+  if (conv.ownerId === userId) return true;
+  return hasPermission(conversationId, userId, "manageMessages");
+}
+
+function parseEditorConfig(input: unknown) {
+  if (typeof input === "string") {
+    if (!input.trim()) return {};
+    try {
+      return JSON.parse(input);
+    } catch {
+      return {};
+    }
+  }
+  if (input && typeof input === "object") return input;
+  return {};
 }
 
 router.get("/stickers", async (req, res): Promise<void> => {
@@ -67,9 +90,12 @@ router.get("/stickers", async (req, res): Promise<void> => {
         name: stickersTable.name,
         scope: stickersTable.scope,
         conversationId: stickersTable.conversationId,
+        originStickerId: stickersTable.originStickerId,
+        originConversationId: stickersTable.originConversationId,
         assetUrl: stickersTable.assetUrl,
         mimeType: stickersTable.mimeType,
         sizeBytes: stickersTable.sizeBytes,
+        editorConfig: stickersTable.editorConfig,
         createdAt: stickersTable.createdAt,
         conversationName: conversationsTable.name,
       })
@@ -95,10 +121,13 @@ router.get("/stickers", async (req, res): Promise<void> => {
         name: stickersTable.name,
         scope: stickersTable.scope,
         conversationId: stickersTable.conversationId,
+        originStickerId: stickersTable.originStickerId,
+        originConversationId: stickersTable.originConversationId,
         ownerUserId: stickersTable.ownerUserId,
         assetUrl: stickersTable.assetUrl,
         mimeType: stickersTable.mimeType,
         sizeBytes: stickersTable.sizeBytes,
+        editorConfig: stickersTable.editorConfig,
         createdAt: stickersTable.createdAt,
       })
       .from(stickersTable)
@@ -121,10 +150,13 @@ router.get("/stickers", async (req, res): Promise<void> => {
       name: stickersTable.name,
       scope: stickersTable.scope,
       conversationId: stickersTable.conversationId,
+      originStickerId: stickersTable.originStickerId,
+      originConversationId: stickersTable.originConversationId,
       ownerUserId: stickersTable.ownerUserId,
       assetUrl: stickersTable.assetUrl,
       mimeType: stickersTable.mimeType,
       sizeBytes: stickersTable.sizeBytes,
+      editorConfig: stickersTable.editorConfig,
       createdAt: stickersTable.createdAt,
     })
     .from(stickersTable)
@@ -151,8 +183,10 @@ router.post("/stickers/upload", upload.single("file"), async (req, res): Promise
   try {
     const policy = await getUserUploadPolicy(user.id);
     const conversationId = req.body.conversationId ? Number(req.body.conversationId) : null;
+    const requestedScope = String(req.body.scope || "").toLowerCase();
     const requestedName = String(req.body.name || file.originalname || "sticker").trim();
     const stickerName = requestedName.slice(0, 40);
+    const editorConfig = parseEditorConfig(req.body.editorConfig);
 
     if (!stickerName) {
       res.status(400).json({ error: "Sticker name is required" });
@@ -175,22 +209,46 @@ router.post("/stickers/upload", upload.single("file"), async (req, res): Promise
       return;
     }
 
+    if (policy.tier === "premium_plus") {
+      res.status(403).json({
+        error: "Premium+ tidak bisa upload sticker baru. Gunakan sticker yang sudah ada lalu share ke group lain.",
+      });
+      return;
+    }
+
     let scope: "local_server" | "global_cross_server" = "local_server";
     let scopedConversationId: number | null = null;
 
-    if (policy.stickerSyncMode === "global_cross_server") {
+    if (policy.tier === "premium") {
       scope = "global_cross_server";
     } else {
       if (!conversationId) {
         res.status(400).json({ error: "User biasa harus pilih group untuk sticker lokal." });
         return;
       }
-      const member = await assertConversationMember(conversationId, user.id);
-      if (!member) {
-        res.status(403).json({ error: "Kamu bukan member group target." });
+      const canManage = await assertConversationOwnerOrManageMessages(conversationId, user.id);
+      if (!canManage) {
+        res.status(403).json({ error: "Hanya owner group atau member dengan Manage Messages yang bisa bikin sticker lokal." });
         return;
       }
       scopedConversationId = conversationId;
+    }
+
+    if (requestedScope === "local" || requestedScope === "local_server") {
+      if (policy.tier === "premium") {
+        res.status(400).json({ error: "Premium hanya bisa bikin sticker global lintas group." });
+        return;
+      }
+      scope = "local_server";
+    }
+
+    if (requestedScope === "global" || requestedScope === "global_cross_server") {
+      if (policy.tier !== "premium") {
+        res.status(400).json({ error: "Sticker global hanya untuk Premium." });
+        return;
+      }
+      scope = "global_cross_server";
+      scopedConversationId = null;
     }
 
     const currentCountRow = await db
@@ -237,12 +295,14 @@ router.post("/stickers/upload", upload.single("file"), async (req, res): Promise
     const [sticker] = await db.insert(stickersTable).values({
       ownerUserId: user.id,
       conversationId: scopedConversationId,
+      originConversationId: scopedConversationId,
       scope,
       name: stickerName,
       driveFileId: driveFile.id,
       assetUrl: `/api/stickers/${driveFile.id}/asset`,
       mimeType: driveFile.mimeType,
       sizeBytes: driveFile.size,
+      editorConfig,
     }).returning();
 
     res.json({
@@ -321,8 +381,15 @@ router.delete("/stickers/:id", async (req, res): Promise<void> => {
   const sticker = await db.query.stickersTable.findFirst({
     where: and(eq(stickersTable.id, stickerId), isNull(stickersTable.deletedAt)),
   });
-  if (!sticker || sticker.ownerUserId !== user.id) {
+  if (!sticker) {
     res.status(404).json({ error: "Sticker not found" });
+    return;
+  }
+
+  const canDeleteOwnSticker = sticker.ownerUserId === user.id;
+  const canDeleteGroupSticker = !!sticker.conversationId && await assertConversationOwnerOrManageMessages(sticker.conversationId, user.id);
+  if (!canDeleteOwnSticker && !canDeleteGroupSticker) {
+    res.status(403).json({ error: "Kamu tidak punya izin untuk hapus sticker ini" });
     return;
   }
 
@@ -331,6 +398,140 @@ router.delete("/stickers/:id", async (req, res): Promise<void> => {
     .where(eq(stickersTable.id, stickerId));
 
   res.json({ success: true });
+});
+
+router.patch("/stickers/:id", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const stickerId = Number(req.params.id);
+  if (!Number.isFinite(stickerId)) {
+    res.status(400).json({ error: "Invalid sticker id" });
+    return;
+  }
+
+  const sticker = await db.query.stickersTable.findFirst({
+    where: and(eq(stickersTable.id, stickerId), isNull(stickersTable.deletedAt)),
+  });
+  if (!sticker) {
+    res.status(404).json({ error: "Sticker not found" });
+    return;
+  }
+
+  const canEditOwnSticker = sticker.ownerUserId === user.id;
+  const canEditGroupSticker = !!sticker.conversationId && await assertConversationOwnerOrManageMessages(sticker.conversationId, user.id);
+  if (!canEditOwnSticker && !canEditGroupSticker) {
+    res.status(403).json({ error: "Kamu tidak punya izin untuk edit sticker ini" });
+    return;
+  }
+
+  const nextName = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 40) : sticker.name;
+  const nextEditorConfig = req.body?.editorConfig !== undefined ? parseEditorConfig(req.body.editorConfig) : sticker.editorConfig;
+
+  const [updated] = await db.update(stickersTable)
+    .set({
+      name: nextName || sticker.name,
+      editorConfig: nextEditorConfig,
+      updatedAt: new Date(),
+    })
+    .where(eq(stickersTable.id, stickerId))
+    .returning();
+
+  res.json({
+    id: updated.id,
+    name: updated.name,
+    scope: updated.scope,
+    conversationId: updated.conversationId,
+    originStickerId: updated.originStickerId,
+    originConversationId: updated.originConversationId,
+    assetUrl: updated.assetUrl,
+    mimeType: updated.mimeType,
+    sizeBytes: updated.sizeBytes,
+    editorConfig: updated.editorConfig,
+    createdAt: updated.createdAt,
+    updatedAt: updated.updatedAt,
+  });
+});
+
+router.post("/stickers/:id/share", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const policy = await getUserUploadPolicy(user.id);
+  if (policy.tier !== "premium_plus") {
+    res.status(403).json({ error: "Hanya Premium+ yang bisa share sticker antar group." });
+    return;
+  }
+
+  const sourceStickerId = Number(req.params.id);
+  const targetConversationId = Number(req.body?.conversationId);
+  if (!Number.isFinite(sourceStickerId) || !Number.isFinite(targetConversationId)) {
+    res.status(400).json({ error: "Sticker source dan target group wajib diisi" });
+    return;
+  }
+
+  const sourceSticker = await db.query.stickersTable.findFirst({
+    where: and(eq(stickersTable.id, sourceStickerId), isNull(stickersTable.deletedAt)),
+  });
+  if (!sourceSticker) {
+    res.status(404).json({ error: "Sticker source tidak ditemukan" });
+    return;
+  }
+
+  const canReadSource = sourceSticker.ownerUserId === user.id
+    || (sourceSticker.conversationId ? !!(await assertConversationMember(sourceSticker.conversationId, user.id)) : false);
+  if (!canReadSource) {
+    res.status(403).json({ error: "Kamu belum punya akses ke sticker source ini" });
+    return;
+  }
+
+  const targetMember = await assertConversationMember(targetConversationId, user.id);
+  if (!targetMember) {
+    res.status(403).json({ error: "Kamu harus jadi member target group dulu" });
+    return;
+  }
+
+  const targetConv = await db.query.conversationsTable.findFirst({
+    where: eq(conversationsTable.id, targetConversationId),
+  });
+  if (!targetConv) {
+    res.status(404).json({ error: "Target group tidak ditemukan" });
+    return;
+  }
+
+  const [sharedSticker] = await db.insert(stickersTable).values({
+    ownerUserId: user.id,
+    conversationId: targetConversationId,
+    originStickerId: sourceSticker.id,
+    originConversationId: sourceSticker.conversationId ?? sourceSticker.originConversationId ?? null,
+    scope: "local_server",
+    name: String(req.body?.name || sourceSticker.name).trim().slice(0, 40) || sourceSticker.name,
+    driveFileId: sourceSticker.driveFileId,
+    assetUrl: sourceSticker.assetUrl,
+    mimeType: sourceSticker.mimeType,
+    sizeBytes: sourceSticker.sizeBytes,
+    editorConfig: sourceSticker.editorConfig ?? {},
+  }).returning();
+
+  res.status(201).json({
+    id: sharedSticker.id,
+    name: sharedSticker.name,
+    scope: sharedSticker.scope,
+    conversationId: sharedSticker.conversationId,
+    originStickerId: sharedSticker.originStickerId,
+    originConversationId: sharedSticker.originConversationId,
+    assetUrl: sharedSticker.assetUrl,
+    mimeType: sharedSticker.mimeType,
+    sizeBytes: sharedSticker.sizeBytes,
+    editorConfig: sharedSticker.editorConfig,
+    createdAt: sharedSticker.createdAt,
+  });
 });
 
 export default router;

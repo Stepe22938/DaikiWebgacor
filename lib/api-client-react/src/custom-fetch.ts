@@ -12,6 +12,7 @@ export type AuthTokenGetter = () => Promise<string | null> | string | null;
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 const DEFAULT_FETCH_TIMEOUT_MS = 15000;
+const BLOCKED_SWITCH_IDS = new Set(["local_dev_user", "localdev"]);
 
 // ---------------------------------------------------------------------------
 // Module-level configuration
@@ -379,7 +380,7 @@ export async function customFetch<T = unknown>(
 
   if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
     const switchClerkId = localStorage.getItem("switch_clerk_id");
-    if (switchClerkId) {
+    if (switchClerkId && !BLOCKED_SWITCH_IDS.has(switchClerkId.trim().toLowerCase())) {
       headers.set("x-switch-clerk-id", switchClerkId);
     }
   }

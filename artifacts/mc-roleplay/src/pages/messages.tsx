@@ -4,7 +4,6 @@ import {
   useCreateGroup,
   useDeleteConversation,
   useSendMessage,
-  useDeleteMessage,
   useListConversationMembers,
   getListConversationMembersQueryOptions,
   useAddConversationMember,
@@ -941,12 +940,14 @@ function MessageBubble({
   msg,
   isOwn,
   onDelete,
+  onForward,
   onUserClick,
   isGroup = false,
 }: {
   msg: Message;
   isOwn: boolean;
   onDelete?: () => void;
+  onForward?: () => void;
   onUserClick?: () => void;
   isGroup?: boolean;
 }) {
@@ -954,6 +955,8 @@ function MessageBubble({
   const [isZoomed, setIsZoomed] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const isStickerMessage = !!msg.imageUrl && msg.imageUrl.includes("/api/stickers/");
+  const isForwarded = !!(msg as any).forwardedFromMessageId;
+  const isDeleted = !!(msg as any).deletedAt;
 
   return (
     <>
@@ -992,13 +995,25 @@ function MessageBubble({
                 )}
               </div>
             )}
-            {isOwn && onDelete && (
-              <button
-                onClick={onDelete}
-                className="text-[10px] font-bold text-slate-400 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
-              >
-                delete
-              </button>
+            {(onForward || (isOwn && onDelete)) && (
+              <div className={`flex items-center gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
+                {onForward && (
+                  <button
+                    onClick={onForward}
+                    className="text-[10px] font-bold text-slate-400 hover:text-sky-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
+                  >
+                    forward
+                  </button>
+                )}
+                {isOwn && onDelete && (
+                  <button
+                    onClick={onDelete}
+                    className="text-[10px] font-bold text-slate-400 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
+                  >
+                    delete
+                  </button>
+                )}
+              </div>
             )}
           </div>
           <div
@@ -1008,6 +1023,16 @@ function MessageBubble({
                 : isGroup ? "bg-[#2B2D31] text-[#DCDDDE] rounded-tl-[4px]" : "bg-white border border-[#dfe8e3] text-[#18251f] rounded-tl-[4px]"
             }`}
           >
+            {isForwarded && (
+              <div className={`mb-1 text-[9px] font-black uppercase tracking-widest ${isGroup ? "text-[#8f97a3]" : "text-slate-400"}`}>
+                forwarded
+              </div>
+            )}
+            {isDeleted && (
+              <div className={`mb-1 text-[9px] font-black uppercase tracking-widest ${isGroup ? "text-[#ffb4b4]" : "text-rose-400"}`}>
+                deleted message
+              </div>
+            )}
             {msg.imageUrl && !imageFailed && (
               <div 
                 className={`${isStickerMessage ? "mb-0 max-w-[160px] sm:max-w-[180px]" : "mb-2 max-w-sm"} rounded-lg overflow-hidden cursor-zoom-in hover:brightness-95 transition-all duration-200`}
@@ -1800,7 +1825,6 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const createGroup = useCreateGroup();
   const deleteConv = useDeleteConversation();
   const sendMessage = useSendMessage();
-  const deleteMessage = useDeleteMessage();
   const addMember = useAddConversationMember();
   const removeMember = useRemoveConversationMember();
 
@@ -2098,10 +2122,53 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   async function handleDeleteMessage(messageId: number) {
     if (!selectedId) return;
     try {
-      await deleteMessage.mutateAsync({ id: selectedId, messageId });
+      const scope = window.prompt("Ketik 'me' untuk hapus lokal, atau 'everyone' untuk hapus untuk semua orang", "everyone")?.trim().toLowerCase();
+      if (!scope) return;
+      const safeScope = scope === "me" || scope === "local" ? "me" : "everyone";
+      const response = await fetch(`/api/conversations/${selectedId}/messages/${messageId}?scope=${encodeURIComponent(safeScope)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to delete message");
+      }
       await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
     } catch {
       toast({ title: "Failed to delete message", variant: "destructive" });
+    }
+  }
+
+  async function handleForwardMessage(messageId: number) {
+    if (!selectedId) return;
+    const target = window.prompt("Forward ke conversationId[,channelId] (contoh: 12 atau 12,45)", `${selectedId}`)?.trim();
+    if (!target) return;
+
+    const [conversationRaw, channelRaw] = target.split(",").map((value) => value.trim()).filter(Boolean);
+    const targetConversationId = Number(conversationRaw);
+    const targetChannelId = channelRaw ? Number(channelRaw) : undefined;
+    if (!Number.isFinite(targetConversationId)) {
+      toast({ title: "Target conversation invalid", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/conversations/${selectedId}/messages/${messageId}/forward`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetConversationId,
+          targetChannelId,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Failed to forward message");
+      await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+      if (targetConversationId === selectedId) {
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+      }
+      toast({ title: "Message forwarded" });
+    } catch (err: any) {
+      toast({ title: "Failed to forward message", description: err?.message || "Unknown error", variant: "destructive" });
     }
   }
 
@@ -3207,6 +3274,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               isOwn={msg.senderId === me?.id}
                               isGroup={isGroupView}
                               onUserClick={msg.senderId ? () => openProfileFromMessage(msg) : undefined}
+                              onForward={() => handleForwardMessage(msg.id)}
                               onDelete={
                                 msg.senderId === me?.id
                                   ? () => handleDeleteMessage(msg.id)

@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, index, varchar, unique } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 import { conversationsTable } from "./conversations";
 import { channelsTable } from "./channels";
@@ -15,8 +15,20 @@ export const messagesTable = pgTable("messages", {
   attachmentName: text("attachment_name"),
   attachmentMime: text("attachment_mime"),
   attachmentSize: integer("attachment_size"),
+  forwardedFromMessageId: integer("forwarded_from_message_id"),
+  forwardedFromConversationId: integer("forwarded_from_conversation_id").references(() => conversationsTable.id, { onDelete: "set null" }),
+  deletedAt: timestamp("deleted_at"),
+  deletedByUserId: integer("deleted_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  deletedScope: varchar("deleted_scope", { length: 20 }).notNull().default("visible"), // visible | everyone
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [index("messages_conv_idx").on(t.conversationId, t.createdAt)]);
+
+export const messageHiddenForUsersTable = pgTable("message_hidden_for_users", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => messagesTable.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  hiddenAt: timestamp("hidden_at").notNull().defaultNow(),
+}, (t) => [unique().on(t.messageId, t.userId), index("message_hidden_for_users_user_idx").on(t.userId, t.hiddenAt)]);
 
 export type Message = typeof messagesTable.$inferSelect;

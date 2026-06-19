@@ -88,11 +88,7 @@ export default function Member() {
     isLoading: userLoading,
     error: userError,
     refetch: refetchUser,
-  } = useGetMe({
-    query: {
-      retry: false,
-    },
-  });
+  } = useGetMe();
   const { user: clerkUser } = useUser();
   const { data: announcements, isLoading: announcementsLoading } = useListAnnouncements();
   const { data: developments, isLoading: developmentsLoading } = useListDevelopments();
@@ -1630,6 +1626,8 @@ function DevSwitchAccountCard() {
   const clerk = useClerk();
   const { data: currentUser } = useGetMe();
   const activeSwitchClerkId = typeof window !== "undefined" ? localStorage.getItem("switch_clerk_id") : null;
+  const normalizedSwitchClerkId = activeSwitchClerkId?.trim().toLowerCase() ?? null;
+  const isBlockedSwitch = normalizedSwitchClerkId === "local_dev_user" || normalizedSwitchClerkId === "localdev";
   const canUseDevSwitch = currentUser?.role === "dev_website";
   const { data: users = [], isLoading: isUsersLoading } = useListSwitchableUsers({
     query: { enabled: Boolean(canUseDevSwitch) } as any,
@@ -1640,9 +1638,16 @@ function DevSwitchAccountCard() {
 
   const sessions = clerk.client?.sessions || [];
   const activeSessionId = clerk.session?.id;
-  const activeSwitchUser = users.find((u) => u.clerkId === activeSwitchClerkId);
+  const switchableUsers = users.filter((u) => !["local_dev_user", "localdev"].includes(u.clerkId.trim().toLowerCase()));
+  const activeSwitchUser = switchableUsers.find((u) => u.clerkId === activeSwitchClerkId);
 
   useEffect(() => {
+    if (isBlockedSwitch) {
+      localStorage.removeItem("switch_clerk_id");
+      setSelectedClerkId(currentUser?.clerkId ?? "");
+      void reloadWithFreshCache();
+      return;
+    }
     if (activeSwitchClerkId) {
       setSelectedClerkId(activeSwitchClerkId);
       return;
@@ -1650,7 +1655,7 @@ function DevSwitchAccountCard() {
     if (!selectedClerkId && currentUser?.clerkId) {
       setSelectedClerkId(currentUser.clerkId);
     }
-  }, [activeSwitchClerkId, currentUser?.clerkId, selectedClerkId]);
+  }, [activeSwitchClerkId, currentUser?.clerkId, selectedClerkId, isBlockedSwitch]);
 
   const reloadWithFreshCache = async () => {
     await queryClient.cancelQueries();
@@ -1847,10 +1852,10 @@ function DevSwitchAccountCard() {
                     <SelectValue placeholder="Choose database record..." />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-[#eae8f5] rounded-xl text-slate-700">
-                    {users.map((u) => (
-                      <SelectItem key={u.id} value={u.clerkId}>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="w-5 h-5 border border-slate-100">
+                      {switchableUsers.map((u) => (
+                        <SelectItem key={u.id} value={u.clerkId}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="w-5 h-5 border border-slate-100">
                             <AvatarImage src={u.avatarUrl ?? undefined} />
                             <AvatarFallback className="text-[8px] font-bold bg-slate-100 text-slate-600">
                               {getInitials(u.displayName || u.username)}
@@ -3994,6 +3999,9 @@ function MembershipTab() {
   const [requestNote, setRequestNote] = useState("");
   const [stickerName, setStickerName] = useState("");
   const [stickerGroupId, setStickerGroupId] = useState("none");
+  const [stickerOverlayText, setStickerOverlayText] = useState("");
+  const [stickerFontFamily, setStickerFontFamily] = useState("Inter");
+  const [stickerTextColor, setStickerTextColor] = useState("#111827");
   const [uploadingSticker, setUploadingSticker] = useState(false);
   const [slotTargets, setSlotTargets] = useState<Record<number, string>>({});
   const stickerFileRef = useRef<HTMLInputElement | null>(null);
@@ -4181,6 +4189,11 @@ function MembershipTab() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("name", stickerName.trim());
+      formData.append("editorConfig", JSON.stringify({
+        overlayText: stickerOverlayText.trim(),
+        fontFamily: stickerFontFamily,
+        textColor: stickerTextColor,
+      }));
       if (data.currentTier === "free") {
         if (stickerGroupId === "none") throw new Error("Pilih group dulu untuk sticker lokal.");
         formData.append("conversationId", stickerGroupId);
@@ -4191,6 +4204,7 @@ function MembershipTab() {
       if (!response.ok) throw new Error(payload.error || "Gagal upload sticker");
 
       setStickerName("");
+      setStickerOverlayText("");
       await queryClient.invalidateQueries({ queryKey: ["/api/stickers", "owned"] });
       toast({ title: "Sticker berhasil dibuat", description: "Sticker masuk ke library kamu." });
     } catch (err: any) {
@@ -4597,6 +4611,20 @@ function MembershipTab() {
               <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sticker Name</Label>
               <Input value={stickerName} onChange={(e) => setStickerName(e.target.value.slice(0, 40))} placeholder="contoh: happy_cat" className="rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
             </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-1.5 md:col-span-3">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Overlay Text</Label>
+                <Input value={stickerOverlayText} onChange={(e) => setStickerOverlayText(e.target.value.slice(0, 60))} placeholder="contoh: Halo Kak!" className="rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Font</Label>
+                <Input value={stickerFontFamily} onChange={(e) => setStickerFontFamily(e.target.value.slice(0, 30))} placeholder="Inter" className="rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Text Color</Label>
+                <Input value={stickerTextColor} onChange={(e) => setStickerTextColor(e.target.value.slice(0, 20))} placeholder="#111827" className="rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
+              </div>
+            </div>
             {data.currentTier === "free" && (
               <div className="space-y-1.5">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Group</Label>
@@ -4619,11 +4647,11 @@ function MembershipTab() {
               {data.currentTier === "free"
                 ? "User biasa cuma bisa bikin sticker lokal per group."
                 : data.currentTier === "premium_plus"
-                ? "Premium+ bisa bikin sticker global, termasuk GIF animated."
+                ? "Premium+ bisa share / reuse sticker antar group, bukan upload sticker baru."
                 : "Premium bisa bikin sticker global lintas semua group."}
             </div>
-            <Button onClick={() => stickerFileRef.current?.click()} disabled={uploadingSticker || !stickerName.trim()} className="h-10 rounded-xl bg-[#6366f1] px-4 text-xs font-bold text-white shadow-md shadow-violet-500/5 hover:bg-violet-600">
-              {uploadingSticker ? "Uploading..." : "Upload Sticker"}
+            <Button onClick={() => stickerFileRef.current?.click()} disabled={uploadingSticker || !stickerName.trim() || data.currentTier === "premium_plus"} className="h-10 rounded-xl bg-[#6366f1] px-4 text-xs font-bold text-white shadow-md shadow-violet-500/5 hover:bg-violet-600">
+              {uploadingSticker ? "Uploading..." : data.currentTier === "premium_plus" ? "Premium+ pakai share" : "Upload Sticker"}
             </Button>
           </CardContent>
         </Card>
@@ -4653,9 +4681,34 @@ function MembershipTab() {
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-600">{formatBytesCompact(sticker.sizeBytes)}</span>
-                        <Button variant="outline" onClick={() => deleteStickerMutation.mutate(sticker.id)} disabled={deleteStickerMutation.isPending} className="h-8 rounded-lg border-red-200 bg-red-50 px-3 text-[10px] font-black text-red-600 hover:bg-red-100">
-                          Delete
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={async () => {
+                              const nextName = window.prompt("Nama sticker baru (opsional)", sticker.name) ?? sticker.name;
+                              try {
+                                await customFetch(`/api/stickers/${sticker.id}`, {
+                                  method: "PATCH",
+                                  body: JSON.stringify({
+                                    name: nextName.trim(),
+                                    editorConfig: sticker.editorConfig ?? {},
+                                  }),
+                                  headers: { "Content-Type": "application/json" },
+                                });
+                                await queryClient.invalidateQueries({ queryKey: ["/api/stickers", "owned"] });
+                                toast({ title: "Sticker updated" });
+                              } catch (err: any) {
+                                toast({ title: "Error", description: err?.message || "Gagal edit sticker.", variant: "destructive" });
+                              }
+                            }}
+                            className="h-8 rounded-lg border-slate-200 bg-slate-50 px-3 text-[10px] font-black text-slate-600 hover:bg-slate-100"
+                          >
+                            Edit
+                          </Button>
+                          <Button variant="outline" onClick={() => deleteStickerMutation.mutate(sticker.id)} disabled={deleteStickerMutation.isPending} className="h-8 rounded-lg border-red-200 bg-red-50 px-3 text-[10px] font-black text-red-600 hover:bg-red-100">
+                            Delete
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>

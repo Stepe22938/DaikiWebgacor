@@ -214,6 +214,8 @@ function ProfileBadges({ badges }: { badges: Badge[] }) {
 
 const ROLE_LABELS: Record<PublicUser["role"], string> = {
   member: "Member",
+  premium: "Premium",
+  premium_plus: "Premium+",
   admin: "Admin",
   staff: "Staff",
   dev: "Developer",
@@ -222,7 +224,7 @@ const ROLE_LABELS: Record<PublicUser["role"], string> = {
   ai: "AI Assistant",
 };
 
-const PRIVILEGED_ROLES: PublicUser["role"][] = ["admin", "staff", "dev", "dev_website"];
+const PRIVILEGED_ROLES: PublicUser["role"][] = ["premium", "premium_plus", "admin", "staff", "dev", "dev_website"];
 const DEV_ROLES: PublicUser["role"][] = ["dev", "dev_website"];
 const ANNOUNCEMENT_COLORS = ["#6d5dfc", "#00a884", "#f59e0b", "#ef4444"];
 const DEV_STATUS_COLORS: Record<Development["status"], string> = {

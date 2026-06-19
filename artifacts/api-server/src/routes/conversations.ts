@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, inArray, desc, asc } from "drizzle-orm";
+import { eq, and, inArray, desc, asc, isNull } from "drizzle-orm";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import {
   db,
@@ -8,6 +8,7 @@ import {
   followsTable,
   conversationsTable,
   conversationMembersTable,
+  messageHiddenForUsersTable,
   messagesTable,
   userCosmeticsTable,
   cosmeticsTable,
@@ -145,6 +146,13 @@ function parseAiSetRoleCommand(content: string) {
 
 function normalizeMemberName(value: string | null | undefined) {
   return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function canManageMessages(conversationId: number, userId: number) {
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, conversationId) });
+  if (!conv) return false;
+  if (conv.ownerId === userId) return true;
+  return hasPermission(conversationId, userId, "manageMessages");
 }
 
 async function findConversationMemberTarget(conversationId: number, target: AiMemberTarget) {
@@ -1167,6 +1175,11 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       attachmentName: messagesTable.attachmentName,
       attachmentMime: messagesTable.attachmentMime,
       attachmentSize: messagesTable.attachmentSize,
+      forwardedFromMessageId: messagesTable.forwardedFromMessageId,
+      forwardedFromConversationId: messagesTable.forwardedFromConversationId,
+      deletedAt: messagesTable.deletedAt,
+      deletedByUserId: messagesTable.deletedByUserId,
+      deletedScope: messagesTable.deletedScope,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
       senderUsername: usersTable.username,
@@ -1176,7 +1189,11 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
-    .where(eq(messagesTable.conversationId, id))
+    .leftJoin(messageHiddenForUsersTable, and(
+      eq(messageHiddenForUsersTable.messageId, messagesTable.id),
+      eq(messageHiddenForUsersTable.userId, user.id),
+    ))
+    .where(and(eq(messagesTable.conversationId, id), isNull(messageHiddenForUsersTable.id)))
     .orderBy(messagesTable.createdAt)
     .limit(50);
 
@@ -1206,6 +1223,15 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
     const serialized = serializeDates(r);
     return {
       ...serialized,
+      content: r.deletedAt && r.deletedScope === "everyone"
+        ? "Pesan dihapus."
+        : r.content,
+      imageUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.imageUrl,
+      attachmentDriveFileId: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentDriveFileId,
+      attachmentUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentUrl,
+      attachmentName: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentName,
+      attachmentMime: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentMime,
+      attachmentSize: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentSize,
       senderEquippedBorder: (r.senderUsername === "zaidanai" || r.senderUsername === "akira" || r.senderUsername === "metaai")
         ? "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]"
         : r.senderId ? (bordersMap.get(r.senderId) ?? null) : null,
@@ -1327,10 +1353,110 @@ router.delete("/conversations/:id/messages/:messageId", async (req, res): Promis
     where: and(eq(messagesTable.id, messageId), eq(messagesTable.conversationId, id)),
   });
   if (!msg) { res.status(404).json({ error: "Message not found" }); return; }
-  if (msg.senderId !== user.id) { res.status(403).json({ error: "Not the message author" }); return; }
+  const scope = String(req.body?.scope || req.query.scope || "everyone").toLowerCase();
+  const deleteForEveryone = scope !== "me" && scope !== "local";
 
-  await db.delete(messagesTable).where(eq(messagesTable.id, messageId));
+  if (!deleteForEveryone) {
+    await db.insert(messageHiddenForUsersTable).values({
+      messageId,
+      userId: user.id,
+    }).onConflictDoNothing();
+    res.status(204).send();
+    return;
+  }
+
+  const canDeleteForEveryone = msg.senderId === user.id || await canManageMessages(id, user.id);
+  if (!canDeleteForEveryone) {
+    res.status(403).json({ error: "Not authorized to delete this message for everyone" });
+    return;
+  }
+
+  await db.update(messagesTable)
+    .set({
+      deletedAt: new Date(),
+      deletedByUserId: user.id,
+      deletedScope: "everyone",
+      content: "[message deleted]",
+      imageUrl: null,
+      attachmentDriveFileId: null,
+      attachmentUrl: null,
+      attachmentName: null,
+      attachmentMime: null,
+      attachmentSize: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(messagesTable.id, messageId));
+
   res.status(204).send();
+});
+
+router.post("/conversations/:id/messages/:messageId/forward", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  const messageId = parseInt(req.params.messageId as string, 10);
+  const parsedTargetConversationId = Number(req.body?.targetConversationId);
+  const parsedTargetChannelId = req.body?.targetChannelId ? Number(req.body.targetChannelId) : null;
+
+  if (!Number.isFinite(id) || !Number.isFinite(messageId) || !Number.isFinite(parsedTargetConversationId)) {
+    res.status(400).json({ error: "Invalid forward target" });
+    return;
+  }
+
+  const sourceMessage = await db.query.messagesTable.findFirst({
+    where: and(eq(messagesTable.id, messageId), eq(messagesTable.conversationId, id)),
+  });
+  if (!sourceMessage) {
+    res.status(404).json({ error: "Message not found" });
+    return;
+  }
+
+  const sourceMember = await isMember(id, user.id);
+  const targetMember = await isMember(parsedTargetConversationId, user.id);
+  if (!sourceMember || !targetMember) {
+    res.status(403).json({ error: "Kamu harus jadi member di source dan target group" });
+    return;
+  }
+
+  if (parsedTargetChannelId) {
+    const targetChannel = await db.query.channelsTable.findFirst({
+      where: and(eq(channelsTable.id, parsedTargetChannelId), eq(channelsTable.conversationId, parsedTargetConversationId)),
+    });
+    if (!targetChannel) {
+      res.status(404).json({ error: "Target channel tidak ditemukan" });
+      return;
+    }
+  }
+
+  const [forwarded] = await db.insert(messagesTable).values({
+    conversationId: parsedTargetConversationId,
+    channelId: parsedTargetChannelId,
+    senderId: user.id,
+    content: sourceMessage.content,
+    imageUrl: sourceMessage.imageUrl,
+    attachmentDriveFileId: sourceMessage.attachmentDriveFileId,
+    attachmentUrl: sourceMessage.attachmentUrl,
+    attachmentName: sourceMessage.attachmentName,
+    attachmentMime: sourceMessage.attachmentMime,
+    attachmentSize: sourceMessage.attachmentSize,
+    forwardedFromMessageId: sourceMessage.id,
+    forwardedFromConversationId: sourceMessage.conversationId,
+    deletedScope: "visible",
+  }).returning();
+
+  await db.update(conversationsTable)
+    .set({ updatedAt: new Date() })
+    .where(eq(conversationsTable.id, parsedTargetConversationId));
+
+  res.status(201).json({
+    ...serializeDates(forwarded),
+    forwardedFromMessageId: forwarded.forwardedFromMessageId,
+    forwardedFromConversationId: forwarded.forwardedFromConversationId,
+  });
 });
 
 // === CHANNEL-SCOPED MESSAGE ENDPOINTS ===
@@ -1366,6 +1492,11 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
       attachmentName: messagesTable.attachmentName,
       attachmentMime: messagesTable.attachmentMime,
       attachmentSize: messagesTable.attachmentSize,
+      forwardedFromMessageId: messagesTable.forwardedFromMessageId,
+      forwardedFromConversationId: messagesTable.forwardedFromConversationId,
+      deletedAt: messagesTable.deletedAt,
+      deletedByUserId: messagesTable.deletedByUserId,
+      deletedScope: messagesTable.deletedScope,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
       senderUsername: usersTable.username,
@@ -1375,7 +1506,11 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
-    .where(and(eq(messagesTable.conversationId, id), eq(messagesTable.channelId, channelId)))
+    .leftJoin(messageHiddenForUsersTable, and(
+      eq(messageHiddenForUsersTable.messageId, messagesTable.id),
+      eq(messageHiddenForUsersTable.userId, user.id),
+    ))
+    .where(and(eq(messagesTable.conversationId, id), eq(messagesTable.channelId, channelId), isNull(messageHiddenForUsersTable.id)))
     .orderBy(messagesTable.createdAt)
     .limit(50);
 
@@ -1394,6 +1529,15 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
     const serialized = serializeDates(r);
     return {
       ...serialized,
+      content: r.deletedAt && r.deletedScope === "everyone"
+        ? "Pesan dihapus."
+        : r.content,
+      imageUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.imageUrl,
+      attachmentDriveFileId: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentDriveFileId,
+      attachmentUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentUrl,
+      attachmentName: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentName,
+      attachmentMime: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentMime,
+      attachmentSize: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentSize,
       senderEquippedBorder: (r.senderUsername === "zaidanai" || r.senderUsername === "akira" || r.senderUsername === "metaai")
         ? "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]"
         : r.senderId ? (bordersMap.get(r.senderId) ?? null) : null,

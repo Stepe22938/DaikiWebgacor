@@ -92,6 +92,18 @@ async function getClerkProfile(clerkId: string, claims: Record<string, unknown> 
 function shouldSyncDisplayName(user: typeof usersTable.$inferSelect, nextDisplayName: string | null, username: string) {
   if (!nextDisplayName) return false;
   if (!user.displayName) return true;
+  const current = user.displayName.trim().toLowerCase();
+  const placeholderNames = new Set([
+    "local dev",
+    "localdev",
+    "dev website",
+    "dev_website",
+    "member",
+    "player",
+  ]);
+
+  if (placeholderNames.has(current)) return true;
+
   return user.displayName === user.clerkId || user.displayName === user.username || user.displayName === username;
 }
 

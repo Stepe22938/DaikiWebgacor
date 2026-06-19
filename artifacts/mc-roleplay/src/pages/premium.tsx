@@ -87,6 +87,9 @@ export default function Premium() {
   // Sticker creation states
   const [stickerName, setStickerName] = useState("");
   const [stickerGroupId, setStickerGroupId] = useState("none");
+  const [stickerOverlayText, setStickerOverlayText] = useState("");
+  const [stickerFontFamily, setStickerFontFamily] = useState("Inter");
+  const [stickerTextColor, setStickerTextColor] = useState("#111827");
   const [uploadingSticker, setUploadingSticker] = useState(false);
   const stickerFileRef = useRef<HTMLInputElement | null>(null);
 
@@ -188,6 +191,11 @@ export default function Premium() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("name", stickerName.trim());
+      formData.append("editorConfig", JSON.stringify({
+        overlayText: stickerOverlayText.trim(),
+        fontFamily: stickerFontFamily,
+        textColor: stickerTextColor,
+      }));
       
       const currentTier = membershipData?.currentTier || "free";
       if (currentTier === "free") {
@@ -200,6 +208,7 @@ export default function Premium() {
       if (!response.ok) throw new Error(payload.error || "Gagal upload sticker");
 
       setStickerName("");
+      setStickerOverlayText("");
       await queryClient.invalidateQueries({ queryKey: ["/api/stickers", "owned"] });
       toast({ title: "Sticker berhasil dibuat", description: "Sticker masuk ke library kamu." });
     } catch (err: any) {
@@ -650,6 +659,20 @@ export default function Premium() {
                     <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sticker Name</Label>
                     <Input value={stickerName} onChange={(e) => setStickerName(e.target.value.slice(0, 40))} placeholder="contoh: happy_cat" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs text-slate-800 focus-visible:ring-purple-500" />
                   </div>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="space-y-1.5 md:col-span-3">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Overlay Text</Label>
+                      <Input value={stickerOverlayText} onChange={(e) => setStickerOverlayText(e.target.value.slice(0, 60))} placeholder="contoh: Halo Kak!" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs text-slate-800 focus-visible:ring-purple-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Font</Label>
+                      <Input value={stickerFontFamily} onChange={(e) => setStickerFontFamily(e.target.value.slice(0, 30))} placeholder="Inter" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs text-slate-800 focus-visible:ring-purple-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Text Color</Label>
+                      <Input value={stickerTextColor} onChange={(e) => setStickerTextColor(e.target.value.slice(0, 20))} placeholder="#111827" className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs text-slate-800 focus-visible:ring-purple-500" />
+                    </div>
+                  </div>
                   
                   {currentTier === "free" && (
                     <div className="space-y-1.5">
@@ -672,12 +695,12 @@ export default function Premium() {
 
                   <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-600">
                     {currentTier === "premium_plus" 
-                      ? "Premium+ can create global and animated stickers (GIFs)." 
+                      ? "Premium+ bisa share / reuse sticker antar group, tapi tidak upload sticker baru." 
                       : "Premium can create static global stickers across all chat rooms."}
                   </div>
 
-                  <Button onClick={() => stickerFileRef.current?.click()} disabled={uploadingSticker || !stickerName.trim()} className="w-full bg-purple-600 text-white hover:bg-purple-700 rounded-xl font-bold text-xs h-10 shadow-md">
-                    {uploadingSticker ? "Uploading..." : "Upload Sticker"}
+                  <Button onClick={() => stickerFileRef.current?.click()} disabled={uploadingSticker || !stickerName.trim() || currentTier === "premium_plus"} className="w-full bg-purple-600 text-white hover:bg-purple-700 rounded-xl font-bold text-xs h-10 shadow-md">
+                    {uploadingSticker ? "Uploading..." : currentTier === "premium_plus" ? "Premium+ share only" : "Upload Sticker"}
                   </Button>
                 </CardContent>
               </Card>
@@ -713,9 +736,30 @@ export default function Premium() {
                                 {sticker.scope === "global_cross_server" ? "Global" : "Local Group"}
                               </p>
                             </div>
-                            <Button variant="outline" size="sm" onClick={() => deleteStickerMutation.mutate(sticker.id)} disabled={deleteStickerMutation.isPending} className="w-full h-7 rounded-lg border-red-100 bg-red-50 hover:bg-red-100 px-2 text-[9px] font-black text-red-600">
-                              Delete
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button variant="outline" size="sm" onClick={async () => {
+                                const nextName = window.prompt("Nama sticker baru (opsional)", sticker.name) ?? sticker.name;
+                                try {
+                                  await customFetch(`/api/stickers/${sticker.id}`, {
+                                    method: "PATCH",
+                                    body: JSON.stringify({
+                                      name: nextName.trim(),
+                                      editorConfig: sticker.editorConfig ?? {},
+                                    }),
+                                    headers: { "Content-Type": "application/json" },
+                                  });
+                                  await queryClient.invalidateQueries({ queryKey: ["/api/stickers", "owned"] });
+                                  toast({ title: "Sticker updated" });
+                                } catch (err: any) {
+                                  toast({ title: "Error", description: err?.message || "Gagal edit sticker.", variant: "destructive" });
+                                }
+                              }} className="h-7 rounded-lg border-slate-200 bg-slate-50 hover:bg-slate-100 px-2 text-[9px] font-black text-slate-600">
+                                Edit
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => deleteStickerMutation.mutate(sticker.id)} disabled={deleteStickerMutation.isPending} className="w-full h-7 rounded-lg border-red-100 bg-red-50 hover:bg-red-100 px-2 text-[9px] font-black text-red-600">
+                                Delete
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))}

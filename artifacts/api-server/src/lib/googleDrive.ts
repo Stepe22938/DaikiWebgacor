@@ -134,7 +134,7 @@ export async function uploadFileToDrive(input: DriveUploadInput): Promise<DriveU
   if (folderId) metadata["parents"] = [folderId];
 
   const sessionResponse = await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,size,webViewLink,webContentLink",
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,mimeType,size,webViewLink,webContentLink",
     {
       method: "POST",
       headers: {
@@ -179,7 +179,7 @@ export async function uploadFileToDrive(input: DriveUploadInput): Promise<DriveU
 
 export async function getDriveDownloadResponse(fileId: string) {
   const accessToken = await getDriveAccessToken();
-  return fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, {
+  return fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
