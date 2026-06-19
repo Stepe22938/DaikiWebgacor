@@ -747,6 +747,8 @@ export const ListConversationsResponseItem = zod.object({
   "type": zod.enum(['dm', 'group']),
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "otherUserId": zod.number().nullish(),
@@ -842,7 +844,10 @@ export const updateGroupBodyNameMax = 100;
 
 
 export const UpdateGroupBody = zod.object({
-  "name": zod.string().min(1).max(updateGroupBodyNameMax).optional()
+  "name": zod.string().min(1).max(updateGroupBodyNameMax).optional(),
+  "description": zod.string().max(500).nullish(),
+  "iconUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish()
 })
 
 export const UpdateGroupResponse = zod.object({
@@ -850,6 +855,8 @@ export const UpdateGroupResponse = zod.object({
   "type": zod.enum(['dm', 'group']),
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "otherUserId": zod.number().nullish(),
@@ -893,6 +900,12 @@ export const ListMessagesResponseItem = zod.object({
   "attachmentSize": zod.number().nullish(),
   "forwardedFromMessageId": zod.number().nullish(),
   "forwardedFromConversationId": zod.number().nullish(),
+  "replyToMessageId": zod.number().nullish(),
+  "replyToMessageContent": zod.string().nullish(),
+  "replyToMessageSenderUsername": zod.string().nullish(),
+  "pinned": zod.boolean().optional(),
+  "pinnedAt": zod.coerce.date().nullish(),
+  "pinnedByUserId": zod.number().nullish(),
   "deletedAt": zod.coerce.date().nullish(),
   "deletedByUserId": zod.number().nullish(),
   "deletedScope": zod.string().nullish(),
@@ -902,7 +915,14 @@ export const ListMessagesResponseItem = zod.object({
   "senderDisplayName": zod.string().nullish(),
   "senderAvatarUrl": zod.string().nullish(),
   "senderRole": zod.string().nullish(),
-  "senderEquippedBorder": zod.string().nullish()
+  "senderEquippedBorder": zod.string().nullish(),
+  "starred": zod.boolean().optional(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userReacted": zod.boolean(),
+  "usernames": zod.array(zod.string()).optional()
+})).optional()
 })
 export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
 
@@ -925,7 +945,8 @@ export const SendMessageBody = zod.object({
   "attachmentUrl": zod.string().optional(),
   "attachmentName": zod.string().optional(),
   "attachmentMime": zod.string().optional(),
-  "attachmentSize": zod.number().optional()
+  "attachmentSize": zod.number().optional(),
+  "replyToMessageId": zod.number().optional()
 })
 
 
@@ -935,6 +956,231 @@ export const SendMessageBody = zod.object({
 export const DeleteMessageParams = zod.object({
   "id": zod.coerce.number(),
   "messageId": zod.coerce.number()
+})
+
+
+/**
+ * @summary List pinned messages in a conversation
+ */
+export const ListPinnedMessagesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListPinnedMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "senderId": zod.number().nullish(),
+  "content": zod.string(),
+  "imageUrl": zod.string().nullish(),
+  "attachmentDriveFileId": zod.string().nullish(),
+  "attachmentUrl": zod.string().nullish(),
+  "attachmentName": zod.string().nullish(),
+  "attachmentMime": zod.string().nullish(),
+  "attachmentSize": zod.number().nullish(),
+  "forwardedFromMessageId": zod.number().nullish(),
+  "forwardedFromConversationId": zod.number().nullish(),
+  "replyToMessageId": zod.number().nullish(),
+  "replyToMessageContent": zod.string().nullish(),
+  "replyToMessageSenderUsername": zod.string().nullish(),
+  "pinned": zod.boolean().optional(),
+  "pinnedAt": zod.coerce.date().nullish(),
+  "pinnedByUserId": zod.number().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "deletedByUserId": zod.number().nullish(),
+  "deletedScope": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.coerce.date().nullish(),
+  "senderUsername": zod.string().nullish(),
+  "senderDisplayName": zod.string().nullish(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "senderRole": zod.string().nullish(),
+  "senderEquippedBorder": zod.string().nullish(),
+  "starred": zod.boolean().optional(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userReacted": zod.boolean(),
+  "usernames": zod.array(zod.string()).optional()
+})).optional()
+})
+export const ListPinnedMessagesResponse = zod.array(ListPinnedMessagesResponseItem)
+
+
+/**
+ * @summary Pin a message
+ */
+export const PinMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+export const PinMessageResponse = zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "senderId": zod.number().nullish(),
+  "content": zod.string(),
+  "imageUrl": zod.string().nullish(),
+  "attachmentDriveFileId": zod.string().nullish(),
+  "attachmentUrl": zod.string().nullish(),
+  "attachmentName": zod.string().nullish(),
+  "attachmentMime": zod.string().nullish(),
+  "attachmentSize": zod.number().nullish(),
+  "forwardedFromMessageId": zod.number().nullish(),
+  "forwardedFromConversationId": zod.number().nullish(),
+  "replyToMessageId": zod.number().nullish(),
+  "replyToMessageContent": zod.string().nullish(),
+  "replyToMessageSenderUsername": zod.string().nullish(),
+  "pinned": zod.boolean().optional(),
+  "pinnedAt": zod.coerce.date().nullish(),
+  "pinnedByUserId": zod.number().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "deletedByUserId": zod.number().nullish(),
+  "deletedScope": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.coerce.date().nullish(),
+  "senderUsername": zod.string().nullish(),
+  "senderDisplayName": zod.string().nullish(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "senderRole": zod.string().nullish(),
+  "senderEquippedBorder": zod.string().nullish(),
+  "starred": zod.boolean().optional(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userReacted": zod.boolean(),
+  "usernames": zod.array(zod.string()).optional()
+})).optional()
+})
+
+
+/**
+ * @summary Unpin a message
+ */
+export const UnpinMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+export const UnpinMessageResponse = zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "senderId": zod.number().nullish(),
+  "content": zod.string(),
+  "imageUrl": zod.string().nullish(),
+  "attachmentDriveFileId": zod.string().nullish(),
+  "attachmentUrl": zod.string().nullish(),
+  "attachmentName": zod.string().nullish(),
+  "attachmentMime": zod.string().nullish(),
+  "attachmentSize": zod.number().nullish(),
+  "forwardedFromMessageId": zod.number().nullish(),
+  "forwardedFromConversationId": zod.number().nullish(),
+  "replyToMessageId": zod.number().nullish(),
+  "replyToMessageContent": zod.string().nullish(),
+  "replyToMessageSenderUsername": zod.string().nullish(),
+  "pinned": zod.boolean().optional(),
+  "pinnedAt": zod.coerce.date().nullish(),
+  "pinnedByUserId": zod.number().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "deletedByUserId": zod.number().nullish(),
+  "deletedScope": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.coerce.date().nullish(),
+  "senderUsername": zod.string().nullish(),
+  "senderDisplayName": zod.string().nullish(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "senderRole": zod.string().nullish(),
+  "senderEquippedBorder": zod.string().nullish(),
+  "starred": zod.boolean().optional(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userReacted": zod.boolean(),
+  "usernames": zod.array(zod.string()).optional()
+})).optional()
+})
+
+
+/**
+ * @summary Star a message
+ */
+export const StarMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+
+/**
+ * @summary Unstar a message
+ */
+export const UnstarMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+
+/**
+ * @summary List my starred messages
+ */
+export const ListStarredMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "senderId": zod.number().nullish(),
+  "content": zod.string(),
+  "imageUrl": zod.string().nullish(),
+  "attachmentDriveFileId": zod.string().nullish(),
+  "attachmentUrl": zod.string().nullish(),
+  "attachmentName": zod.string().nullish(),
+  "attachmentMime": zod.string().nullish(),
+  "attachmentSize": zod.number().nullish(),
+  "forwardedFromMessageId": zod.number().nullish(),
+  "forwardedFromConversationId": zod.number().nullish(),
+  "replyToMessageId": zod.number().nullish(),
+  "replyToMessageContent": zod.string().nullish(),
+  "replyToMessageSenderUsername": zod.string().nullish(),
+  "pinned": zod.boolean().optional(),
+  "pinnedAt": zod.coerce.date().nullish(),
+  "pinnedByUserId": zod.number().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "deletedByUserId": zod.number().nullish(),
+  "deletedScope": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.coerce.date().nullish(),
+  "senderUsername": zod.string().nullish(),
+  "senderDisplayName": zod.string().nullish(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "senderRole": zod.string().nullish(),
+  "senderEquippedBorder": zod.string().nullish(),
+  "starred": zod.boolean().optional(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userReacted": zod.boolean(),
+  "usernames": zod.array(zod.string()).optional()
+})).optional()
+})
+export const ListStarredMessagesResponse = zod.array(ListStarredMessagesResponseItem)
+
+
+/**
+ * @summary Add an emoji reaction to a message
+ */
+export const ReactMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+export const ReactMessageBody = zod.object({
+  "emoji": zod.string()
+})
+
+
+/**
+ * @summary Remove an emoji reaction from a message
+ */
+export const UnreactMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number(),
+  "emoji": zod.coerce.string()
 })
 
 
@@ -1677,3 +1923,5 @@ export const AdminUpdateCosmeticResponse = zod.object({
 export const AdminDeleteCosmeticParams = zod.object({
   "id": zod.coerce.number()
 })
+
+

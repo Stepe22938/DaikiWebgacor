@@ -18,4 +18,5 @@ export interface SendMessageInput {
   attachmentName?: string;
   attachmentMime?: string;
   attachmentSize?: number;
+  replyToMessageId?: number;
 }

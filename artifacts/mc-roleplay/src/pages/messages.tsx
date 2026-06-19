@@ -11,6 +11,16 @@ import {
   useGetMyFriends,
   useGetMe,
   customFetch,
+  useListPinnedMessages,
+  usePinMessage,
+  useUnpinMessage,
+  useStarMessage,
+  useUnstarMessage,
+  useListStarredMessages,
+  useReactMessage,
+  useUnreactMessage,
+  getListPinnedMessagesQueryOptions,
+  getListStarredMessagesQueryOptions,
 } from "@workspace/api-client-react";
 import type { ConversationSummary, Message } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
@@ -19,11 +29,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -79,6 +91,11 @@ import {
   ArrowUp,
   ArrowDown,
   ListOrdered,
+  CornerUpLeft,
+  Star,
+  Pin,
+  Forward,
+  Upload,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -880,6 +897,16 @@ function getInitials(name: string | null | undefined): string {
     : name.slice(0, 2).toUpperCase();
 }
 
+function getMessagePreviewText(msg: { content?: string | null; imageUrl?: string | null; attachmentUrl?: string | null }) {
+  if (msg.content) return msg.content;
+  if (msg.imageUrl) {
+    if (msg.imageUrl.includes("/api/stickers/")) return "🖼️ Stiker";
+    return "📷 Foto";
+  }
+  if (msg.attachmentUrl) return "📁 File Lampiran";
+  return "Pesan";
+}
+
 function ConvItem({
   conv,
   selected,
@@ -891,6 +918,7 @@ function ConvItem({
   onClick: () => void;
   dark?: boolean;
 }) {
+  const { data: me } = useGetMe();
   const name =
     conv.type === "dm"
       ? (conv.otherDisplayName ?? conv.otherUsername ?? "Unknown")
@@ -929,7 +957,12 @@ function ConvItem({
           )}
         </div>
         {conv.lastMessageContent && (
-          <p className={`text-[10px] font-bold truncate mt-0.5 ${dark ? "text-[#949BA4]" : "text-slate-400"}`}>{conv.lastMessageContent}</p>
+          <p className={`text-[10px] font-bold truncate mt-0.5 ${dark ? "text-[#949BA4]" : "text-slate-400"} flex items-center gap-1`}>
+            {conv.lastMessageSenderId === me?.id && (
+              <span className={`text-[11px] font-black select-none leading-none shrink-0 ${dark ? "text-[#5865F2]" : "text-[#34b7f1]"}`}>✓✓</span>
+            )}
+            <span className="truncate">{conv.lastMessageContent}</span>
+          </p>
         )}
       </div>
     </button>
@@ -943,6 +976,12 @@ function MessageBubble({
   onForward,
   onUserClick,
   isGroup = false,
+  onReply,
+  onPin,
+  onStar,
+  onReact,
+  onBubbleClick,
+  me,
 }: {
   msg: Message;
   isOwn: boolean;
@@ -950,6 +989,12 @@ function MessageBubble({
   onForward?: () => void;
   onUserClick?: () => void;
   isGroup?: boolean;
+  onReply?: () => void;
+  onPin?: () => void;
+  onStar?: () => void;
+  onReact?: (emoji: string) => void;
+  onBubbleClick?: (e: React.MouseEvent, msg: Message) => void;
+  me: any;
 }) {
   const name = msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
   const [isZoomed, setIsZoomed] = useState(false);
@@ -960,133 +1005,266 @@ function MessageBubble({
 
   return (
     <>
-      <div className={`flex items-start gap-2 group max-w-full ${isOwn ? "flex-row-reverse" : ""}`}>
-        {!isOwn && (
-        <button
-          type="button"
-          onClick={onUserClick}
-          className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible mt-0.5 cursor-pointer ${(msg as any).senderEquippedBorder ? (msg as any).senderEquippedBorder : isGroup ? "border border-[#3F4147]" : "border border-[#d7e4de]"}`}
-        >
-          <Avatar className="w-8 h-8 shrink-0">
-            <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
-            <AvatarFallback className={`text-[10px] font-bold ${isGroup ? "bg-[#2B2D31] text-[#DCDDDE]" : "bg-[#edf5f1] text-[#0b6b58]"}`}>{getInitials(name)}</AvatarFallback>
-          </Avatar>
-        </button>
-        )}
-        <div
-          className={`min-w-0 flex flex-col gap-1 ${isOwn ? "items-end max-w-[82%] sm:max-w-[72%]" : "items-start max-w-[calc(100%-44px)] sm:max-w-[72%]"}`}
-        >
-          <div className={`flex items-center gap-2 px-1 ${isOwn ? "flex-row-reverse" : ""}`}>
-            {(!isOwn || (msg.senderRole && msg.senderRole !== "member")) && (
-              <div className={`flex items-center gap-1.5 ${isOwn ? "flex-row-reverse" : ""}`}>
-                {!isOwn && (
-                  <button
-                    type="button"
-                    onClick={onUserClick}
-                    className={`text-[11px] font-extrabold hover:underline cursor-pointer ${isGroup ? "text-[#DCDDDE]" : "text-[#075e54]"}`}
+      <div className={`relative group/bubble flex flex-col max-w-full mb-1`}>
+        <div className={`flex items-start gap-2 max-w-full ${isOwn ? "flex-row-reverse" : ""}`} id={`message-${msg.id}`}>
+          {!isOwn && (
+            <button
+              type="button"
+              onClick={onUserClick}
+              className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible mt-0.5 cursor-pointer ${(msg as any).senderEquippedBorder ? (msg as any).senderEquippedBorder : isGroup ? "border border-[#3F4147]" : "border border-[#d7e4de]"}`}
+            >
+              <Avatar className="w-8 h-8 shrink-0">
+                <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
+                <AvatarFallback className={`text-[10px] font-bold ${isGroup ? "bg-[#2B2D31] text-[#DCDDDE]" : "bg-[#edf5f1] text-[#0b6b58]"}`}>{getInitials(name)}</AvatarFallback>
+              </Avatar>
+            </button>
+          )}
+          <div
+            className={`min-w-0 flex flex-col gap-1 relative ${isOwn ? "items-end max-w-[82%] sm:max-w-[72%]" : "items-start max-w-[calc(100%-44px)] sm:max-w-[72%]"}`}
+          >
+            <div className={`flex items-center gap-2 px-1 ${isOwn ? "flex-row-reverse" : ""}`}>
+              {(!isOwn || (msg.senderRole && msg.senderRole !== "member")) && (
+                <div className={`flex items-center gap-1.5 ${isOwn ? "flex-row-reverse" : ""}`}>
+                  {!isOwn && (
+                    <button
+                      type="button"
+                      onClick={onUserClick}
+                      className={`text-[11px] font-extrabold hover:underline cursor-pointer ${isGroup ? "text-[#DCDDDE]" : "text-[#075e54]"}`}
+                    >
+                      {name}
+                    </button>
+                  )}
+                  {msg.senderRole && msg.senderRole !== "member" && (
+                    <Badge className={`text-[8px] px-1.5 py-0 h-3.5 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[msg.senderRole] ?? ""}`}>
+                      {ROLE_LABELS[msg.senderRole] ?? msg.senderRole}
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div
+              className={`relative max-w-full overflow-hidden rounded-2xl cursor-pointer ${isStickerMessage ? "px-2 py-2 bg-transparent shadow-none" : "px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm whitespace-pre-wrap [overflow-wrap:anywhere]"} ${
+                isOwn
+                  ? isGroup ? "bg-[#005c4b] text-white rounded-tr-[4px]" : "bg-[#dcf8c6] text-[#18251f] rounded-tr-[4px]"
+                  : isGroup ? "bg-[#2B2D31] text-[#DCDDDE] rounded-tl-[4px]" : "bg-white border border-[#dfe8e3] text-[#18251f] rounded-tl-[4px]"
+              }`}
+              onClick={(e) => {
+                if (isDeleted) return;
+                const target = e.target as HTMLElement;
+                if (
+                  target.closest('button') || 
+                  target.closest('a') || 
+                  target.closest('.download-btn') ||
+                  window.getSelection()?.toString()
+                ) {
+                  return;
+                }
+                if (target.tagName === 'IMG' || target.closest('.cursor-zoom-in')) {
+                  setIsZoomed(true);
+                  return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                onBubbleClick?.(e, msg);
+              }}
+              onContextMenu={(e) => {
+                if (isDeleted) return;
+                e.preventDefault();
+                e.stopPropagation();
+                onBubbleClick?.(e, msg);
+              }}
+            >
+              {!isDeleted && msg.replyToMessageId && (
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const el = document.getElementById(`message-${msg.replyToMessageId}`);
+                    if (el) {
+                      el.scrollIntoView({ behavior: "smooth", block: "center" });
+                      el.classList.add("bg-yellow-500/20", "transition-all", "duration-500");
+                      setTimeout(() => el.classList.remove("bg-yellow-500/20"), 2000);
+                    }
+                  }}
+                  className={`mb-2 rounded-lg border-l-[4px] p-2 text-xs flex flex-col gap-0.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors select-none ${
+                    isGroup
+                      ? isOwn
+                        ? "bg-black/20 border-violet-400 text-slate-200"
+                        : "bg-black/25 border-violet-500 text-slate-300"
+                      : isOwn
+                        ? "bg-[#cfe9ba] border-[#075e54] text-[#3c5046]"
+                        : "bg-[#f0f5f2] border-[#075e54] text-[#4a5e55]"
+                  }`}
+                >
+                  <span className={`font-black text-[10.5px] uppercase tracking-wide ${
+                    isGroup 
+                      ? isOwn 
+                        ? "text-violet-300" 
+                        : "text-violet-400" 
+                      : "text-[#075e54]"
+                  }`}>
+                    @{msg.replyToMessageSenderUsername || "someone"}
+                  </span>
+                  <span className="opacity-90 line-clamp-2 truncate max-w-full text-[11px]">
+                    {msg.replyToMessageContent || "Media/Lampiran"}
+                  </span>
+                </div>
+              )}
+              {isForwarded && (
+                <div className={`mb-1 text-[9px] font-black uppercase tracking-widest ${isGroup ? "text-[#8f97a3]" : "text-slate-400"}`}>
+                  forwarded
+                </div>
+              )}
+              {isDeleted && (
+                <div className={`mb-1 text-[9px] font-black uppercase tracking-widest ${isGroup ? "text-[#ffb4b4]" : "text-rose-400"}`}>
+                  deleted message
+                </div>
+              )}
+              {msg.imageUrl && !imageFailed && (
+                <div 
+                  className={`${isStickerMessage ? "mb-0 max-w-[160px] sm:max-w-[180px]" : "mb-2 max-w-sm"} rounded-lg overflow-hidden cursor-zoom-in hover:brightness-95 transition-all duration-200`}
+                  onClick={() => setIsZoomed(true)}
+                >
+                  <img
+                    src={msg.imageUrl}
+                    alt="Chat attachment"
+                    className={`w-full h-auto ${isStickerMessage ? "object-contain max-h-40 border-0 drop-shadow-sm" : "object-cover max-h-64 rounded-md border border-black/5"}`}
+                    onError={() => setImageFailed(true)}
+                  />
+                </div>
+              )}
+              {msg.imageUrl && imageFailed && (
+                <a
+                  href={msg.imageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mb-2 block rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100"
+                >
+                  Image failed to load. Open image
+                </a>
+              )}
+              {(msg as any).attachmentUrl && (
+                <div className={`mb-2 flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2 ${
+                  isGroup ? "border-[#3F4147] bg-black/10" : "border-[#dfe8e3] bg-white/70"
+                }`}>
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                    isOwn ? "bg-white/20 text-white" : isGroup ? "bg-[#35373C] text-[#DCDDDE]" : "bg-[#edf5f1] text-[#075e54]"
+                  }`}>
+                    <File className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-black">{(msg as any).attachmentName || "Attachment"}</p>
+                    <p className={`truncate text-[10px] font-semibold ${isOwn ? "text-white/70" : isGroup ? "text-[#949BA4]" : "text-slate-500"}`}>
+                      {formatFileSize((msg as any).attachmentSize)}{(msg as any).attachmentMime ? ` • ${(msg as any).attachmentMime}` : ""}
+                    </p>
+                  </div>
+                  <a
+                    href={(msg as any).attachmentUrl}
+                    download={(msg as any).attachmentName || true}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-2 text-[10px] font-black transition-colors ${
+                      isOwn ? "bg-white/20 text-white hover:bg-white/30" : isGroup ? "bg-[#5865F2] text-white hover:bg-[#4752C4]" : "bg-[#075e54] text-white hover:bg-[#064f46]"
+                    }`}
                   >
-                    {name}
-                  </button>
+                    <Download className="h-3.5 w-3.5" />
+                    Save As Download
+                  </a>
+                </div>
+              )}
+              {msg.content && <span className="block min-w-0 pb-3 pr-10 [overflow-wrap:anywhere]">{msg.content}</span>}
+              <span className={`absolute ${isStickerMessage ? "bottom-0.5 right-1.5" : "bottom-1.5 right-3"} text-[9px] font-semibold ${isGroup ? "text-[#949BA4]" : "text-[#66756f]"} flex items-center gap-1`}>
+                {msg.pinned && <Pin className="w-2.5 h-2.5 rotate-45 shrink-0 text-sky-400" />}
+                {msg.starred && <Star className="w-2.5 h-2.5 fill-current text-amber-400 shrink-0" />}
+                <span>{format(new Date(msg.createdAt), "HH:mm")}</span>
+                {isOwn && (
+                  <span className={`text-[11px] font-bold select-none leading-none ${isGroup ? "text-[#5865F2]" : "text-[#34b7f1]"}`}>✓✓</span>
                 )}
-                {msg.senderRole && msg.senderRole !== "member" && (
-                  <Badge className={`text-[8px] px-1.5 py-0 h-3.5 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[msg.senderRole] ?? ""}`}>
-                    {ROLE_LABELS[msg.senderRole] ?? msg.senderRole}
-                  </Badge>
-                )}
+              </span>
+            </div>
+
+            {/* Reactions badges underneath bubble */}
+            {msg.reactions && msg.reactions.length > 0 && (
+              <div className={`flex flex-wrap gap-1.5 mt-1 ${isOwn ? "justify-end" : "justify-start"}`}>
+                {msg.reactions.map((react, i) => (
+                  <TooltipProvider key={i}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => onReact?.(react.emoji)}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold transition-all border shadow-sm cursor-pointer ${
+                            react.userReacted
+                              ? isGroup ? "bg-[#5865F2]/20 border-[#5865F2] text-white" : "bg-[#edf5f1] border-[#0b6b58] text-[#0b6b58]"
+                              : isGroup ? "bg-[#2B2D31]/40 border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-white border-[#dfe8e3] text-slate-600 hover:bg-slate-50"
+                          }`}
+                        >
+                          <span>{react.emoji}</span>
+                          <span className="text-[10px] font-black">{react.count}</span>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="text-xs max-w-[200px]">
+                        <p className="font-bold">Direaksikan oleh:</p>
+                        <p className="opacity-90">{react.usernames?.join(", ") || "Tidak ada username"}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ))}
               </div>
             )}
-            {(onForward || (isOwn && onDelete)) && (
-              <div className={`flex items-center gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
+
+            {/* Premium Hover Action Menu */}
+            {!isDeleted && (
+              <div className={`absolute top-0 -translate-y-1/2 opacity-0 group-hover/bubble:opacity-100 transition-all duration-150 z-20 flex items-center gap-1 bg-[#1e1f22]/90 border border-slate-700/60 rounded-xl px-2 py-1 shadow-lg backdrop-blur-md ${isOwn ? "left-2" : "right-2"}`}>
+                <div className="flex items-center gap-1 border-r border-slate-700/60 pr-1.5 mr-1">
+                  {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => onReact?.(emoji)}
+                      className="hover:scale-125 transition-transform px-0.5 text-sm cursor-pointer"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={onReply}
+                  title="Balas"
+                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <CornerUpLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={onStar}
+                  title={msg.starred ? "Hapus Bintang" : "Bintangi"}
+                  className={`p-1 rounded hover:bg-white/10 transition-colors cursor-pointer ${msg.starred ? "text-yellow-400 hover:text-yellow-300" : "text-slate-400 hover:text-white"}`}
+                >
+                  <Star className={`w-3.5 h-3.5 ${msg.starred ? "fill-current" : ""}`} />
+                </button>
+                <button
+                  onClick={onPin}
+                  title={msg.pinned ? "Lepas Sematan" : "Sematkan"}
+                  className={`p-1 rounded hover:bg-white/10 transition-colors cursor-pointer ${msg.pinned ? "text-cyan-400 hover:text-cyan-300" : "text-slate-400 hover:text-white"}`}
+                >
+                  <Pin className={`w-3.5 h-3.5 ${msg.pinned ? "fill-current" : ""}`} />
+                </button>
                 {onForward && (
                   <button
                     onClick={onForward}
-                    className="text-[10px] font-bold text-slate-400 hover:text-sky-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
+                    title="Forward"
+                    className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                   >
-                    forward
+                    <Forward className="w-3.5 h-3.5" />
                   </button>
                 )}
-                {isOwn && onDelete && (
+                {onDelete && (
                   <button
                     onClick={onDelete}
-                    className="text-[10px] font-bold text-slate-400 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
+                    title="Hapus"
+                    className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
                   >
-                    delete
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
             )}
-          </div>
-          <div
-            className={`relative max-w-full overflow-hidden rounded-2xl ${isStickerMessage ? "px-2 py-2 bg-transparent shadow-none" : "px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm whitespace-pre-wrap [overflow-wrap:anywhere]"} ${
-              isOwn
-                ? isGroup ? "bg-[#5865F2] text-white rounded-tr-[4px]" : "bg-[#dcf8c6] text-[#18251f] rounded-tr-[4px]"
-                : isGroup ? "bg-[#2B2D31] text-[#DCDDDE] rounded-tl-[4px]" : "bg-white border border-[#dfe8e3] text-[#18251f] rounded-tl-[4px]"
-            }`}
-          >
-            {isForwarded && (
-              <div className={`mb-1 text-[9px] font-black uppercase tracking-widest ${isGroup ? "text-[#8f97a3]" : "text-slate-400"}`}>
-                forwarded
-              </div>
-            )}
-            {isDeleted && (
-              <div className={`mb-1 text-[9px] font-black uppercase tracking-widest ${isGroup ? "text-[#ffb4b4]" : "text-rose-400"}`}>
-                deleted message
-              </div>
-            )}
-            {msg.imageUrl && !imageFailed && (
-              <div 
-                className={`${isStickerMessage ? "mb-0 max-w-[160px] sm:max-w-[180px]" : "mb-2 max-w-sm"} rounded-lg overflow-hidden cursor-zoom-in hover:brightness-95 transition-all duration-200`}
-                onClick={() => setIsZoomed(true)}
-              >
-                <img
-                  src={msg.imageUrl}
-                  alt="Chat attachment"
-                  className={`w-full h-auto ${isStickerMessage ? "object-contain max-h-40 border-0 drop-shadow-sm" : "object-cover max-h-64 rounded-md border border-black/5"}`}
-                  onError={() => setImageFailed(true)}
-                />
-              </div>
-            )}
-            {msg.imageUrl && imageFailed && (
-              <a
-                href={msg.imageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mb-2 block rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100"
-              >
-                Image failed to load. Open image
-              </a>
-            )}
-            {(msg as any).attachmentUrl && (
-              <div className={`mb-2 flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2 ${
-                isGroup ? "border-[#3F4147] bg-black/10" : "border-[#dfe8e3] bg-white/70"
-              }`}>
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                  isOwn ? "bg-white/20 text-white" : isGroup ? "bg-[#35373C] text-[#DCDDDE]" : "bg-[#edf5f1] text-[#075e54]"
-                }`}>
-                  <File className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-black">{(msg as any).attachmentName || "Attachment"}</p>
-                  <p className={`truncate text-[10px] font-semibold ${isOwn ? "text-white/70" : isGroup ? "text-[#949BA4]" : "text-slate-500"}`}>
-                    {formatFileSize((msg as any).attachmentSize)}{(msg as any).attachmentMime ? ` • ${(msg as any).attachmentMime}` : ""}
-                  </p>
-                </div>
-                <a
-                  href={(msg as any).attachmentUrl}
-                  download={(msg as any).attachmentName || true}
-                  className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-2 text-[10px] font-black transition-colors ${
-                    isOwn ? "bg-white/20 text-white hover:bg-white/30" : isGroup ? "bg-[#5865F2] text-white hover:bg-[#4752C4]" : "bg-[#075e54] text-white hover:bg-[#064f46]"
-                  }`}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Save As Download
-                </a>
-              </div>
-            )}
-            {msg.content && <span className="block min-w-0 pb-3 pr-10 [overflow-wrap:anywhere]">{msg.content}</span>}
-            <span className={`absolute ${isStickerMessage ? "bottom-0.5 right-1.5" : "bottom-1.5 right-3"} text-[10px] font-semibold ${isGroup ? "text-[#949BA4]" : "text-[#66756f]"}`}>
-              {format(new Date(msg.createdAt), "HH:mm")}
-            </span>
           </div>
         </div>
       </div>
@@ -1169,18 +1347,35 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [editGroupName, setEditGroupName] = useState("");
   const [editGroupDesc, setEditGroupDesc] = useState("");
   const [editGroupIcon, setEditGroupIcon] = useState("");
+  const [editGroupBanner, setEditGroupBanner] = useState("");
   const [editGroupSaving, setEditGroupSaving] = useState(false);
+  const [leaveGroupModalOpen, setLeaveGroupModalOpen] = useState(false);
+  const [reportGroupModalOpen, setReportGroupModalOpen] = useState(false);
+  const [reportGroupReason, setReportGroupReason] = useState("");
+  const [reportGroupCategory, setReportGroupCategory] = useState("Spam");
+  const [reportGroupSubmitting, setReportGroupSubmitting] = useState(false);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupMemberIds, setGroupMemberIds] = useState<number[]>([]);
   const [dmSearch, setDmSearch] = useState("");
   const [memberSearch, setMemberSearch] = useState("");
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
+  const [pinnedModalOpen, setPinnedModalOpen] = useState(false);
+  const [starredOpen, setStarredOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    msg: Message;
+    x: number;
+    y: number;
+    isOwn: boolean;
+  } | null>(null);
 
   const [uploading, setUploading] = useState(false);
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<UploadedAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showStickerPicker, setShowStickerPicker] = useState(false);
+  const [stickerSearch, setStickerSearch] = useState("");
+  const [collapsedStickerGroups, setCollapsedStickerGroups] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1204,6 +1399,56 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [showCallChat, setShowCallChat] = useState(false);
   const [callMessageText, setCallMessageText] = useState("");
   const callChatEndRef = useRef<HTMLDivElement>(null);
+
+  // Sticker Studio & Modals States
+  const [showStickerStudio, setShowStickerStudio] = useState(false);
+  const [showStickerManager, setShowStickerManager] = useState(false);
+  const [stickerStudioSource, setStickerStudioSource] = useState<"chat" | "manager">("chat");
+  const [studioImage, setStudioImage] = useState<string | null>(null);
+  const [studioImageFile, setStudioImageFile] = useState<File | null>(null);
+  const [studioName, setStudioName] = useState("");
+  const [studioCaption, setStudioCaption] = useState("");
+  const [studioFont, setStudioFont] = useState("Impact");
+  const [studioFontSize, setStudioFontSize] = useState(40);
+  const [studioTextColor, setStudioTextColor] = useState("#FFFFFF");
+  const [studioOutlineColor, setStudioOutlineColor] = useState("#000000");
+  const [studioOutlineWidth, setStudioOutlineWidth] = useState(4);
+  const [studioPosition, setStudioPosition] = useState<"top" | "middle" | "bottom">("bottom");
+  const [studioSaving, setStudioSaving] = useState(false);
+
+  // Message Delete Modal States
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [messageToDeleteId, setMessageToDeleteId] = useState<number | null>(null);
+  const [messageToDeleteIsOwn, setMessageToDeleteIsOwn] = useState(false);
+  const [deleteScope, setDeleteScope] = useState<"me" | "everyone">("me");
+
+  // Message Forward Modal States
+  const [forwardModalOpen, setForwardModalOpen] = useState(false);
+  const [messageToForwardId, setMessageToForwardId] = useState<number | null>(null);
+  const [forwardSearch, setForwardSearch] = useState("");
+  const [forwardTargetConvId, setForwardTargetConvId] = useState<number | null>(null);
+  const [forwardTargetChannelId, setForwardTargetChannelId] = useState<number | null>(null);
+  const [forwarding, setForwarding] = useState(false);
+
+  const { data: targetChannels } = useQuery<any[]>({
+    queryKey: [`/api/conversations/${forwardTargetConvId}/channels`, "forward-target"],
+    queryFn: () => customFetch<any[]>(`/api/conversations/${forwardTargetConvId}/channels`),
+    enabled: !!forwardTargetConvId,
+  });
+
+  useEffect(() => {
+    if (targetChannels && targetChannels.length > 0) {
+      const textChannels = targetChannels.filter(c => c.type === "text" || c.type === "announce");
+      if (textChannels.length > 0) {
+        setForwardTargetChannelId(textChannels[0].id);
+      } else {
+        setForwardTargetChannelId(null);
+      }
+    } else {
+      setForwardTargetChannelId(null);
+    }
+  }, [targetChannels]);
+
   const meReady = Boolean(me?.id);
 
   useEffect(() => {
@@ -1235,6 +1480,24 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     const timer = window.setInterval(() => setVoiceTimerNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClose = () => setContextMenu(null);
+    window.addEventListener("click", handleClose);
+    window.addEventListener("contextmenu", handleClose);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", handleClose, true);
+    return () => {
+      window.removeEventListener("click", handleClose);
+      window.removeEventListener("contextmenu", handleClose);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleClose, true);
+    };
+  }, [contextMenu]);
 
   useEffect(() => {
     // If showCall becomes false, but we have an active joined voice channel, we leave it
@@ -1598,6 +1861,19 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     refetchInterval: 10000,
   });
 
+  const stickerGroups = useMemo(() => {
+    const stickers = stickerLibrary?.stickers ?? [];
+    const query = stickerSearch.trim().toLowerCase();
+    const filtered = query ? stickers.filter((s: any) => s.name.toLowerCase().includes(query)) : stickers;
+    const groups: Record<string, any[]> = {};
+    for (const s of filtered) {
+      const groupName = s.conversationName || selectedConv?.name || "Stickers";
+      if (!groups[groupName]) groups[groupName] = [];
+      groups[groupName].push(s);
+    }
+    return Object.entries(groups);
+  }, [stickerLibrary?.stickers, stickerSearch, selectedConv?.name]);
+
   const channelEditorSections = useMemo(() => {
     const byPosition = (a: Channel, b: Channel) => a.position - b.position || a.id - b.id;
     const messageChannels = (items: Channel[]) => items.filter((ch) => ch.type === "text" || ch.type === "announce").sort(byPosition);
@@ -1827,6 +2103,123 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const sendMessage = useSendMessage();
   const addMember = useAddConversationMember();
   const removeMember = useRemoveConversationMember();
+
+  const pinMutation = usePinMessage();
+  const unpinMutation = useUnpinMessage();
+  const starMutation = useStarMessage();
+  const unstarMutation = useUnstarMessage();
+  const reactMutation = useReactMessage();
+  const unreactMutation = useUnreactMessage();
+
+  const { data: pinnedMessages = [], isLoading: pinnedLoading } = useListPinnedMessages(
+    selectedId ?? 0,
+    {
+      query: {
+        ...getListPinnedMessagesQueryOptions(selectedId ?? 0),
+        enabled: !!selectedId && pinnedModalOpen,
+      },
+    }
+  );
+
+  // Always-enabled pinned query for banner strip (shows latest pinned message)
+  const { data: activePinnedMessages = [] } = useListPinnedMessages(
+    selectedId ?? 0,
+    {
+      query: {
+        ...getListPinnedMessagesQueryOptions(selectedId ?? 0),
+        enabled: !!selectedId,
+        refetchInterval: 15000,
+      },
+    }
+  );
+  const latestPinnedMessage = activePinnedMessages.length > 0 ? activePinnedMessages[0] : null;
+
+  const { data: starredMessages = [], isLoading: starredLoading } = useListStarredMessages({
+    query: {
+      ...getListStarredMessagesQueryOptions(),
+      enabled: starredOpen,
+    },
+  });
+
+  const handleTogglePin = async (message: Message) => {
+    if (!selectedId) return;
+    try {
+      if (message.pinned) {
+        await unpinMutation.mutateAsync({
+          id: selectedId,
+          messageId: message.id,
+        });
+        toast({ title: "Pesan berhasil dilepas (unpinned)" });
+      } else {
+        await pinMutation.mutateAsync({
+          id: selectedId,
+          messageId: message.id,
+        });
+        toast({ title: "Pesan berhasil disematkan (pinned)" });
+      }
+      if (selectedChannelId) {
+        await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+      } else {
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["/api/conversations", selectedId, "pins"] });
+    } catch (err: any) {
+      toast({ title: "Gagal mengubah status sematan", description: err.message || "Anda tidak memiliki izin.", variant: "destructive" });
+    }
+  };
+
+  const handleToggleStar = async (message: Message) => {
+    if (!selectedId) return;
+    try {
+      if (message.starred) {
+        await unstarMutation.mutateAsync({
+          id: selectedId,
+          messageId: message.id,
+        });
+        toast({ title: "Pesan dihapus dari bintang" });
+      } else {
+        await starMutation.mutateAsync({
+          id: selectedId,
+          messageId: message.id,
+        });
+        toast({ title: "Pesan berhasil dibintangi" });
+      }
+      if (selectedChannelId) {
+        await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+      } else {
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["/api/me/starred"] });
+    } catch {
+      toast({ title: "Gagal memproses bintang", variant: "destructive" });
+    }
+  };
+
+  const handleToggleReaction = async (messageId: number, emoji: string, userReacted: boolean) => {
+    if (!selectedId) return;
+    try {
+      if (userReacted) {
+        await unreactMutation.mutateAsync({
+          id: selectedId,
+          messageId,
+          emoji,
+        });
+      } else {
+        await reactMutation.mutateAsync({
+          id: selectedId,
+          messageId,
+          data: { emoji },
+        });
+      }
+      if (selectedChannelId) {
+        await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+      } else {
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+      }
+    } catch {
+      toast({ title: "Gagal memproses reaksi", variant: "destructive" });
+    }
+  };
 
   const selectedChannel = channels.find((c) => c.id === selectedChannelId) ?? null;
 
@@ -2070,6 +2463,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         attachmentName?: string;
         attachmentMime?: string;
         attachmentSize?: number;
+        replyToMessageId?: number;
       } = {};
       if (text) payload.content = text;
       if (attachedImageUrl) payload.imageUrl = attachedImageUrl;
@@ -2080,6 +2474,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         payload.attachmentMime = attachedFile.mimeType;
         payload.attachmentSize = attachedFile.size;
         if (attachedFile.imageUrl && !payload.imageUrl) payload.imageUrl = attachedFile.imageUrl;
+      }
+      if (replyToMessage) {
+        payload.replyToMessageId = replyToMessage.id;
       }
 
       if (isGroup && selectedChannelId) {
@@ -2099,6 +2496,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       setMessageText("");
       setAttachedImageUrl(null);
       setAttachedFile(null);
+      setReplyToMessage(null);
 
       if (selectedConv) {
         const isAiDm = selectedConv.type === "dm" && (
@@ -2119,65 +2517,46 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     }
   }
 
-  async function handleDeleteMessage(messageId: number) {
-    if (!selectedId) return;
-    try {
-      const scope = window.prompt("Ketik 'me' untuk hapus lokal, atau 'everyone' untuk hapus untuk semua orang", "everyone")?.trim().toLowerCase();
-      if (!scope) return;
-      const safeScope = scope === "me" || scope === "local" ? "me" : "everyone";
-      const response = await fetch(`/api/conversations/${selectedId}/messages/${messageId}?scope=${encodeURIComponent(safeScope)}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to delete message");
-      }
-      await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
-    } catch {
-      toast({ title: "Failed to delete message", variant: "destructive" });
-    }
+  async function handleDeleteMessage(messageId: number, isOwnMessage: boolean = true) {
+    setMessageToDeleteId(messageId);
+    setMessageToDeleteIsOwn(isOwnMessage);
+    setDeleteScope(isOwnMessage ? "everyone" : "me");
+    setDeleteModalOpen(true);
   }
 
   async function handleForwardMessage(messageId: number) {
-    if (!selectedId) return;
-    const target = window.prompt("Forward ke conversationId[,channelId] (contoh: 12 atau 12,45)", `${selectedId}`)?.trim();
-    if (!target) return;
-
-    const [conversationRaw, channelRaw] = target.split(",").map((value) => value.trim()).filter(Boolean);
-    const targetConversationId = Number(conversationRaw);
-    const targetChannelId = channelRaw ? Number(channelRaw) : undefined;
-    if (!Number.isFinite(targetConversationId)) {
-      toast({ title: "Target conversation invalid", variant: "destructive" });
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/conversations/${selectedId}/messages/${messageId}/forward`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetConversationId,
-          targetChannelId,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || "Failed to forward message");
-      await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
-      if (targetConversationId === selectedId) {
-        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
-      }
-      toast({ title: "Message forwarded" });
-    } catch (err: any) {
-      toast({ title: "Failed to forward message", description: err?.message || "Unknown error", variant: "destructive" });
-    }
+    setMessageToForwardId(messageId);
+    setForwardTargetConvId(null);
+    setForwardTargetChannelId(null);
+    setForwardSearch("");
+    setForwardModalOpen(true);
   }
 
-  async function handleSendSticker(sticker: { assetUrl: string; name: string }) {
+  async function handleSendSticker(sticker: any) {
     if (selectedId === null) return;
     try {
-      const payload = {
-        content: "",
-        imageUrl: sticker.assetUrl,
+      let finalAssetUrl = sticker.assetUrl;
+
+      // Automatically share/clone sticker to target group if it belongs to another group
+      if (sticker.conversationId && sticker.conversationId !== selectedId) {
+        const shareRes = await fetch(`/api/stickers/${sticker.id}/share`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId: selectedId }),
+        });
+        if (!shareRes.ok) {
+          const err = await shareRes.json().catch(() => ({}));
+          throw new Error(err.error || "Gagal menggunakan stiker di grup ini.");
+        }
+        const sharedData = await shareRes.json();
+        finalAssetUrl = sharedData.assetUrl;
+      }
+
+      const payload: {
+        content?: string;
+        imageUrl: string;
+      } = {
+        imageUrl: finalAssetUrl,
       };
 
       if (isGroup && selectedChannelId) {
@@ -2188,6 +2567,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         });
         if (!res.ok) throw new Error("Failed to send sticker");
         await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
       } else {
         await sendMessage.mutateAsync({ id: selectedId, data: payload as any });
         await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
@@ -2197,8 +2577,243 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       setAttachedImageUrl(null);
       setAttachedFile(null);
       toast({ title: "Sticker sent", description: sticker.name });
-    } catch {
-      toast({ title: "Failed to send sticker", variant: "destructive" });
+    } catch (err: any) {
+      toast({ title: "Failed to send sticker", description: err.message, variant: "destructive" });
+    }
+  }
+
+  function handleStudioFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "File terlalu besar. Maksimal 2MB.", variant: "destructive" });
+      return;
+    }
+    setStudioImageFile(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setStudioImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function generateStickerBlob(): Promise<{ blob: Blob; mimeType: string } | null> {
+    if (!studioImage) return null;
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = studioImage;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxDim = 512;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Could not get 2d context"));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, w, h);
+
+        if (studioCaption.trim()) {
+          const size = Math.round((studioFontSize * w) / 512);
+          ctx.font = `900 ${size}px ${studioFont === "Impact" ? "Impact, sans-serif" : studioFont}`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          ctx.fillStyle = studioTextColor;
+          ctx.strokeStyle = studioOutlineColor;
+          ctx.lineWidth = Math.round((studioOutlineWidth * w) / 512);
+
+          let x = w / 2;
+          let y = h - size - 20;
+          if (studioPosition === "top") {
+            y = size + 20;
+          } else if (studioPosition === "middle") {
+            y = h / 2;
+          }
+
+          ctx.strokeText(studioCaption.toUpperCase(), x, y);
+          ctx.fillText(studioCaption.toUpperCase(), x, y);
+        }
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve({ blob, mimeType: "image/png" });
+          } else {
+            reject(new Error("Failed to export canvas blob"));
+          }
+        }, "image/png");
+      };
+      img.onerror = () => {
+        reject(new Error("Failed to load preview image"));
+      };
+    });
+  }
+
+  async function handleStudioSubmit() {
+    if (!selectedId) return;
+    if (!studioImage) {
+      toast({ title: "Silakan pilih gambar terlebih dahulu.", variant: "destructive" });
+      return;
+    }
+    if (!studioName.trim()) {
+      toast({ title: "Nama stiker wajib diisi.", variant: "destructive" });
+      return;
+    }
+
+    setStudioSaving(true);
+    try {
+      const stickerBlobInfo = await generateStickerBlob();
+      if (!stickerBlobInfo) throw new Error("Gagal membuat stiker");
+
+      const formData = new FormData();
+      formData.append("file", stickerBlobInfo.blob, `${studioName.replace(/\s+/g, "_")}.png`);
+      formData.append("name", studioName.trim());
+      formData.append("conversationId", selectedId.toString());
+      formData.append("scope", "local_server");
+      formData.append("editorConfig", JSON.stringify({
+        caption: studioCaption,
+        font: studioFont,
+        fontSize: studioFontSize,
+        textColor: studioTextColor,
+        outlineColor: studioOutlineColor,
+        outlineWidth: studioOutlineWidth,
+        position: studioPosition,
+      }));
+
+      const res = await fetch("/api/stickers/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Gagal mengupload stiker");
+      }
+
+      toast({ title: "Stiker berhasil dibuat!", description: data.name });
+      setShowStickerStudio(false);
+      setStudioImage(null);
+      setStudioImageFile(null);
+      setStudioName("");
+      setStudioCaption("");
+      await queryClient.invalidateQueries({ queryKey: ["stickers", selectedId] });
+      if (stickerStudioSource === "manager") {
+        setShowStickerManager(true);
+      }
+    } catch (err: any) {
+      toast({ title: "Gagal membuat stiker", description: err.message, variant: "destructive" });
+    } finally {
+      setStudioSaving(false);
+    }
+  }
+
+  const handleCloseStickerStudio = () => {
+    setShowStickerStudio(false);
+    if (stickerStudioSource === "manager") {
+      setShowStickerManager(true);
+    }
+  };
+
+  async function handleConfirmDelete() {
+    if (!selectedId || !messageToDeleteId) return;
+    try {
+      const response = await fetch(`/api/conversations/${selectedId}/messages/${messageToDeleteId}?scope=${encodeURIComponent(deleteScope)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to delete message");
+      }
+      await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+      if (selectedChannelId) {
+        await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+      }
+      setDeleteModalOpen(false);
+      setMessageToDeleteId(null);
+      toast({ title: "Message deleted" });
+    } catch (err: any) {
+      toast({ title: err.message || "Failed to delete message", variant: "destructive" });
+    }
+  }
+
+  async function handleConfirmForward() {
+    if (!selectedId || !messageToForwardId || !forwardTargetConvId) return;
+    setForwarding(true);
+    try {
+      const response = await fetch(`/api/conversations/${selectedId}/messages/${messageToForwardId}/forward`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetConversationId: forwardTargetConvId,
+          targetChannelId: forwardTargetChannelId,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Gagal forward pesan");
+
+      toast({ title: "Pesan berhasil di-forward!" });
+      setForwardModalOpen(false);
+      setMessageToForwardId(null);
+
+      if (forwardTargetConvId === selectedId) {
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+        if (selectedChannelId) {
+          await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "Gagal forward pesan", description: err.message, variant: "destructive" });
+    } finally {
+      setForwarding(false);
+    }
+  }
+
+  async function handleEditStickerName(stickerId: number, nextName: string) {
+    try {
+      const res = await fetch(`/api/stickers/${stickerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nextName }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Gagal mengubah nama stiker");
+      }
+      toast({ title: "Nama stiker berhasil diperbarui" });
+      await queryClient.invalidateQueries({ queryKey: ["stickers", selectedId] });
+    } catch (err: any) {
+      toast({ title: "Gagal mengubah nama stiker", description: err.message, variant: "destructive" });
+    }
+  }
+
+  async function handleDeleteSticker(stickerId: number) {
+    try {
+      const res = await fetch(`/api/stickers/${stickerId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Gagal menghapus stiker");
+      }
+      toast({ title: "Stiker berhasil dihapus" });
+      await queryClient.invalidateQueries({ queryKey: ["stickers", selectedId] });
+    } catch (err: any) {
+      toast({ title: "Gagal menghapus stiker", description: err.message, variant: "destructive" });
     }
   }
 
@@ -2272,8 +2887,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   function openEditGroup() {
     if (!selectedConv) return;
     setEditGroupName(selectedConv.name || "");
-    setEditGroupDesc((selectedConv as any).description || "");
+    setEditGroupDesc(selectedConv.description || "");
     setEditGroupIcon(selectedConv.iconUrl || "");
+    setEditGroupBanner(selectedConv.bannerUrl || "");
     setShowEditGroup(true);
   }
 
@@ -2288,6 +2904,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           name: editGroupName.trim() || undefined,
           description: editGroupDesc.trim() || null,
           iconUrl: editGroupIcon.trim() || null,
+          bannerUrl: editGroupBanner.trim() || null,
         }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -2309,6 +2926,68 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     } catch {
       toast({ title: "Failed to leave conversation", variant: "destructive" });
+    }
+  }
+
+  async function uploadGroupFile(file: File, setter: (url: string) => void) {
+    // Instant local preview before upload
+    const localPreview = URL.createObjectURL(file);
+    setter(localPreview);
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type,
+          "x-file-name": file.name,
+        },
+        body: await file.arrayBuffer(),
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url } = await res.json();
+      URL.revokeObjectURL(localPreview);
+      setter(url);
+      toast({ title: "Gambar berhasil diupload" });
+    } catch {
+      // Keep the local preview visible even if upload fails
+      toast({ title: "Gambar preview aktif, tapi gagal upload ke server", variant: "destructive" });
+    }
+  }
+
+  async function handleLeaveGroup() {
+    if (!selectedId) return;
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/leave`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        // Fallback to deleteConv if dedicated endpoint not available
+        await deleteConv.mutateAsync({ id: selectedId });
+      }
+      setSelectedId(null);
+      setLeaveGroupModalOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      toast({ title: "Berhasil keluar dari grup" });
+    } catch {
+      toast({ title: "Gagal keluar dari grup", variant: "destructive" });
+    }
+  }
+
+  async function handleReportGroup() {
+    if (!selectedId || !reportGroupReason.trim()) return;
+    setReportGroupSubmitting(true);
+    try {
+      await fetch(`/api/conversations/${selectedId}/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: reportGroupCategory, reason: reportGroupReason.trim() }),
+      });
+      setReportGroupModalOpen(false);
+      setReportGroupReason("");
+      toast({ title: "Laporan terkirim", description: "Tim admin akan meninjau laporan Anda." });
+    } catch {
+      toast({ title: "Gagal mengirim laporan", variant: "destructive" });
+    } finally {
+      setReportGroupSubmitting(false);
     }
   }
 
@@ -3148,6 +3827,24 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                         <Link href={`/profile/${selectedConv.otherUserId}`}><UserCircle className="h-5 w-5" /></Link>
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 text-white hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      onClick={() => setStarredOpen(true)}
+                      title="Pesan Berbintang"
+                    >
+                      <Star className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 text-white hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      onClick={() => setPinnedModalOpen(true)}
+                      title="Pesan Tersemat"
+                    >
+                      <Pin className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+                    </Button>
                     {selectedConv.type !== "group" && (
                       <Button
                         size="sm"
@@ -3192,30 +3889,65 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                         Members
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="hidden sm:inline-flex h-8 px-3 text-xs font-bold text-white/75 hover:text-white hover:bg-white/10 rounded-full transition-colors"
-                      onClick={handleLeaveOrDelete}
-                    >
-                      {selectedConv.type === "group" && selectedConv.ownerId === me?.id
-                        ? "Delete"
-                        : "Leave"}
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="sm:hidden h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white"
-                      onClick={selectedConv.type === "group" ? () => setShowMembers(true) : handleLeaveOrDelete}
-                      title={selectedConv.type === "group" ? "Members" : "Leave"}
-                    >
-                      <MoreVertical className="h-5 w-5" />
-                    </Button>
                   </div>
                 </div>
 
+                {/* Pinned message banner strip (WhatsApp style) */}
+                {latestPinnedMessage && (
+                  <div
+                    className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer select-none border-b transition-colors ${
+                      isGroupView
+                        ? "bg-[#1f2c34] border-[#2a3942] hover:bg-[#2a3942]"
+                        : "bg-[#f7f5f0] border-[#ddd8d0] hover:bg-[#ede8e3]"
+                    }`}
+                    onClick={() => {
+                      const el = document.getElementById(`message-${latestPinnedMessage.id}`);
+                      if (el) {
+                        el.scrollIntoView({ behavior: "smooth", block: "center" });
+                        el.classList.add("bg-yellow-500/20", "transition-all", "duration-500");
+                        setTimeout(() => el.classList.remove("bg-yellow-500/20"), 2000);
+                      }
+                    }}
+                  >
+                    <Pin className={`w-3.5 h-3.5 shrink-0 rotate-45 ${isGroupView ? "text-sky-400" : "text-[#075e54]"}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[9.5px] font-black uppercase tracking-widest mb-0.5 ${isGroupView ? "text-sky-400" : "text-[#075e54]"}`}>
+                        Pesan Tersemat
+                      </p>
+                      <p className={`text-[11.5px] truncate font-medium leading-tight ${isGroupView ? "text-[#adbac7]" : "text-[#3c5046]"}`}>
+                        {getMessagePreviewText(latestPinnedMessage) || latestPinnedMessage.content || "Media"}
+                      </p>
+                    </div>
+                    {activePinnedMessages.length > 1 && (
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${
+                        isGroupView ? "bg-sky-400/15 text-sky-400" : "bg-[#075e54]/10 text-[#075e54]"
+                      }`}>
+                        {activePinnedMessages.length}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setPinnedModalOpen(true); }}
+                      className={`text-[9px] font-black shrink-0 px-2 py-1 rounded-lg transition-colors ${
+                        isGroupView ? "text-sky-400 hover:bg-sky-400/10" : "text-[#075e54] hover:bg-[#075e54]/10"
+                      }`}
+                    >
+                      Lihat Semua
+                    </button>
+                  </div>
+                )}
+
                 {/* Messages Bubbles Feed */}
-                <ScrollArea className={`flex-1 px-2.5 sm:px-4 md:px-6 py-3 sm:py-4 min-h-0 ${isGroupView ? "bg-[#18191C]" : "bg-[#efe7dd]"}`}>
+                <ScrollArea className={`flex-1 px-2.5 sm:px-4 md:px-6 py-3 sm:py-4 min-h-0 relative ${isGroupView ? "bg-[#0b141a]" : "bg-[#efe7dd]"}`}>
+                  <div 
+                    className="absolute inset-0 pointer-events-none bg-repeat" 
+                    style={{
+                      backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
+                      backgroundSize: "400px",
+                      opacity: isGroupView ? 0.05 : 0.07,
+                      mixBlendMode: isGroupView ? "difference" : "multiply",
+                    }}
+                  />
                   {activeMsgsLoading ? (
                     <div className="space-y-4">
                       {Array.from({ length: 6 }).map((_, i) => (
@@ -3276,10 +4008,23 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               onUserClick={msg.senderId ? () => openProfileFromMessage(msg) : undefined}
                               onForward={() => handleForwardMessage(msg.id)}
                               onDelete={
-                                msg.senderId === me?.id
-                                  ? () => handleDeleteMessage(msg.id)
+                                (msg.senderId === me?.id || selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageMessages)
+                                  ? () => handleDeleteMessage(msg.id, msg.senderId === me?.id)
                                   : undefined
                               }
+                              onReply={() => setReplyToMessage(msg)}
+                              onPin={() => handleTogglePin(msg)}
+                              onStar={() => handleToggleStar(msg)}
+                              onReact={(emoji) => handleToggleReaction(msg.id, emoji, msg.reactions?.some((r) => r.emoji === emoji && r.userReacted) ?? false)}
+                              onBubbleClick={(e, m) => {
+                                setContextMenu({
+                                  msg: m,
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                  isOwn: m.senderId === me?.id,
+                                });
+                              }}
+                              me={me}
                             />
                           </div>
                         );
@@ -3359,6 +4104,28 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           </button>
                         </div>
                       )}
+                      {replyToMessage && (
+                        <div className={`flex items-center justify-between gap-3 px-4 py-2 border-b rounded-t-xl mb-1.5 animate-in slide-in-from-bottom duration-150 ${
+                          isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE]" : "bg-emerald-50 border-emerald-100 text-[#075e54]"
+                        }`}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <CornerUpLeft className="w-4 h-4 text-slate-400 shrink-0" />
+                            <div className="min-w-0 text-xs">
+                              <span className="font-extrabold text-[11px]">Membalas @{replyToMessage.senderUsername || "someone"}</span>
+                              <p className="truncate opacity-80 mt-0.5 max-w-[250px] sm:max-w-[450px] text-[11px]">
+                                {getMessagePreviewText(replyToMessage)}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setReplyToMessage(null)}
+                            className="p-1 rounded-full hover:bg-black/10 transition-colors cursor-pointer shrink-0"
+                            type="button"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                       <div className="flex items-end gap-2">
                         <input
                           type="file"
@@ -3393,28 +4160,90 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             <Sparkles className="h-5 w-5" />
                           </Button>
                           {showStickerPicker && (
-                            <div className={`absolute bottom-full left-0 mb-2 w-72 rounded-2xl border shadow-2xl z-50 ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#e2e8f0] bg-white"}`}>
-                              <div className={`px-3 py-2.5 border-b ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
-                                <p className={`text-[10px] font-black uppercase tracking-widest ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Sticker Picker</p>
+                            <div className={`absolute bottom-full right-0 mb-2 w-80 rounded-2xl border shadow-2xl z-50 overflow-hidden ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#e2e8f0] bg-white"}`}>
+                              {/* Header */}
+                              <div className={`px-3 py-2.5 flex justify-between items-center ${isGroupView ? "bg-[#1E1F22]" : "bg-slate-50"}`}>
+                                <p className={`text-xs font-black uppercase tracking-widest ${isGroupView ? "text-[#DCDDDE]" : "text-[#18251f]"}`}>Stickers</p>
+                                {selectedConv?.ownerId === me?.id && (
+                                  <Button
+                                    type="button"
+                                    onClick={() => {
+                                      setShowStickerPicker(false);
+                                      setStickerStudioSource("chat");
+                                      setShowStickerStudio(true);
+                                    }}
+                                    className="h-6 px-2.5 text-[9px] font-black uppercase tracking-wider bg-violet-600 hover:bg-violet-700 text-white rounded-md cursor-pointer shrink-0"
+                                  >
+                                    + Buat
+                                  </Button>
+                                )}
                               </div>
-                              <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto p-3">
+                              {/* Search */}
+                              <div className={`px-3 py-2 border-b ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
+                                <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg ${isGroupView ? "bg-[#1E1F22]" : "bg-slate-100"}`}>
+                                  <Search className={`h-3.5 w-3.5 shrink-0 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`} />
+                                  <input
+                                    type="text"
+                                    value={stickerSearch}
+                                    onChange={(e) => setStickerSearch(e.target.value)}
+                                    placeholder="Search stickers..."
+                                    className={`w-full bg-transparent text-xs font-medium outline-none ${isGroupView ? "text-[#DCDDDE] placeholder:text-[#949BA4]" : "text-slate-800 placeholder:text-slate-400"}`}
+                                  />
+                                  {stickerSearch && (
+                                    <button type="button" onClick={() => setStickerSearch("")} className={`shrink-0 ${isGroupView ? "text-[#949BA4] hover:text-white" : "text-slate-400 hover:text-slate-600"}`}>
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Sticker Groups */}
+                              <div className="max-h-72 overflow-y-auto">
                                 {(stickerLibrary?.stickers?.length ?? 0) === 0 ? (
-                                  <div className={`col-span-3 rounded-xl border border-dashed p-3 text-center text-xs font-semibold ${isGroupView ? "border-[#3F4147] text-[#949BA4]" : "border-[#dbe4ea] text-slate-500"}`}>
+                                  <div className={`p-4 text-center text-xs font-semibold ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
                                     Belum ada sticker.
                                   </div>
+                                ) : stickerGroups.length === 0 ? (
+                                  <div className={`p-4 text-center text-xs font-semibold ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                                    Tidak ada sticker yang cocok.
+                                  </div>
                                 ) : (
-                                  stickerLibrary!.stickers!.map((sticker) => (
-                                    <button
-                                      key={sticker.id}
-                                      type="button"
-                                      onClick={() => handleSendSticker(sticker)}
-                                      className={`rounded-xl border p-2 transition-colors ${isGroupView ? "border-[#3F4147] bg-[#35373C] hover:bg-[#404249]" : "border-[#e2e8f0] bg-slate-50 hover:bg-slate-100"}`}
-                                      title={sticker.name}
-                                    >
-                                      <img src={sticker.assetUrl} alt={sticker.name} className="h-16 w-full object-contain" />
-                                      <span className={`mt-1 block truncate text-[10px] font-black ${isGroupView ? "text-[#DCDDDE]" : "text-[#18251f]"}`}>{sticker.name}</span>
-                                    </button>
-                                  ))
+                                  stickerGroups.map(([groupName, stickers]) => {
+                                    const isCollapsed = collapsedStickerGroups.has(groupName);
+                                    return (
+                                      <div key={groupName} className={`border-b last:border-b-0 ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
+                                        {/* Group Header */}
+                                        <button
+                                          type="button"
+                                          onClick={() => setCollapsedStickerGroups((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(groupName)) next.delete(groupName); else next.add(groupName);
+                                            return next;
+                                          })}
+                                          className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${isGroupView ? "hover:bg-[#35373C]" : "hover:bg-slate-50"}`}
+                                        >
+                                          <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""} ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`} />
+                                          <span className={`text-[10px] font-black uppercase tracking-wider truncate ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>{groupName}</span>
+                                          <span className={`ml-auto text-[9px] font-bold ${isGroupView ? "text-[#5865F2]" : "text-violet-500"}`}>{stickers.length}</span>
+                                        </button>
+                                        {/* Sticker Grid */}
+                                        {!isCollapsed && (
+                                          <div className="grid grid-cols-4 gap-1.5 px-3 pb-3">
+                                            {stickers.map((sticker) => (
+                                              <button
+                                                key={sticker.id}
+                                                type="button"
+                                                onClick={() => handleSendSticker(sticker)}
+                                                className={`aspect-square rounded-lg p-1.5 transition-all hover:scale-110 ${isGroupView ? "hover:bg-[#404249]" : "hover:bg-slate-100"}`}
+                                                title={sticker.name}
+                                              >
+                                                <img src={sticker.assetUrl} alt={sticker.name} className="h-full w-full object-contain" />
+                                              </button>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })
                                 )}
                               </div>
                             </div>
@@ -3521,9 +4350,22 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               </div>
 
               <ScrollArea className="flex-1">
-                {/* Avatar / Icon */}
-                <div className={`flex flex-col items-center py-6 px-4 border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
-                  <div className={`rounded-full overflow-hidden ${selectedConv.type === "group" ? "w-24 h-24" : "w-24 h-24"} ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder + " p-1" : isGroupView ? "border-2 border-[#3F4147]" : "border-2 border-slate-100"}`}>
+                {/* Banner + Avatar / Icon */}
+                <div className={`flex flex-col items-center border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"} ${selectedConv.type === "group" && selectedConv.bannerUrl ? "" : "py-6 px-4"}`}>
+                  {/* Banner */}
+                  {selectedConv.type === "group" && selectedConv.bannerUrl && (
+                    <div className="w-full h-28 relative overflow-hidden">
+                      <img
+                        src={selectedConv.bannerUrl}
+                        alt="Banner"
+                        className="w-full h-full object-cover"
+                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/40" />
+                    </div>
+                  )}
+                  {/* Avatar */}
+                  <div className={`rounded-full overflow-hidden ${selectedConv.type === "group" ? "w-24 h-24" : "w-24 h-24"} ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder + " p-1" : isGroupView ? "border-2 border-[#3F4147]" : "border-2 border-slate-100"} ${selectedConv.type === "group" && selectedConv.bannerUrl ? "-mt-12 relative z-10 ring-4 ring-[#1E1F22]" : ""}`}>
                     <img
                       src={
                         selectedConv.type === "dm"
@@ -3535,14 +4377,14 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     />
                   </div>
                   <h2 className={`text-lg font-extrabold mt-3 text-center ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>{selectedName}</h2>
-                  <p className={`text-xs font-bold mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                  <p className={`text-xs font-bold mt-1 mb-4 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
                     {selectedConv.type === "dm"
                       ? `@${selectedConv.otherUsername}`
                       : `Group • ${selectedConv.memberCount} members`
                     }
                   </p>
                   {selectedConv.type === "dm" && (selectedConv as any).otherUserRole && (
-                    <span className={`mt-2 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                    <span className={`mb-4 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
                       (selectedConv as any).otherUserRole === "admin"
                         ? "bg-red-50 text-red-500 border border-red-100"
                         : (selectedConv as any).otherUserRole === "ai"
@@ -3561,7 +4403,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       <Info className="h-3 w-3" /> Description
                     </p>
                     <p className={`text-xs font-medium leading-relaxed ${isGroupView ? "text-[#DCDDDE]" : "text-slate-600"}`}>
-                      {(selectedConv as any).description || "No description yet."}
+                      {selectedConv.description || "No description yet."}
                     </p>
                   </div>
                 )}
@@ -3706,19 +4548,183 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       <Edit3 className="h-4 w-4 mr-2" /> Edit Group
                     </Button>
                   )}
-                  <Button
-                    variant="outline"
-                    className={`w-full rounded-xl text-xs font-bold ${isGroupView ? "text-red-400 border-red-900/50 hover:bg-red-900/30 hover:text-red-300" : "text-red-500 border-red-100 hover:bg-red-50 hover:text-red-600"}`}
-                    onClick={() => { setShowInfoPanel(false); handleLeaveOrDelete(); }}
-                  >
-                    {selectedConv.type === "group" && selectedConv.ownerId === me?.id ? "Delete Group" : "Leave Chat"}
-                  </Button>
+                  {selectedConv.type === "group" && selectedConv.ownerId !== me?.id && (
+                    <Button
+                      variant="outline"
+                      className="w-full rounded-xl text-xs font-bold text-red-400 border-red-900/50 hover:bg-red-900/30 hover:text-red-300"
+                      onClick={() => { setShowInfoPanel(false); setLeaveGroupModalOpen(true); }}
+                    >
+                      <LogOut className="h-4 w-4 mr-2" /> Keluar dari Grup
+                    </Button>
+                  )}
+                  {selectedConv.type === "group" && (
+                    <Button
+                      variant="outline"
+                      className="w-full rounded-xl text-xs font-bold text-orange-400 border-orange-900/40 hover:bg-orange-900/20 hover:text-orange-300"
+                      onClick={() => { setShowInfoPanel(false); setReportGroupModalOpen(true); }}
+                    >
+                      <ShieldAlert className="h-4 w-4 mr-2" /> Laporkan Grup
+                    </Button>
+                  )}
+                  {selectedConv.type === "group" && selectedConv.ownerId === me?.id && (
+                    <Button
+                      variant="outline"
+                      className="w-full rounded-xl text-xs font-bold text-red-400 border-red-900/50 hover:bg-red-900/30 hover:text-red-300"
+                      onClick={() => { setShowInfoPanel(false); handleLeaveOrDelete(); }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" /> Hapus Grup
+                    </Button>
+                  )}
                 </div>
               </ScrollArea>
             </div>
           )}
         </div>
       </main>
+
+      {/* Starred Messages Modal */}
+      <Dialog open={starredOpen} onOpenChange={setStarredOpen}>
+        <DialogContent className={`max-w-md max-h-[80vh] flex flex-col p-6 rounded-2xl ${isGroupView ? "bg-[#313338] text-white border-[#3F4147]" : "bg-white border-[#eae8f5]"}`}>
+          <DialogHeader className="mb-2 shrink-0">
+            <DialogTitle className="text-base font-black flex items-center gap-2">
+              <Star className="w-5 h-5 text-yellow-400 fill-current" />
+              Pesan Berbintang Anda
+            </DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+              Daftar semua pesan yang Anda tandai dengan bintang di seluruh percakapan.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 min-h-[300px] pr-1">
+            {starredLoading ? (
+              <div className="flex flex-col gap-3 py-4">
+                <Skeleton className="h-20 w-full rounded-xl" />
+                <Skeleton className="h-20 w-full rounded-xl" />
+              </div>
+            ) : !starredMessages || starredMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center text-xs opacity-60">
+                <Star className="w-10 h-10 mb-2 stroke-1" />
+                Belum ada pesan berbintang.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3.5 py-2">
+                {starredMessages.map((smsg: Message) => (
+                  <div key={smsg.id} className={`rounded-xl p-3.5 border transition-all ${
+                    isGroupView ? "bg-[#2B2D31]/60 border-[#3F4147] hover:border-slate-500 text-[#DCDDDE]" : "bg-slate-50 border-slate-100 hover:border-slate-300 text-slate-800"
+                  }`}>
+                    <div className="flex justify-between items-start gap-2 mb-1.5">
+                      <div className="min-w-0">
+                        <span className="font-extrabold text-xs block">
+                          @{smsg.senderUsername || "someone"}
+                        </span>
+                        <span className={`text-[10px] opacity-60`}>
+                          {format(new Date(smsg.createdAt), "dd MMM yyyy HH:mm")}
+                        </span>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        {smsg.conversationId === selectedId && (
+                          <button
+                            onClick={() => {
+                              setStarredOpen(false);
+                              const el = document.getElementById(`message-${smsg.id}`);
+                              if (el) {
+                                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                                el.classList.add("bg-yellow-500/20", "transition-all", "duration-500");
+                                setTimeout(() => el.classList.remove("bg-yellow-500/20"), 2000);
+                              }
+                            }}
+                            className={`text-[10px] font-black uppercase px-2.5 py-1 rounded bg-sky-500 hover:bg-sky-600 text-white transition-colors cursor-pointer`}
+                          >
+                            Lompat
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleToggleStar(smsg)}
+                          className={`text-[10px] font-black uppercase px-2.5 py-1 rounded bg-rose-500 hover:bg-rose-600 text-white transition-colors cursor-pointer`}
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs whitespace-pre-wrap leading-relaxed line-clamp-3 [overflow-wrap:anywhere]">{smsg.content}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pinned Messages Modal */}
+      <Dialog open={pinnedModalOpen} onOpenChange={setPinnedModalOpen}>
+        <DialogContent className={`max-w-md max-h-[80vh] flex flex-col p-6 rounded-2xl ${isGroupView ? "bg-[#313338] text-white border-[#3F4147]" : "bg-white border-[#eae8f5]"}`}>
+          <DialogHeader className="mb-2 shrink-0">
+            <DialogTitle className="text-base font-black flex items-center gap-2">
+              <Pin className="w-5 h-5 text-cyan-400 fill-current" />
+              Pesan Tersemat
+            </DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+              Pesan penting yang disematkan di percakapan ini.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 min-h-[300px] pr-1">
+            {pinnedLoading ? (
+              <div className="flex flex-col gap-3 py-4">
+                <Skeleton className="h-20 w-full rounded-xl" />
+                <Skeleton className="h-20 w-full rounded-xl" />
+              </div>
+            ) : !pinnedMessages || pinnedMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center text-xs opacity-60">
+                <Pin className="w-10 h-10 mb-2 stroke-1" />
+                Belum ada pesan yang disematkan.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3.5 py-2">
+                {pinnedMessages.map((pmsg: Message) => (
+                  <div key={pmsg.id} className={`rounded-xl p-3.5 border transition-all ${
+                    isGroupView ? "bg-[#2B2D31]/60 border-[#3F4147] hover:border-slate-500 text-[#DCDDDE]" : "bg-slate-50 border-slate-100 hover:border-slate-300 text-slate-800"
+                  }`}>
+                    <div className="flex justify-between items-start gap-2 mb-1.5">
+                      <div className="min-w-0">
+                        <span className="font-extrabold text-xs block hover:underline cursor-pointer">
+                          @{pmsg.senderUsername || "someone"}
+                        </span>
+                        <span className={`text-[10px] opacity-60`}>
+                          {format(new Date(pmsg.createdAt), "dd MMM yyyy HH:mm")}
+                        </span>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button
+                          onClick={() => {
+                            setPinnedModalOpen(false);
+                            const el = document.getElementById(`message-${pmsg.id}`);
+                            if (el) {
+                              el.scrollIntoView({ behavior: "smooth", block: "center" });
+                              el.classList.add("bg-yellow-500/20", "transition-all", "duration-500");
+                              setTimeout(() => el.classList.remove("bg-yellow-500/20"), 2000);
+                            }
+                          }}
+                          className={`text-[10px] font-black uppercase px-2.5 py-1 rounded bg-sky-500 hover:bg-sky-600 text-white transition-colors cursor-pointer`}
+                        >
+                          Lompat
+                        </button>
+                        {(pmsg.senderId === me?.id || selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageMessages) && (
+                          <button
+                            onClick={() => handleTogglePin(pmsg)}
+                            className={`text-[10px] font-black uppercase px-2.5 py-1 rounded bg-rose-500 hover:bg-rose-600 text-white transition-colors cursor-pointer`}
+                          >
+                            Lepas
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs whitespace-pre-wrap leading-relaxed line-clamp-3 [overflow-wrap:anywhere]">{pmsg.content}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog Modals ────────────────────────────────────────────────── */}
       <Dialog open={showNewDm} onOpenChange={setShowNewDm}>
@@ -4388,26 +5394,53 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           </DialogHeader>
 
           <div className="space-y-4 mt-2">
-            {/* Group Icon Preview & URL */}
+            {/* Group Icon Preview & Upload */}
             <div className="flex items-center gap-4">
-              <div className={`w-16 h-16 rounded-2xl overflow-hidden border-2 flex items-center justify-center shrink-0 ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#eae8f5] bg-slate-50"}`}>
+              <div
+                className={`w-16 h-16 rounded-2xl overflow-hidden border-2 flex items-center justify-center shrink-0 cursor-pointer relative group/icon ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#eae8f5] bg-slate-50"}`}
+                onClick={() => {
+                  if (selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageChannels) {
+                    const inp = document.getElementById("group-icon-file-input") as HTMLInputElement;
+                    inp?.click();
+                  }
+                }}
+                title="Klik untuk upload foto dari komputer"
+              >
                 {editGroupIcon ? (
                   <img src={editGroupIcon} alt="Group" className="w-full h-full object-cover" />
                 ) : (
                   <span className={`text-2xl font-black ${isGroupView ? "text-[#949BA4]" : "text-slate-300"}`}>{getInitials(editGroupName || "G")}</span>
                 )}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/icon:opacity-100 transition-opacity flex items-center justify-center rounded-2xl">
+                  <Upload className="w-5 h-5 text-white" />
+                </div>
               </div>
+              <input
+                id="group-icon-file-input"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadGroupFile(file, setEditGroupIcon);
+                  e.target.value = "";
+                }}
+              />
               <div className="flex-1">
-                <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Group Photo URL</label>
-                <input
-                  type="text"
-                  value={editGroupIcon}
-                  onChange={(e) => setEditGroupIcon(e.target.value)}
-                  placeholder="https://example.com/photo.jpg"
-                  disabled={selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels}
-                  className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"} ${selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels ? "opacity-60 cursor-not-allowed" : ""}`}
-                />
+                <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Group Photo</label>
+                <p className={`text-[10px] mt-0.5 ${isGroupView ? "text-[#5865F2]" : "text-slate-400"}`}>Klik foto untuk upload dari komputer</p>
               </div>
+              {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                <button
+                  type="button"
+                  onClick={() => (document.getElementById("group-icon-file-input") as HTMLInputElement)?.click()}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-colors ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "border-slate-200 text-slate-600 hover:bg-slate-100"}`}
+                  title="Upload dari komputer"
+                >
+                  <Upload className="w-3.5 h-3.5 inline mr-1" />
+                  Upload
+                </button>
+              )}
             </div>
 
             {/* Group Name */}
@@ -4438,6 +5471,45 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               />
               <p className="text-[10px] text-slate-300 mt-1 text-right">{editGroupDesc.length}/500</p>
             </div>
+
+            {/* Group Banner Upload */}
+            <div>
+              <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Background / Banner</label>
+              {editGroupBanner && (
+                <div className="mt-1 mb-2 h-20 rounded-xl overflow-hidden border border-[#3F4147] relative group/banner cursor-pointer" onClick={() => selectedConv?.ownerId === me?.id && (document.getElementById("group-banner-file-input") as HTMLInputElement)?.click()}>
+                  <img src={editGroupBanner} alt="Banner Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                  {selectedConv?.ownerId === me?.id && (
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                      <Upload className="w-4 h-4 text-white" />
+                      <span className="text-white text-[10px] font-bold">Ganti</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <input
+                id="group-banner-file-input"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadGroupFile(file, setEditGroupBanner);
+                  e.target.value = "";
+                }}
+              />
+              {selectedConv?.ownerId === me?.id && (
+                <button
+                  type="button"
+                  onClick={() => (document.getElementById("group-banner-file-input") as HTMLInputElement)?.click()}
+                  className={`w-full mt-1 px-3 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "border-slate-200 text-slate-600 hover:bg-slate-100"}`}
+                  title="Upload dari komputer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  {editGroupBanner ? "Ganti Background" : "Upload Background"}
+                </button>
+              )}
+              <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Hanya pemilik grup yang dapat mengubah background.</p>
+            </div>
           </div>
 
           {/* Manage Roles Button */}
@@ -4463,6 +5535,19 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             </button>
           )}
 
+          {selectedConv?.ownerId === me?.id && (
+            <button
+              onClick={() => { setShowEditGroup(false); setShowStickerManager(true); }}
+              className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
+            >
+              <Sparkles className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
+              Manage Stickers
+              <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                {(stickerLibrary?.stickers?.filter((s: any) => s.conversationId === selectedId)?.length ?? 0)} stickers
+              </span>
+            </button>
+          )}
+
           <div className="flex gap-2 mt-4">
             <Button
               variant="outline"
@@ -4478,6 +5563,94 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               disabled={editGroupSaving || !editGroupName.trim() || (selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels)}
             >
               {editGroupSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Leave Group Confirmation Modal */}
+      <Dialog open={leaveGroupModalOpen} onOpenChange={setLeaveGroupModalOpen}>
+        <DialogContent className={`max-w-sm rounded-2xl p-6 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147]" : "bg-white border border-[#eae8f5]"}`}>
+          <DialogHeader>
+            <DialogTitle className={`text-sm font-extrabold flex items-center gap-2 ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>
+              <LogOut className="h-4 w-4 text-red-400" /> Keluar dari Grup?
+            </DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+              Anda akan keluar dari grup <span className="font-black">"{selectedName}"</span>. Anda tidak akan bisa melihat pesan grup ini lagi kecuali diundang kembali.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 mt-4">
+            <Button
+              variant="outline"
+              className={`flex-1 rounded-xl text-xs font-bold ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : ""}`}
+              onClick={() => setLeaveGroupModalOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold"
+              onClick={handleLeaveGroup}
+            >
+              Ya, Keluar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Report Group Modal */}
+      <Dialog open={reportGroupModalOpen} onOpenChange={setReportGroupModalOpen}>
+        <DialogContent className={`max-w-sm rounded-2xl p-6 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147]" : "bg-white border border-[#eae8f5]"}`}>
+          <DialogHeader>
+            <DialogTitle className={`text-sm font-extrabold flex items-center gap-2 ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>
+              <ShieldAlert className="h-4 w-4 text-orange-400" /> Laporkan Grup
+            </DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+              Laporan Anda akan dikirim ke admin untuk ditinjau. Harap isi dengan jujur dan akurat.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-3">
+            <div>
+              <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Kategori Laporan</label>
+              <select
+                value={reportGroupCategory}
+                onChange={(e) => setReportGroupCategory(e.target.value)}
+                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE]" : "bg-slate-50 border-slate-200 text-slate-700"}`}
+              >
+                <option value="Spam">Spam / Iklan Berlebihan</option>
+                <option value="SARA">Konten SARA / Kebencian</option>
+                <option value="Penipuan">Penipuan / Scam</option>
+                <option value="Konten Dewasa">Konten Tidak Pantas</option>
+                <option value="Harassment">Pelecehan / Bullying</option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
+            </div>
+            <div>
+              <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Detail Laporan</label>
+              <textarea
+                value={reportGroupReason}
+                onChange={(e) => setReportGroupReason(e.target.value)}
+                placeholder="Jelaskan alasan laporan Anda secara singkat..."
+                maxLength={500}
+                rows={4}
+                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-orange-400 focus:border-transparent outline-none resize-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"}`}
+              />
+              <p className={`text-[10px] mt-0.5 text-right ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>{reportGroupReason.length}/500</p>
+            </div>
+          </div>
+          <div className="flex gap-2 mt-2">
+            <Button
+              variant="outline"
+              className={`flex-1 rounded-xl text-xs font-bold ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : ""}`}
+              onClick={() => { setReportGroupModalOpen(false); setReportGroupReason(""); }}
+            >
+              Batal
+            </Button>
+            <Button
+              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold"
+              onClick={handleReportGroup}
+              disabled={reportGroupSubmitting || !reportGroupReason.trim()}
+            >
+              {reportGroupSubmitting ? "Mengirim..." : "Kirim Laporan"}
             </Button>
           </div>
         </DialogContent>
@@ -5534,6 +6707,716 @@ setInterval(() => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* STICKER STUDIO MODAL */}
+      <Dialog open={showStickerStudio} onOpenChange={(open) => {
+        if (!open) {
+          handleCloseStickerStudio();
+        }
+      }}>
+        <DialogContent className={`max-w-2xl rounded-2xl p-5 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147] text-white animate-in zoom-in-95 duration-200" : "bg-white border border-[#eae8f5] text-slate-900 animate-in zoom-in-95 duration-200"}`}>
+          <DialogHeader>
+            <DialogTitle className="text-md font-black uppercase tracking-wider">Sticker Studio</DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+              Unggah gambar dari PC dan tambahkan teks kustom untuk dijadikan stiker grup.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 py-3">
+            {/* PREVIEW CONTAINER */}
+            <div className="flex flex-col items-center justify-center gap-3">
+              <div className={`relative w-full aspect-square max-w-[280px] rounded-2xl border flex items-center justify-center overflow-hidden shadow-inner ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50 border-slate-200"}`}>
+                {studioImage ? (
+                  <div className="relative w-full h-full flex items-center justify-center p-2">
+                    <img src={studioImage} alt="Preview" className="w-full h-full object-contain" />
+                    {studioCaption.trim() && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: 10,
+                          right: 10,
+                          textAlign: "center",
+                          fontFamily: studioFont === "Impact" ? "Impact, sans-serif" : studioFont,
+                          fontSize: `${studioFontSize / 2.2}px`,
+                          color: studioTextColor,
+                          textShadow: `
+                            -1px -1px 0 ${studioOutlineColor},  
+                             1px -1px 0 ${studioOutlineColor},
+                            -1px  1px 0 ${studioOutlineColor},
+                             1px  1px 0 ${studioOutlineColor},
+                            -2px -2px 0 ${studioOutlineColor},
+                             2px -2px 0 ${studioOutlineColor},
+                            -2px  2px 0 ${studioOutlineColor},
+                             2px  2px 0 ${studioOutlineColor}
+                          `,
+                          fontWeight: "black",
+                          textTransform: "uppercase",
+                          pointerEvents: "none",
+                          wordBreak: "break-word",
+                          ...(studioPosition === "top"
+                            ? { top: "15px" }
+                            : studioPosition === "middle"
+                            ? { top: "50%", transform: "translateY(-50%)" }
+                            : { bottom: "15px" }),
+                        }}
+                      >
+                        {studioCaption}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className={`text-xs font-bold ${isGroupView ? "text-slate-500" : "text-slate-400"}`}>
+                    Pilih gambar untuk memulai
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* CONTROLS */}
+            <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
+              <div>
+                <Label className="text-xs font-black uppercase tracking-wider opacity-70">Pilih Gambar (Maks 2MB)</Label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleStudioFileChange}
+                  className={`mt-1 text-xs cursor-pointer ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50"}`}
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs font-black uppercase tracking-wider opacity-70">Nama Sticker (Maks 40 karakter)</Label>
+                <Input
+                  type="text"
+                  maxLength={40}
+                  placeholder="Contoh: ngakak-guling"
+                  value={studioName}
+                  onChange={(e) => setStudioName(e.target.value)}
+                  className={`mt-1 text-xs ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50"}`}
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs font-black uppercase tracking-wider opacity-70">Caption Text (Opsional)</Label>
+                <Input
+                  type="text"
+                  placeholder="Ketik teks di sini..."
+                  value={studioCaption}
+                  onChange={(e) => setStudioCaption(e.target.value)}
+                  className={`mt-1 text-xs ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50"}`}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-black uppercase tracking-wider opacity-70">Font Family</Label>
+                  <select
+                    value={studioFont}
+                    onChange={(e) => setStudioFont(e.target.value)}
+                    className={`w-full mt-1 border rounded-xl px-2.5 py-1.5 text-xs outline-none ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-white" : "bg-slate-50 text-slate-800"}`}
+                  >
+                    <option value="Impact">Impact (Meme)</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Comic Sans MS">Comic Sans</option>
+                  </select>
+                </div>
+
+                <div>
+                  <Label className="text-xs font-black uppercase tracking-wider opacity-70">Posisi Teks</Label>
+                  <select
+                    value={studioPosition}
+                    onChange={(e) => setStudioPosition(e.target.value as any)}
+                    className={`w-full mt-1 border rounded-xl px-2.5 py-1.5 text-xs outline-none ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-white" : "bg-slate-50 text-slate-800"}`}
+                  >
+                    <option value="top">Atas (Top)</option>
+                    <option value="middle">Tengah (Middle)</option>
+                    <option value="bottom">Bawah (Bottom)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-black uppercase tracking-wider opacity-70">
+                  <span>Ukuran Font</span>
+                  <span>{studioFontSize}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={20}
+                  max={80}
+                  value={studioFontSize}
+                  onChange={(e) => setStudioFontSize(Number(e.target.value))}
+                  className="w-full mt-1 accent-violet-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-black uppercase tracking-wider opacity-70">Warna Teks</Label>
+                  <div className="flex gap-2 items-center mt-1">
+                    <input
+                      type="color"
+                      value={studioTextColor}
+                      onChange={(e) => setStudioTextColor(e.target.value)}
+                      className="w-8 h-8 rounded border-0 bg-transparent cursor-pointer"
+                    />
+                    <span className="text-[10px] font-mono opacity-80">{studioTextColor}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs font-black uppercase tracking-wider opacity-70">Warna Outline</Label>
+                  <div className="flex gap-2 items-center mt-1">
+                    <input
+                      type="color"
+                      value={studioOutlineColor}
+                      onChange={(e) => setStudioOutlineColor(e.target.value)}
+                      className="w-8 h-8 rounded border-0 bg-transparent cursor-pointer"
+                    />
+                    <span className="text-[10px] font-mono opacity-80">{studioOutlineColor}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-black uppercase tracking-wider opacity-70">
+                  <span>Tebal Outline</span>
+                  <span>{studioOutlineWidth}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  value={studioOutlineWidth}
+                  onChange={(e) => setStudioOutlineWidth(Number(e.target.value))}
+                  className="w-full mt-1 accent-violet-600"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className={`flex justify-end gap-2 pt-3 border-t ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+            <Button
+              variant="ghost"
+              onClick={handleCloseStickerStudio}
+              className={`rounded-xl text-xs font-bold ${isGroupView ? "hover:bg-[#2B2D31]" : ""}`}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleStudioSubmit}
+              disabled={studioSaving || !studioImage}
+              className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold px-4"
+            >
+              {studioSaving ? "Membuat..." : "Simpan & Upload"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DELETE MESSAGE CONFIRM MODAL */}
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent className={`max-w-sm rounded-2xl p-5 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147] text-white animate-in zoom-in-95 duration-200" : "bg-white border border-[#eae8f5] text-slate-900 animate-in zoom-in-95 duration-200"}`}>
+          <DialogHeader>
+            <DialogTitle className="text-md font-black uppercase tracking-wider">Hapus Pesan?</DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+              Pilih cakupan penghapusan pesan ini. Tindakan ini tidak bisa dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-3">
+            <button
+              onClick={() => setDeleteScope("me")}
+              className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                deleteScope === "me"
+                  ? "border-[#5865F2] bg-[#5865F2]/10"
+                  : isGroupView ? "border-[#3F4147] hover:border-slate-500" : "border-slate-200 hover:border-slate-400"
+              }`}
+            >
+              <div>
+                <p className="text-xs font-bold">Hapus untuk Saya</p>
+                <p className={`text-[10px] mt-0.5 ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+                  Pesan akan hilang dari chat Anda saja.
+                </p>
+              </div>
+              <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${deleteScope === "me" ? "border-[#5865F2] bg-[#5865F2]" : "border-slate-400"}`}>
+                {deleteScope === "me" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+              </span>
+            </button>
+
+            {(messageToDeleteIsOwn || selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageMessages) && (
+              <button
+                onClick={() => setDeleteScope("everyone")}
+                className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  deleteScope === "everyone"
+                    ? "border-[#f43f5e] bg-[#f43f5e]/10"
+                    : isGroupView ? "border-[#3F4147] hover:border-slate-500" : "border-slate-200 hover:border-slate-400"
+                }`}
+              >
+                <div>
+                  <p className="text-xs font-bold text-rose-500">Hapus untuk Semua Orang</p>
+                  <p className={`text-[10px] mt-0.5 ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+                    Pesan akan terhapus untuk semua anggota grup.
+                  </p>
+                </div>
+                <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${deleteScope === "everyone" ? "border-[#f43f5e] bg-[#f43f5e]" : "border-slate-400"}`}>
+                  {deleteScope === "everyone" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                </span>
+              </button>
+            )}
+          </div>
+
+          <div className={`flex justify-end gap-2 pt-3 border-t ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+            <Button
+              variant="ghost"
+              onClick={() => { setDeleteModalOpen(false); setMessageToDeleteId(null); }}
+              className={`rounded-xl text-xs font-bold ${isGroupView ? "hover:bg-[#2B2D31]" : ""}`}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleConfirmDelete}
+              className={`rounded-xl text-xs font-bold px-4 ${deleteScope === "everyone" ? "bg-rose-600 hover:bg-rose-700 text-white" : "bg-slate-700 hover:bg-slate-800 text-white"}`}
+            >
+              Hapus
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* FORWARD MESSAGE MODAL */}
+      <Dialog open={forwardModalOpen} onOpenChange={setForwardModalOpen}>
+        <DialogContent className={`max-w-md rounded-2xl p-5 flex flex-col h-[80vh] max-h-[520px] ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147] text-white animate-in zoom-in-95 duration-200" : "bg-white border border-[#eae8f5] text-slate-900 animate-in zoom-in-95 duration-200"}`}>
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="text-md font-black uppercase tracking-wider">Forward Pesan</DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+              Pilih kontak atau grup untuk meneruskan pesan ini.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* SEARCH INPUT */}
+          <div className="my-2 shrink-0">
+            <Input
+              type="text"
+              placeholder="Cari chat atau grup..."
+              value={forwardSearch}
+              onChange={(e) => setForwardSearch(e.target.value)}
+              className={`text-xs ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50"}`}
+            />
+          </div>
+
+          {/* CONVERSATION LIST */}
+          <ScrollArea className="flex-1 my-2 pr-1">
+            <div className="space-y-1.5">
+              {conversations &&
+                conversations
+                  .filter((c) => {
+                    const cName = c.type === "dm" ? (c.otherDisplayName || c.otherUsername) : c.name;
+                    return (cName || "").toLowerCase().includes(forwardSearch.toLowerCase());
+                  })
+                  .map((conv) => {
+                    const cName = conv.type === "dm" ? (conv.otherDisplayName || conv.otherUsername) : conv.name;
+                    const isSelected = forwardTargetConvId === conv.id;
+                    return (
+                      <button
+                        key={conv.id}
+                        type="button"
+                        onClick={() => {
+                          setForwardTargetConvId(conv.id);
+                          setForwardTargetChannelId(null);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all border text-left cursor-pointer ${
+                          isSelected
+                            ? "border-[#5865F2] bg-[#5865F2]/10"
+                            : isGroupView
+                            ? "border-transparent bg-[#2B2D31] hover:bg-[#35373C] text-slate-200"
+                            : "border-transparent bg-slate-50 hover:bg-slate-100 text-slate-800"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Avatar className="w-7 h-7 shrink-0">
+                            <AvatarImage src={(conv.type === "dm" ? conv.otherAvatarUrl : conv.iconUrl) || undefined} />
+                            <AvatarFallback className="text-[10px] font-bold">
+                              {getInitials(cName || "?")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold truncate text-[#DCDDDE]">{cName}</p>
+                            <p className={`text-[9px] font-medium capitalize ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+                              {conv.type === "dm" ? "Chat Pribadi" : `Grup • ${conv.memberCount} Anggota`}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${isSelected ? "border-[#5865F2] bg-[#5865F2]" : "border-slate-400"}`}>
+                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </span>
+                      </button>
+                    );
+                  })}
+            </div>
+          </ScrollArea>
+
+          {/* CHANNEL SELECT FOR GROUPS */}
+          {forwardTargetConvId && (() => {
+            const selectedConversation = conversations?.find((c) => c.id === forwardTargetConvId);
+            const isTargetGroup = selectedConversation?.type === "group";
+            if (!isTargetGroup) return null;
+
+            const textChannels = targetChannels?.filter((ch) => ch.type === "text" || ch.type === "announce") || [];
+
+            return (
+              <div className={`mt-2 p-3 rounded-xl border shrink-0 ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50 border-slate-200"}`}>
+                <Label className="text-[10px] font-black uppercase tracking-wider opacity-80 block mb-1.5">
+                  Pilih Saluran (Channel)
+                </Label>
+                {textChannels.length === 0 ? (
+                  <p className="text-[10px] text-amber-500 font-bold">Tidak ada channel teks.</p>
+                ) : (
+                  <select
+                    value={forwardTargetChannelId || ""}
+                    onChange={(e) => setForwardTargetChannelId(Number(e.target.value) || null)}
+                    className={`w-full border rounded-xl px-2.5 py-1.5 text-xs outline-none ${isGroupView ? "bg-[#1E1F22] border-[#3F4147] text-white" : "bg-white text-slate-800"}`}
+                  >
+                    {textChannels.map((ch) => (
+                      <option key={ch.id} value={ch.id}>
+                        #{ch.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ACTION BUTTONS */}
+          <div className={`flex justify-end gap-2 pt-3 border-t shrink-0 ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+            <Button
+              variant="ghost"
+              onClick={() => { setForwardModalOpen(false); setMessageToForwardId(null); }}
+              className={`rounded-xl text-xs font-bold ${isGroupView ? "hover:bg-[#2B2D31]" : ""}`}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleConfirmForward}
+              disabled={forwarding || !forwardTargetConvId}
+              className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl text-xs font-bold px-4"
+            >
+              {forwarding ? "Mengirim..." : "Forward"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* STICKER MANAGER MODAL */}
+      <Dialog open={showStickerManager} onOpenChange={setShowStickerManager}>
+        <DialogContent className={`max-w-md rounded-2xl p-5 flex flex-col h-[75vh] max-h-[500px] ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147] text-white animate-in zoom-in-95 duration-200" : "bg-white border border-[#eae8f5] text-slate-900 animate-in zoom-in-95 duration-200"}`}>
+          <DialogHeader className="shrink-0">
+            <div className="flex justify-between items-center pr-6">
+              <DialogTitle className="text-md font-black uppercase tracking-wider">Manage Stickers</DialogTitle>
+              <Button
+                type="button"
+                onClick={() => {
+                  setStickerStudioSource("manager");
+                  setShowStickerManager(false);
+                  setShowStickerStudio(true);
+                }}
+                className="h-7 px-3 text-[10px] font-black uppercase tracking-wider bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl cursor-pointer shrink-0"
+              >
+                + Buat Sticker
+              </Button>
+            </div>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+              Daftar stiker yang telah dibuat untuk grup ini. Anda dapat mengedit nama atau menghapusnya.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="flex-1 my-3 pr-1">
+            {(() => {
+              const localStickers = stickerLibrary?.stickers?.filter((s: any) => s.conversationId === selectedId) || [];
+              if (localStickers.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-12 gap-4">
+                    <div className={`text-center text-xs font-semibold ${isGroupView ? "text-slate-500" : "text-slate-400"}`}>
+                      Belum ada stiker lokal untuk grup ini.
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setStickerStudioSource("manager");
+                        setShowStickerManager(false);
+                        setShowStickerStudio(true);
+                      }}
+                      className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl text-xs font-bold px-4 py-2 cursor-pointer transition-all hover:scale-105"
+                    >
+                      Buat Stiker Pertama
+                    </Button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {localStickers.map((sticker: any) => (
+                    <div
+                      key={sticker.id}
+                      className={`flex items-center gap-3 p-3 rounded-xl border ${
+                        isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50 border-slate-200"
+                      }`}
+                    >
+                      <div className={`w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center shrink-0 ${isGroupView ? "bg-[#1E1F22]" : "bg-white border"}`}>
+                        <img src={sticker.assetUrl} alt={sticker.name} className="w-10 h-10 object-contain" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold truncate text-[#DCDDDE]">{sticker.name}</p>
+                        {sticker.editorConfig?.caption && (
+                          <p className={`text-[10px] truncate ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+                            Caption: "{sticker.editorConfig.caption}"
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            const newName = window.prompt("Edit nama stiker:", sticker.name);
+                            if (newName === null) return;
+                            const trimmed = newName.trim();
+                            if (!trimmed) return;
+                            handleEditStickerName(sticker.id, trimmed);
+                          }}
+                          className={`h-8 w-8 rounded-full ${isGroupView ? "hover:bg-slate-800" : ""}`}
+                          title="Edit nama"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-[#5865F2]" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            if (window.confirm(`Hapus stiker "${sticker.name}" dari grup ini?`)) {
+                              handleDeleteSticker(sticker.id);
+                            }
+                          }}
+                          className={`h-8 w-8 rounded-full text-rose-500 hover:text-rose-600 ${isGroupView ? "hover:bg-slate-800" : "hover:bg-rose-50"}`}
+                          title="Hapus stiker"
+                        >
+                          <X className="w-3.5 h-3.5 text-rose-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </ScrollArea>
+
+          <div className={`flex justify-end pt-3 border-t shrink-0 ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+            <Button
+              className="bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold px-4 cursor-pointer"
+              onClick={() => {
+                setShowStickerManager(false);
+                setShowEditGroup(true); // Open settings back up
+              }}
+            >
+              Kembali
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {contextMenu && (() => {
+        const menuWidth = 240;
+        const menuHeight = 350;
+        let left = contextMenu.x;
+        let top = contextMenu.y;
+
+        if (left + menuWidth > window.innerWidth) {
+          left = window.innerWidth - menuWidth - 16;
+        }
+        if (top + menuHeight > window.innerHeight) {
+          top = window.innerHeight - menuHeight - 16;
+        }
+        if (left < 16) left = 16;
+        if (top < 16) top = 16;
+
+        const msg = contextMenu.msg;
+        const isOwn = contextMenu.isOwn;
+
+        return (
+          <div
+            style={{ left: `${left}px`, top: `${top}px` }}
+            className="fixed z-50 w-[240px] bg-[#233138] border border-[#374248] rounded-xl shadow-2xl flex flex-col overflow-hidden text-[#d1d7db] text-[13px] animate-in fade-in zoom-in-95 duration-100 select-none cursor-default font-sans"
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            {/* Reactions Row */}
+            <div className="flex items-center justify-between px-3 py-2 border-b border-[#2f3b43]">
+              <div className="flex items-center gap-1.5 w-full justify-around">
+                {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      const userReacted = msg.reactions?.some((r) => r.emoji === emoji && r.userReacted) ?? false;
+                      handleToggleReaction(msg.id, emoji, userReacted);
+                      setContextMenu(null);
+                    }}
+                    className="hover:scale-130 transition-transform text-lg cursor-pointer p-0.5 active:scale-95 duration-75 text-white"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+                <button
+                  onClick={() => {
+                    handleToggleReaction(msg.id, "🔥", msg.reactions?.some((r) => r.emoji === "🔥" && r.userReacted) ?? false);
+                    setContextMenu(null);
+                  }}
+                  className="w-6 h-6 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors text-slate-400 hover:text-white cursor-pointer active:scale-95 text-xs font-bold"
+                  title="More reactions"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Vertical Menu Items */}
+            <div className="flex flex-col py-1">
+              <button
+                onClick={() => {
+                  toast({
+                    title: "Detail Pesan",
+                    description: `Dikirim oleh @${msg.senderUsername || "unknown"} pada ${format(new Date(msg.createdAt), "dd MMM yyyy HH:mm")}`,
+                  });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#182229] transition-colors text-left text-[#d1d7db] cursor-pointer"
+              >
+                <Info className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>Detail Pesan</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setReplyToMessage(msg);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#182229] transition-colors text-left text-[#d1d7db] cursor-pointer"
+              >
+                <CornerUpLeft className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>Balas</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(msg.content ?? "");
+                  toast({ title: "Pesan disalin" });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#182229] transition-colors text-left text-[#d1d7db] cursor-pointer"
+              >
+                <Copy className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>Salin</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  handleForwardMessage(msg.id);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#182229] transition-colors text-left text-[#d1d7db] cursor-pointer"
+              >
+                <Forward className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>Teruskan</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  handleTogglePin(msg);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#182229] transition-colors text-left text-[#d1d7db] cursor-pointer"
+              >
+                <Pin className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>{msg.pinned ? "Lepas Sematan" : "Sematkan"}</span>
+              </button>
+
+              <button
+                onClick={async () => {
+                  const aiConv = conversations.find(
+                    (c) => c.type === "dm" && (c.otherUsername === "zaidanai" || c.otherUsername === "zaidan_ai" || c.otherDisplayName?.toLowerCase().includes("zaidan ai"))
+                  );
+                  if (aiConv) {
+                    setSelectedId(aiConv.id);
+                    setSelectedChannelId(null);
+                  } else {
+                    const aiFriend = friends.find((f) => f.username === "zaidanai" || f.username === "zaidan_ai");
+                    if (aiFriend) {
+                      try {
+                        const newConv = await createDm.mutateAsync({ data: { targetUserId: aiFriend.id } });
+                        setSelectedId(newConv.id);
+                        setSelectedChannelId(null);
+                        await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+                      } catch {
+                        toast({ title: "Gagal memulai chat dengan Zaidan AI", variant: "destructive" });
+                      }
+                    } else {
+                      toast({ title: "Zaidan AI tidak ditemukan di daftar teman", variant: "destructive" });
+                    }
+                  }
+
+                  setMessageText((prev) => {
+                    const quote = `"${msg.content || getMessagePreviewText(msg)}"\n\n`;
+                    return quote + prev;
+                  });
+                  setContextMenu(null);
+                  toast({ title: "Tanya Zaidan AI", description: "Navigasi langsung ke chat Zaidan AI & pesan dikutip" });
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#182229] transition-colors text-left text-[#d1d7db] cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>Tanya Zaidan AI</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  handleToggleStar(msg);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#182229] transition-colors text-left text-[#d1d7db] cursor-pointer"
+              >
+                <Star className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>{msg.starred ? "Hapus Bintang" : "Bintangi"}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  toast({ title: "Seleksi Multi-Pesan", description: "Fitur seleksi multi-pesan sedang dikembangkan" });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#182229] transition-colors text-left text-[#d1d7db] cursor-pointer"
+              >
+                <Check className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>Pilih</span>
+              </button>
+
+              {(msg.senderId === me?.id || selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageMessages) && (
+                <button
+                  onClick={() => {
+                    handleDeleteMessage(msg.id, msg.senderId === me?.id);
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-rose-950/20 hover:text-rose-400 transition-colors text-left text-rose-500 font-medium cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-500 shrink-0" />
+                  <span>Hapus</span>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

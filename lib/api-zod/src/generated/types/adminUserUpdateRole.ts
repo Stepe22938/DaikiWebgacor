@@ -11,6 +11,8 @@ export type AdminUserUpdateRole = typeof AdminUserUpdateRole[keyof typeof AdminU
 
 export const AdminUserUpdateRole = {
   member: 'member',
+  premium: 'premium',
+  premium_plus: 'premium_plus',
   admin: 'admin',
   staff: 'staff',
   dev: 'dev',

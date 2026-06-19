@@ -839,6 +839,177 @@ paths:
         "204":
           description: Deleted
 
+  /conversations/{id}/pins:
+    get:
+      operationId: listPinnedMessages
+      tags: [messaging]
+      summary: List pinned messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Pinned messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+
+  /conversations/{id}/messages/{messageId}/pin:
+    post:
+      operationId: pinMessage
+      tags: [messaging]
+      summary: Pin a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Pinned success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+    delete:
+      operationId: unpinMessage
+      tags: [messaging]
+      summary: Unpin a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Unpinned success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /conversations/{id}/messages/{messageId}/star:
+    post:
+      operationId: starMessage
+      tags: [messaging]
+      summary: Star a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Starred success
+    delete:
+      operationId: unstarMessage
+      tags: [messaging]
+      summary: Unstar a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Unstarred success
+
+  /me/starred:
+    get:
+      operationId: listStarredMessages
+      tags: [messaging]
+      summary: List my starred messages
+      responses:
+        "200":
+          description: Starred messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+
+  /conversations/{id}/messages/{messageId}/react:
+    post:
+      operationId: reactMessage
+      tags: [messaging]
+      summary: Add an emoji reaction to a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactMessageInput"
+      responses:
+        "204":
+          description: React success
+
+  /conversations/{id}/messages/{messageId}/react/{emoji}:
+    delete:
+      operationId: unreactMessage
+      tags: [messaging]
+      summary: Remove an emoji reaction from a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: emoji
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Unreact success
+
   /conversations/{id}/members:
     get:
       operationId: listConversationMembers
@@ -1564,7 +1735,7 @@ components:
           type: ["string", "null"]
         role:
           type: string
-          enum: [member, admin, staff, dev, dev_website, bot, ai]
+          enum: [member, premium, premium_plus, admin, staff, dev, dev_website, bot, ai]
         bio:
           type: ["string", "null"]
         youtubeLiveUrl:
@@ -1581,7 +1752,7 @@ components:
           type: ["string", "null"]
         createdAt:
           type: string
-
+ 
     UserUpdate:
       type: object
       properties:
@@ -1595,15 +1766,15 @@ components:
           type: string
         mcUsername:
           type: string
-
+ 
     UserRoleUpdate:
       type: object
       required: [role]
       properties:
         role:
           type: string
-          enum: [member, admin, staff, dev, dev_website, bot, ai]
-
+          enum: [member, premium, premium_plus, admin, staff, dev, dev_website, bot, ai]
+ 
     PublicUser:
       type: object
       required: [id, username, userTag, role, createdAt, isFollowing, followerCount, followingCount]
@@ -1617,7 +1788,7 @@ components:
           pattern: "^#[0-9]{3,}$"
         role:
           type: string
-          enum: [member, admin, staff, dev, dev_website, bot, ai]
+          enum: [member, premium, premium_plus, admin, staff, dev, dev_website, bot, ai]
         displayName:
           type: ["string", "null"]
         avatarUrl:
@@ -1640,14 +1811,14 @@ components:
           type: ["string", "null"]
         equippedBackground:
           type: ["string", "null"]
-
+ 
     FollowInput:
       type: object
       required: [userId]
       properties:
         userId:
           type: integer
-
+ 
     AdminBulkFollowInput:
       type: object
       required: [targetUserId, count]
@@ -1658,7 +1829,7 @@ components:
           type: integer
           minimum: 1
           maximum: 10000
-
+ 
     AdminBulkFollowResult:
       type: object
       required: [botsCreated, followsCreated]
@@ -1667,7 +1838,7 @@ components:
           type: integer
         followsCreated:
           type: integer
-
+ 
     AdminUserUpdate:
       type: object
       properties:
@@ -1681,7 +1852,7 @@ components:
           type: string
         role:
           type: string
-          enum: [member, admin, staff, dev, dev_website, bot, ai]
+          enum: [member, premium, premium_plus, admin, staff, dev, dev_website, bot, ai]
         mcUsername:
           type: string
 
@@ -1872,6 +2043,10 @@ components:
           type: ["string", "null"]
         iconUrl:
           type: ["string", "null"]
+        bannerUrl:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
         ownerId:
           type: ["integer", "null"]
         memberCount:
@@ -1911,6 +2086,40 @@ components:
           type: string
         imageUrl:
           type: ["string", "null"]
+        attachmentDriveFileId:
+          type: ["string", "null"]
+        attachmentUrl:
+          type: ["string", "null"]
+        attachmentName:
+          type: ["string", "null"]
+        attachmentMime:
+          type: ["string", "null"]
+        attachmentSize:
+          type: ["integer", "null"]
+        forwardedFromMessageId:
+          type: ["integer", "null"]
+        forwardedFromConversationId:
+          type: ["integer", "null"]
+        replyToMessageId:
+          type: ["integer", "null"]
+        replyToMessageContent:
+          type: ["string", "null"]
+        replyToMessageSenderUsername:
+          type: ["string", "null"]
+        pinned:
+          type: boolean
+        pinnedAt:
+          type: ["string", "null"]
+          format: date-time
+        pinnedByUserId:
+          type: ["integer", "null"]
+        deletedAt:
+          type: ["string", "null"]
+          format: date-time
+        deletedByUserId:
+          type: ["integer", "null"]
+        deletedScope:
+          type: ["string", "null"]
         createdAt:
           type: string
         updatedAt:
@@ -1926,16 +2135,41 @@ components:
           type: ["string", "null"]
         senderEquippedBorder:
           type: ["string", "null"]
+        starred:
+          type: boolean
+        reactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageReactionSummary"
+
+    MessageReactionSummary:
+      type: object
+      required: [emoji, count, userReacted]
+      properties:
+        emoji:
+          type: string
+        count:
+          type: integer
+        userReacted:
+          type: boolean
+        usernames:
+          type: array
+          items:
+            type: string
 
     ConversationMemberInfo:
       type: object
-      required: [userId, username, joinedAt]
+      required: [userId, username, userTag, mentionTag, joinedAt]
       properties:
         id:
           type: integer
         userId:
           type: integer
         username:
+          type: string
+        userTag:
+          type: string
+        mentionTag:
           type: string
         displayName:
           type: ["string", "null"]
@@ -1985,6 +2219,13 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+        description:
+          type: ["string", "null"]
+          maxLength: 500
+        iconUrl:
+          type: ["string", "null"]
+        bannerUrl:
+          type: ["string", "null"]
 
     SendMessageInput:
       type: object
@@ -1994,6 +2235,25 @@ components:
           minLength: 1
           maxLength: 4000
         imageUrl:
+          type: string
+        attachmentDriveFileId:
+          type: string
+        attachmentUrl:
+          type: string
+        attachmentName:
+          type: string
+        attachmentMime:
+          type: string
+        attachmentSize:
+          type: integer
+        replyToMessageId:
+          type: integer
+
+    ReactMessageInput:
+      type: object
+      required: [emoji]
+      properties:
+        emoji:
           type: string
 
     AddMemberInput:

@@ -17,6 +17,8 @@ import {
   channelCategoriesTable,
   rolesTable,
   memberRolesTable,
+  starredMessagesTable,
+  messageReactionsTable,
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 import { hasPermission } from "../lib/permissions";
@@ -33,6 +35,11 @@ import {
   CreateGroupBody,
   UpdateGroupBody,
   AddConversationMemberBody,
+  ListPinnedMessagesResponse,
+  PinMessageResponse,
+  UnpinMessageResponse,
+  ReactMessageBody,
+  ListStarredMessagesResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -773,7 +780,7 @@ ATURAN:
       conversationId,
       channelId,
       senderId: aiUser.id,
-      content: `Maaf Kak @${replyUsername}, koneksi ObscuraWorks lagi gagal: ${errorMessage.slice(0, 180)}`,
+      content: `Maaf Kak @${replyUsername}, koneksi AI lagi gagal nih, coba lagi nanti ya: ${errorMessage.slice(0, 180)}`,
     });
   }
 }
@@ -853,6 +860,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     type: conv.type,
     name,
     iconUrl,
+    bannerUrl: conv.bannerUrl ?? null,
     description: conv.description ?? null,
     ownerId: conv.ownerId ?? null,
     memberCount: memberRows.length,
@@ -1153,6 +1161,128 @@ router.delete("/conversations/:id", async (req, res): Promise<void> => {
   res.status(204).send();
 });
 
+async function populateMessageDetails(userId: number, rows: any[], bordersMap: Map<number, string>) {
+  if (rows.length === 0) return [];
+
+  const messageIds = rows.map((r) => r.id);
+  const replyToIds = Array.from(new Set(rows.map((r) => r.replyToMessageId).filter(Boolean))) as number[];
+
+  // 1. Fetch parent messages for replies
+  const parentMessagesMap = new Map<number, { content: string; senderUsername: string }>();
+  if (replyToIds.length > 0) {
+    const parents = await db
+      .select({
+        id: messagesTable.id,
+        content: messagesTable.content,
+        deletedAt: messagesTable.deletedAt,
+        deletedScope: messagesTable.deletedScope,
+        senderUsername: usersTable.username,
+      })
+      .from(messagesTable)
+      .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+      .where(inArray(messagesTable.id, replyToIds));
+
+    for (const p of parents) {
+      const parentContent = p.deletedAt && p.deletedScope === "everyone" ? "Pesan dihapus." : p.content;
+      parentMessagesMap.set(p.id, {
+        content: parentContent,
+        senderUsername: p.senderUsername ?? "Unknown",
+      });
+    }
+  }
+
+  // 2. Fetch starred status for current user
+  const starredSet = new Set<number>();
+  if (messageIds.length > 0) {
+    const starred = await db
+      .select({ messageId: starredMessagesTable.messageId })
+      .from(starredMessagesTable)
+      .where(
+        and(
+          eq(starredMessagesTable.userId, userId),
+          inArray(starredMessagesTable.messageId, messageIds)
+        )
+      );
+    for (const s of starred) {
+      starredSet.add(s.messageId);
+    }
+  }
+
+  // 3. Fetch emoji reactions
+  const reactionsMap = new Map<number, any[]>();
+  if (messageIds.length > 0) {
+    const reactions = await db
+      .select({
+        messageId: messageReactionsTable.messageId,
+        userId: messageReactionsTable.userId,
+        emoji: messageReactionsTable.emoji,
+        username: usersTable.username,
+      })
+      .from(messageReactionsTable)
+      .leftJoin(usersTable, eq(messageReactionsTable.userId, usersTable.id))
+      .where(inArray(messageReactionsTable.messageId, messageIds));
+
+    // Group reactions by messageId, then by emoji
+    const groupedByMsg = new Map<number, Map<string, { count: number; userReacted: boolean; usernames: string[] }>>();
+    for (const r of reactions) {
+      if (!groupedByMsg.has(r.messageId)) {
+        groupedByMsg.set(r.messageId, new Map());
+      }
+      const emojiMap = groupedByMsg.get(r.messageId)!;
+      if (!emojiMap.has(r.emoji)) {
+        emojiMap.set(r.emoji, { count: 0, userReacted: false, usernames: [] });
+      }
+      const data = emojiMap.get(r.emoji)!;
+      data.count += 1;
+      if (r.userId === userId) {
+        data.userReacted = true;
+      }
+      if (r.username) {
+        data.usernames.push(r.username);
+      }
+    }
+
+    for (const [msgId, emojiMap] of groupedByMsg.entries()) {
+      const list: any[] = [];
+      for (const [emoji, data] of emojiMap.entries()) {
+        list.push({
+          emoji,
+          count: data.count,
+          userReacted: data.userReacted,
+          usernames: data.usernames,
+        });
+      }
+      reactionsMap.set(msgId, list);
+    }
+  }
+
+  // 4. Map & serialize rows
+  return rows.map((r) => {
+    const serialized = serializeDates(r);
+    const parent = r.replyToMessageId ? parentMessagesMap.get(r.replyToMessageId) : null;
+    
+    return {
+      ...serialized,
+      content: r.deletedAt && r.deletedScope === "everyone" ? "Pesan dihapus." : r.content,
+      imageUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.imageUrl,
+      attachmentDriveFileId: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentDriveFileId,
+      attachmentUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentUrl,
+      attachmentName: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentName,
+      attachmentMime: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentMime,
+      attachmentSize: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentSize,
+      senderEquippedBorder: (r.senderUsername === "zaidanai" || r.senderUsername === "akira" || r.senderUsername === "metaai")
+        ? "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]"
+        : r.senderId ? (bordersMap.get(r.senderId) ?? null) : null,
+      
+      // New features
+      replyToMessageContent: parent?.content ?? null,
+      replyToMessageSenderUsername: parent?.senderUsername ?? null,
+      starred: starredSet.has(r.id),
+      reactions: reactionsMap.get(r.id) ?? [],
+    };
+  });
+}
+
 router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -1177,6 +1307,10 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       attachmentSize: messagesTable.attachmentSize,
       forwardedFromMessageId: messagesTable.forwardedFromMessageId,
       forwardedFromConversationId: messagesTable.forwardedFromConversationId,
+      replyToMessageId: messagesTable.replyToMessageId,
+      pinned: messagesTable.pinned,
+      pinnedAt: messagesTable.pinnedAt,
+      pinnedByUserId: messagesTable.pinnedByUserId,
       deletedAt: messagesTable.deletedAt,
       deletedByUserId: messagesTable.deletedByUserId,
       deletedScope: messagesTable.deletedScope,
@@ -1219,24 +1353,7 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
     }
   }
 
-  const result = rows.map((r) => {
-    const serialized = serializeDates(r);
-    return {
-      ...serialized,
-      content: r.deletedAt && r.deletedScope === "everyone"
-        ? "Pesan dihapus."
-        : r.content,
-      imageUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.imageUrl,
-      attachmentDriveFileId: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentDriveFileId,
-      attachmentUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentUrl,
-      attachmentName: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentName,
-      attachmentMime: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentMime,
-      attachmentSize: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentSize,
-      senderEquippedBorder: (r.senderUsername === "zaidanai" || r.senderUsername === "akira" || r.senderUsername === "metaai")
-        ? "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]"
-        : r.senderId ? (bordersMap.get(r.senderId) ?? null) : null,
-    };
-  });
+  const result = await populateMessageDetails(user.id, rows, bordersMap);
 
   res.json(ListMessagesResponse.parse(result));
 });
@@ -1278,6 +1395,7 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
       attachmentName: parsed.data.attachmentName ?? null,
       attachmentMime: parsed.data.attachmentMime ?? null,
       attachmentSize: parsed.data.attachmentSize ?? null,
+      replyToMessageId: parsed.data.replyToMessageId ?? null,
     })
     .returning();
 
@@ -1329,6 +1447,26 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
       )
     );
 
+  let replyToContent: string | null = null;
+  let replyToSenderUsername: string | null = null;
+  if (msg.replyToMessageId) {
+    const parent = await db
+      .select({
+        content: messagesTable.content,
+        deletedAt: messagesTable.deletedAt,
+        deletedScope: messagesTable.deletedScope,
+        senderUsername: usersTable.username,
+      })
+      .from(messagesTable)
+      .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+      .where(eq(messagesTable.id, msg.replyToMessageId))
+      .then((rows) => rows[0]);
+    if (parent) {
+      replyToContent = parent.deletedAt && parent.deletedScope === "everyone" ? "Pesan dihapus." : parent.content;
+      replyToSenderUsername = parent.senderUsername ?? "Unknown";
+    }
+  }
+
   res.status(201).json({
     ...serializeDates(msg),
     senderUsername: user.username,
@@ -1336,6 +1474,13 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     senderAvatarUrl: user.avatarUrl ?? null,
     senderRole: user.role ?? null,
     senderEquippedBorder: userBorder[0]?.value ?? null,
+    replyToMessageContent: replyToContent,
+    replyToMessageSenderUsername: replyToSenderUsername,
+    pinned: msg.pinned,
+    pinnedAt: msg.pinnedAt ? msg.pinnedAt.toISOString() : null,
+    pinnedByUserId: msg.pinnedByUserId,
+    starred: false,
+    reactions: [],
   });
 });
 
@@ -1459,6 +1604,410 @@ router.post("/conversations/:id/messages/:messageId/forward", async (req, res): 
   });
 });
 
+// Pinned, Starred, and Emoji Reactions endpoints
+
+router.get("/conversations/:id/pins", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  const rows = await db
+    .select({
+      id: messagesTable.id,
+      conversationId: messagesTable.conversationId,
+      channelId: messagesTable.channelId,
+      senderId: messagesTable.senderId,
+      content: messagesTable.content,
+      imageUrl: messagesTable.imageUrl,
+      attachmentDriveFileId: messagesTable.attachmentDriveFileId,
+      attachmentUrl: messagesTable.attachmentUrl,
+      attachmentName: messagesTable.attachmentName,
+      attachmentMime: messagesTable.attachmentMime,
+      attachmentSize: messagesTable.attachmentSize,
+      forwardedFromMessageId: messagesTable.forwardedFromMessageId,
+      forwardedFromConversationId: messagesTable.forwardedFromConversationId,
+      replyToMessageId: messagesTable.replyToMessageId,
+      pinned: messagesTable.pinned,
+      pinnedAt: messagesTable.pinnedAt,
+      pinnedByUserId: messagesTable.pinnedByUserId,
+      deletedAt: messagesTable.deletedAt,
+      deletedByUserId: messagesTable.deletedByUserId,
+      deletedScope: messagesTable.deletedScope,
+      createdAt: messagesTable.createdAt,
+      updatedAt: messagesTable.updatedAt,
+      senderUsername: usersTable.username,
+      senderDisplayName: usersTable.displayName,
+      senderAvatarUrl: usersTable.avatarUrl,
+      senderRole: usersTable.role,
+    })
+    .from(messagesTable)
+    .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+    .leftJoin(messageHiddenForUsersTable, and(
+      eq(messageHiddenForUsersTable.messageId, messagesTable.id),
+      eq(messageHiddenForUsersTable.userId, user.id),
+    ))
+    .where(
+      and(
+        eq(messagesTable.conversationId, id),
+        eq(messagesTable.pinned, true),
+        isNull(messageHiddenForUsersTable.id)
+      )
+    )
+    .orderBy(desc(messagesTable.pinnedAt));
+
+  const senderIds = Array.from(new Set(rows.map((r) => r.senderId).filter(Boolean))) as number[];
+  const bordersMap = new Map<number, string>();
+  if (senderIds.length > 0) {
+    const senderBorders = await db
+      .select({ userId: userCosmeticsTable.userId, value: cosmeticsTable.value })
+      .from(userCosmeticsTable)
+      .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+      .where(and(inArray(userCosmeticsTable.userId, senderIds), eq(userCosmeticsTable.isEquipped, true), eq(cosmeticsTable.type, "border")));
+    for (const b of senderBorders) { bordersMap.set(b.userId, b.value); }
+  }
+
+  const result = await populateMessageDetails(user.id, rows, bordersMap);
+  res.json(ListPinnedMessagesResponse.parse(result));
+});
+
+router.post("/conversations/:id/messages/:messageId/pin", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  const messageId = parseInt(req.params.messageId as string, 10);
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+  if (conv.type === "group") {
+    const isOwner = conv.ownerId === user.id;
+    const canPin = isOwner || await hasPermission(id, user.id, "manageMessages");
+    if (!canPin) {
+      res.status(403).json({ error: "You do not have permission to pin messages" });
+      return;
+    }
+  }
+
+  const msg = await db.query.messagesTable.findFirst({
+    where: and(eq(messagesTable.id, messageId), eq(messagesTable.conversationId, id)),
+  });
+  if (!msg) { res.status(404).json({ error: "Message not found" }); return; }
+
+  await db
+    .update(messagesTable)
+    .set({
+      pinned: true,
+      pinnedAt: new Date(),
+      pinnedByUserId: user.id,
+    })
+    .where(eq(messagesTable.id, messageId));
+
+  const [row] = await db
+    .select({
+      id: messagesTable.id,
+      conversationId: messagesTable.conversationId,
+      channelId: messagesTable.channelId,
+      senderId: messagesTable.senderId,
+      content: messagesTable.content,
+      imageUrl: messagesTable.imageUrl,
+      attachmentDriveFileId: messagesTable.attachmentDriveFileId,
+      attachmentUrl: messagesTable.attachmentUrl,
+      attachmentName: messagesTable.attachmentName,
+      attachmentMime: messagesTable.attachmentMime,
+      attachmentSize: messagesTable.attachmentSize,
+      forwardedFromMessageId: messagesTable.forwardedFromMessageId,
+      forwardedFromConversationId: messagesTable.forwardedFromConversationId,
+      replyToMessageId: messagesTable.replyToMessageId,
+      pinned: messagesTable.pinned,
+      pinnedAt: messagesTable.pinnedAt,
+      pinnedByUserId: messagesTable.pinnedByUserId,
+      deletedAt: messagesTable.deletedAt,
+      deletedByUserId: messagesTable.deletedByUserId,
+      deletedScope: messagesTable.deletedScope,
+      createdAt: messagesTable.createdAt,
+      updatedAt: messagesTable.updatedAt,
+      senderUsername: usersTable.username,
+      senderDisplayName: usersTable.displayName,
+      senderAvatarUrl: usersTable.avatarUrl,
+      senderRole: usersTable.role,
+    })
+    .from(messagesTable)
+    .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+    .where(eq(messagesTable.id, messageId));
+
+  const bordersMap = new Map<number, string>();
+  if (row.senderId) {
+    const senderBorders = await db
+      .select({ userId: userCosmeticsTable.userId, value: cosmeticsTable.value })
+      .from(userCosmeticsTable)
+      .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+      .where(and(eq(userCosmeticsTable.userId, row.senderId), eq(userCosmeticsTable.isEquipped, true), eq(cosmeticsTable.type, "border")));
+    if (senderBorders[0]) {
+      bordersMap.set(row.senderId, senderBorders[0].value);
+    }
+  }
+
+  const [populated] = await populateMessageDetails(user.id, [row], bordersMap);
+  res.json(PinMessageResponse.parse(populated));
+});
+
+router.delete("/conversations/:id/messages/:messageId/pin", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  const messageId = parseInt(req.params.messageId as string, 10);
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+  if (conv.type === "group") {
+    const isOwner = conv.ownerId === user.id;
+    const canPin = isOwner || await hasPermission(id, user.id, "manageMessages");
+    if (!canPin) {
+      res.status(403).json({ error: "You do not have permission to unpin messages" });
+      return;
+    }
+  }
+
+  const msg = await db.query.messagesTable.findFirst({
+    where: and(eq(messagesTable.id, messageId), eq(messagesTable.conversationId, id)),
+  });
+  if (!msg) { res.status(404).json({ error: "Message not found" }); return; }
+
+  await db
+    .update(messagesTable)
+    .set({
+      pinned: false,
+      pinnedAt: null,
+      pinnedByUserId: null,
+    })
+    .where(eq(messagesTable.id, messageId));
+
+  const [row] = await db
+    .select({
+      id: messagesTable.id,
+      conversationId: messagesTable.conversationId,
+      channelId: messagesTable.channelId,
+      senderId: messagesTable.senderId,
+      content: messagesTable.content,
+      imageUrl: messagesTable.imageUrl,
+      attachmentDriveFileId: messagesTable.attachmentDriveFileId,
+      attachmentUrl: messagesTable.attachmentUrl,
+      attachmentName: messagesTable.attachmentName,
+      attachmentMime: messagesTable.attachmentMime,
+      attachmentSize: messagesTable.attachmentSize,
+      forwardedFromMessageId: messagesTable.forwardedFromMessageId,
+      forwardedFromConversationId: messagesTable.forwardedFromConversationId,
+      replyToMessageId: messagesTable.replyToMessageId,
+      pinned: messagesTable.pinned,
+      pinnedAt: messagesTable.pinnedAt,
+      pinnedByUserId: messagesTable.pinnedByUserId,
+      deletedAt: messagesTable.deletedAt,
+      deletedByUserId: messagesTable.deletedByUserId,
+      deletedScope: messagesTable.deletedScope,
+      createdAt: messagesTable.createdAt,
+      updatedAt: messagesTable.updatedAt,
+      senderUsername: usersTable.username,
+      senderDisplayName: usersTable.displayName,
+      senderAvatarUrl: usersTable.avatarUrl,
+      senderRole: usersTable.role,
+    })
+    .from(messagesTable)
+    .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+    .where(eq(messagesTable.id, messageId));
+
+  const bordersMap = new Map<number, string>();
+  if (row.senderId) {
+    const senderBorders = await db
+      .select({ userId: userCosmeticsTable.userId, value: cosmeticsTable.value })
+      .from(userCosmeticsTable)
+      .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+      .where(and(eq(userCosmeticsTable.userId, row.senderId), eq(userCosmeticsTable.isEquipped, true), eq(cosmeticsTable.type, "border")));
+    if (senderBorders[0]) {
+      bordersMap.set(row.senderId, senderBorders[0].value);
+    }
+  }
+
+  const [populated] = await populateMessageDetails(user.id, [row], bordersMap);
+  res.json(UnpinMessageResponse.parse(populated));
+});
+
+router.post("/conversations/:id/messages/:messageId/star", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  const messageId = parseInt(req.params.messageId as string, 10);
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  const msg = await db.query.messagesTable.findFirst({
+    where: and(eq(messagesTable.id, messageId), eq(messagesTable.conversationId, id)),
+  });
+  if (!msg) { res.status(404).json({ error: "Message not found" }); return; }
+
+  await db
+    .insert(starredMessagesTable)
+    .values({
+      userId: user.id,
+      messageId,
+    })
+    .onConflictDoNothing();
+
+  res.status(204).send();
+});
+
+router.delete("/conversations/:id/messages/:messageId/star", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  const messageId = parseInt(req.params.messageId as string, 10);
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  await db
+    .delete(starredMessagesTable)
+    .where(
+      and(
+        eq(starredMessagesTable.userId, user.id),
+        eq(starredMessagesTable.messageId, messageId)
+      )
+    );
+
+  res.status(204).send();
+});
+
+router.get("/me/starred", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const rows = await db
+    .select({
+      id: messagesTable.id,
+      conversationId: messagesTable.conversationId,
+      channelId: messagesTable.channelId,
+      senderId: messagesTable.senderId,
+      content: messagesTable.content,
+      imageUrl: messagesTable.imageUrl,
+      attachmentDriveFileId: messagesTable.attachmentDriveFileId,
+      attachmentUrl: messagesTable.attachmentUrl,
+      attachmentName: messagesTable.attachmentName,
+      attachmentMime: messagesTable.attachmentMime,
+      attachmentSize: messagesTable.attachmentSize,
+      forwardedFromMessageId: messagesTable.forwardedFromMessageId,
+      forwardedFromConversationId: messagesTable.forwardedFromConversationId,
+      replyToMessageId: messagesTable.replyToMessageId,
+      pinned: messagesTable.pinned,
+      pinnedAt: messagesTable.pinnedAt,
+      pinnedByUserId: messagesTable.pinnedByUserId,
+      deletedAt: messagesTable.deletedAt,
+      deletedByUserId: messagesTable.deletedByUserId,
+      deletedScope: messagesTable.deletedScope,
+      createdAt: messagesTable.createdAt,
+      updatedAt: messagesTable.updatedAt,
+      senderUsername: usersTable.username,
+      senderDisplayName: usersTable.displayName,
+      senderAvatarUrl: usersTable.avatarUrl,
+      senderRole: usersTable.role,
+    })
+    .from(starredMessagesTable)
+    .innerJoin(messagesTable, eq(starredMessagesTable.messageId, messagesTable.id))
+    .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+    .where(eq(starredMessagesTable.userId, user.id))
+    .orderBy(desc(starredMessagesTable.starredAt));
+
+  const senderIds = Array.from(new Set(rows.map((r) => r.senderId).filter(Boolean))) as number[];
+  const bordersMap = new Map<number, string>();
+  if (senderIds.length > 0) {
+    const senderBorders = await db
+      .select({ userId: userCosmeticsTable.userId, value: cosmeticsTable.value })
+      .from(userCosmeticsTable)
+      .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
+      .where(and(inArray(userCosmeticsTable.userId, senderIds), eq(userCosmeticsTable.isEquipped, true), eq(cosmeticsTable.type, "border")));
+    for (const b of senderBorders) { bordersMap.set(b.userId, b.value); }
+  }
+
+  const result = await populateMessageDetails(user.id, rows, bordersMap);
+  res.json(ListStarredMessagesResponse.parse(result));
+});
+
+router.post("/conversations/:id/messages/:messageId/react", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  const messageId = parseInt(req.params.messageId as string, 10);
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  const parsed = ReactMessageBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const msg = await db.query.messagesTable.findFirst({
+    where: and(eq(messagesTable.id, messageId), eq(messagesTable.conversationId, id)),
+  });
+  if (!msg) { res.status(404).json({ error: "Message not found" }); return; }
+
+  await db
+    .insert(messageReactionsTable)
+    .values({
+      messageId,
+      userId: user.id,
+      emoji: parsed.data.emoji,
+    })
+    .onConflictDoNothing();
+
+  res.status(204).send();
+});
+
+router.delete("/conversations/:id/messages/:messageId/react/:emoji", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  const messageId = parseInt(req.params.messageId as string, 10);
+  const emoji = req.params.emoji as string;
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  await db
+    .delete(messageReactionsTable)
+    .where(
+      and(
+        eq(messageReactionsTable.messageId, messageId),
+        eq(messageReactionsTable.userId, user.id),
+        eq(messageReactionsTable.emoji, emoji)
+      )
+    );
+
+  res.status(204).send();
+});
+
 // === CHANNEL-SCOPED MESSAGE ENDPOINTS ===
 
 // GET /conversations/:id/channels/:channelId/messages
@@ -1494,6 +2043,10 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
       attachmentSize: messagesTable.attachmentSize,
       forwardedFromMessageId: messagesTable.forwardedFromMessageId,
       forwardedFromConversationId: messagesTable.forwardedFromConversationId,
+      replyToMessageId: messagesTable.replyToMessageId,
+      pinned: messagesTable.pinned,
+      pinnedAt: messagesTable.pinnedAt,
+      pinnedByUserId: messagesTable.pinnedByUserId,
       deletedAt: messagesTable.deletedAt,
       deletedByUserId: messagesTable.deletedByUserId,
       deletedScope: messagesTable.deletedScope,
@@ -1525,24 +2078,7 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
     for (const b of senderBorders) { bordersMap.set(b.userId, b.value); }
   }
 
-  const result = rows.map((r) => {
-    const serialized = serializeDates(r);
-    return {
-      ...serialized,
-      content: r.deletedAt && r.deletedScope === "everyone"
-        ? "Pesan dihapus."
-        : r.content,
-      imageUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.imageUrl,
-      attachmentDriveFileId: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentDriveFileId,
-      attachmentUrl: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentUrl,
-      attachmentName: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentName,
-      attachmentMime: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentMime,
-      attachmentSize: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentSize,
-      senderEquippedBorder: (r.senderUsername === "zaidanai" || r.senderUsername === "akira" || r.senderUsername === "metaai")
-        ? "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]"
-        : r.senderId ? (bordersMap.get(r.senderId) ?? null) : null,
-    };
-  });
+  const result = await populateMessageDetails(user.id, rows, bordersMap);
 
   res.json(ListMessagesResponse.parse(result));
 });
@@ -1606,6 +2142,7 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
       attachmentName: parsed.data.attachmentName ?? null,
       attachmentMime: parsed.data.attachmentMime ?? null,
       attachmentSize: parsed.data.attachmentSize ?? null,
+      replyToMessageId: parsed.data.replyToMessageId ?? null,
     })
     .returning();
 
@@ -1642,6 +2179,26 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
     .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
     .where(and(eq(userCosmeticsTable.userId, user.id), eq(userCosmeticsTable.isEquipped, true), eq(cosmeticsTable.type, "border")));
 
+  let replyToContent: string | null = null;
+  let replyToSenderUsername: string | null = null;
+  if (msg.replyToMessageId) {
+    const parent = await db
+      .select({
+        content: messagesTable.content,
+        deletedAt: messagesTable.deletedAt,
+        deletedScope: messagesTable.deletedScope,
+        senderUsername: usersTable.username,
+      })
+      .from(messagesTable)
+      .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+      .where(eq(messagesTable.id, msg.replyToMessageId))
+      .then((rows) => rows[0]);
+    if (parent) {
+      replyToContent = parent.deletedAt && parent.deletedScope === "everyone" ? "Pesan dihapus." : parent.content;
+      replyToSenderUsername = parent.senderUsername ?? "Unknown";
+    }
+  }
+
   res.status(201).json({
     ...serializeDates(msg),
     senderUsername: user.username,
@@ -1649,6 +2206,13 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
     senderAvatarUrl: user.avatarUrl ?? null,
     senderRole: user.role ?? null,
     senderEquippedBorder: userBorder[0]?.value ?? null,
+    replyToMessageContent: replyToContent,
+    replyToMessageSenderUsername: replyToSenderUsername,
+    pinned: msg.pinned,
+    pinnedAt: msg.pinnedAt ? msg.pinnedAt.toISOString() : null,
+    pinnedByUserId: msg.pinnedByUserId,
+    starred: false,
+    reactions: [],
   });
 });
 

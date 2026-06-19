@@ -3,7 +3,7 @@ import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   conversationMembersTable,
   conversationsTable,
@@ -115,12 +115,37 @@ router.get("/stickers", async (req, res): Promise<void> => {
       return;
     }
 
+    let groupCondition = eq(stickersTable.conversationId, conversationId);
+
+    if (policy.tier === "premium" || policy.tier === "premium_plus") {
+      const myMemberships = await db
+        .select({ conversationId: conversationMembersTable.conversationId })
+        .from(conversationMembersTable)
+        .where(eq(conversationMembersTable.userId, user.id));
+      const myGroupIds = myMemberships.map((m) => m.conversationId).filter(Boolean) as number[];
+      if (myGroupIds.length > 0) {
+        groupCondition = inArray(stickersTable.conversationId, myGroupIds);
+      }
+    }
+
+    const conditions = and(
+      isNull(stickersTable.deletedAt),
+      or(
+        groupCondition,
+        and(
+          eq(stickersTable.scope, "global_cross_server"),
+          eq(stickersTable.ownerUserId, user.id)
+        )
+      )
+    );
+
     const stickers = await db
       .select({
         id: stickersTable.id,
         name: stickersTable.name,
         scope: stickersTable.scope,
         conversationId: stickersTable.conversationId,
+        conversationName: conversationsTable.name,
         originStickerId: stickersTable.originStickerId,
         originConversationId: stickersTable.originConversationId,
         ownerUserId: stickersTable.ownerUserId,
@@ -131,13 +156,8 @@ router.get("/stickers", async (req, res): Promise<void> => {
         createdAt: stickersTable.createdAt,
       })
       .from(stickersTable)
-      .where(and(
-        isNull(stickersTable.deletedAt),
-        or(
-          and(eq(stickersTable.scope, "global_cross_server"), eq(stickersTable.ownerUserId, user.id)),
-          and(eq(stickersTable.scope, "local_server"), eq(stickersTable.conversationId, conversationId)),
-        ),
-      ))
+      .leftJoin(conversationsTable, eq(stickersTable.conversationId, conversationsTable.id))
+      .where(conditions)
       .orderBy(desc(stickersTable.createdAt));
 
     res.json({ entitlements, stickers });
@@ -150,6 +170,7 @@ router.get("/stickers", async (req, res): Promise<void> => {
       name: stickersTable.name,
       scope: stickersTable.scope,
       conversationId: stickersTable.conversationId,
+      conversationName: conversationsTable.name,
       originStickerId: stickersTable.originStickerId,
       originConversationId: stickersTable.originConversationId,
       ownerUserId: stickersTable.ownerUserId,
@@ -160,6 +181,7 @@ router.get("/stickers", async (req, res): Promise<void> => {
       createdAt: stickersTable.createdAt,
     })
     .from(stickersTable)
+    .leftJoin(conversationsTable, eq(stickersTable.conversationId, conversationsTable.id))
     .where(and(
       isNull(stickersTable.deletedAt),
       eq(stickersTable.scope, "global_cross_server"),
@@ -209,47 +231,26 @@ router.post("/stickers/upload", upload.single("file"), async (req, res): Promise
       return;
     }
 
-    if (policy.tier === "premium_plus") {
-      res.status(403).json({
-        error: "Premium+ tidak bisa upload sticker baru. Gunakan sticker yang sudah ada lalu share ke group lain.",
-      });
+    if (!conversationId) {
+      res.status(400).json({ error: "Group ID (conversationId) wajib diisi untuk mengupload sticker." });
       return;
     }
 
-    let scope: "local_server" | "global_cross_server" = "local_server";
-    let scopedConversationId: number | null = null;
-
-    if (policy.tier === "premium") {
-      scope = "global_cross_server";
-    } else {
-      if (!conversationId) {
-        res.status(400).json({ error: "User biasa harus pilih group untuk sticker lokal." });
-        return;
-      }
-      const canManage = await assertConversationOwnerOrManageMessages(conversationId, user.id);
-      if (!canManage) {
-        res.status(403).json({ error: "Hanya owner group atau member dengan Manage Messages yang bisa bikin sticker lokal." });
-        return;
-      }
-      scopedConversationId = conversationId;
+    const conv = await db.query.conversationsTable.findFirst({
+      where: eq(conversationsTable.id, conversationId),
+    });
+    if (!conv) {
+      res.status(404).json({ error: "Group tidak ditemukan." });
+      return;
     }
 
-    if (requestedScope === "local" || requestedScope === "local_server") {
-      if (policy.tier === "premium") {
-        res.status(400).json({ error: "Premium hanya bisa bikin sticker global lintas group." });
-        return;
-      }
-      scope = "local_server";
+    if (conv.ownerId !== user.id) {
+      res.status(403).json({ error: "Hanya owner/pembuat group yang bisa membuat sticker baru." });
+      return;
     }
 
-    if (requestedScope === "global" || requestedScope === "global_cross_server") {
-      if (policy.tier !== "premium") {
-        res.status(400).json({ error: "Sticker global hanya untuk Premium." });
-        return;
-      }
-      scope = "global_cross_server";
-      scopedConversationId = null;
-    }
+    const scope = "local_server" as string;
+    const scopedConversationId = conversationId;
 
     const currentCountRow = await db
       .select({ count: sql<number>`count(*)` })
@@ -464,8 +465,8 @@ router.post("/stickers/:id/share", async (req, res): Promise<void> => {
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
   const policy = await getUserUploadPolicy(user.id);
-  if (policy.tier !== "premium_plus") {
-    res.status(403).json({ error: "Hanya Premium+ yang bisa share sticker antar group." });
+  if (policy.tier !== "premium" && policy.tier !== "premium_plus") {
+    res.status(403).json({ error: "Hanya Premium dan Premium+ yang bisa share sticker antar group." });
     return;
   }
 
@@ -502,6 +503,31 @@ router.post("/stickers/:id/share", async (req, res): Promise<void> => {
   });
   if (!targetConv) {
     res.status(404).json({ error: "Target group tidak ditemukan" });
+    return;
+  }
+
+  const existing = await db.query.stickersTable.findFirst({
+    where: and(
+      eq(stickersTable.conversationId, targetConversationId),
+      eq(stickersTable.driveFileId, sourceSticker.driveFileId),
+      isNull(stickersTable.deletedAt)
+    )
+  });
+
+  if (existing) {
+    res.status(200).json({
+      id: existing.id,
+      name: existing.name,
+      scope: existing.scope,
+      conversationId: existing.conversationId,
+      originStickerId: existing.originStickerId,
+      originConversationId: existing.originConversationId,
+      assetUrl: existing.assetUrl,
+      mimeType: existing.mimeType,
+      sizeBytes: existing.sizeBytes,
+      editorConfig: existing.editorConfig,
+      createdAt: existing.createdAt,
+    });
     return;
   }
 

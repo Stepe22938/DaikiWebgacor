@@ -62,6 +62,7 @@ import type {
   MyFormResponse,
   OwnedCosmetic,
   PublicUser,
+  ReactMessageInput,
   SendMessageInput,
   SendTicketMessageInput,
   ServerStats,
@@ -3496,6 +3497,596 @@ export const useDeleteMessage = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteMessageMutationOptions(options));
+    }
+
+export const getListPinnedMessagesUrl = (id: number,) => {
+
+
+
+
+  return `/api/conversations/${id}/pins`
+}
+
+/**
+ * @summary List pinned messages in a conversation
+ */
+export const listPinnedMessages = async (id: number, options?: RequestInit): Promise<Message[]> => {
+
+  return customFetch<Message[]>(getListPinnedMessagesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPinnedMessagesQueryKey = (id: number,) => {
+    return [
+    `/api/conversations/${id}/pins`
+    ] as const;
+    }
+
+
+export const getListPinnedMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listPinnedMessages>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPinnedMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPinnedMessagesQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPinnedMessages>>> = ({ signal }) => listPinnedMessages(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPinnedMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPinnedMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listPinnedMessages>>>
+export type ListPinnedMessagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List pinned messages in a conversation
+ */
+
+export function useListPinnedMessages<TData = Awaited<ReturnType<typeof listPinnedMessages>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPinnedMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPinnedMessagesQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPinMessageUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/conversations/${id}/messages/${messageId}/pin`
+}
+
+/**
+ * @summary Pin a message
+ */
+export const pinMessage = async (id: number,
+    messageId: number, options?: RequestInit): Promise<Message> => {
+
+  return customFetch<Message>(getPinMessageUrl(id,messageId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getPinMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pinMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof pinMessage>>, TError,{id: number;messageId: number}, TContext> => {
+
+const mutationKey = ['pinMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof pinMessage>>, {id: number;messageId: number}> = (props) => {
+          const {id,messageId} = props ?? {};
+
+          return  pinMessage(id,messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PinMessageMutationResult = NonNullable<Awaited<ReturnType<typeof pinMessage>>>
+
+    export type PinMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Pin a message
+ */
+export const usePinMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pinMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof pinMessage>>,
+        TError,
+        {id: number;messageId: number},
+        TContext
+      > => {
+      return useMutation(getPinMessageMutationOptions(options));
+    }
+
+export const getUnpinMessageUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/conversations/${id}/messages/${messageId}/pin`
+}
+
+/**
+ * @summary Unpin a message
+ */
+export const unpinMessage = async (id: number,
+    messageId: number, options?: RequestInit): Promise<Message> => {
+
+  return customFetch<Message>(getUnpinMessageUrl(id,messageId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getUnpinMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unpinMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unpinMessage>>, TError,{id: number;messageId: number}, TContext> => {
+
+const mutationKey = ['unpinMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unpinMessage>>, {id: number;messageId: number}> = (props) => {
+          const {id,messageId} = props ?? {};
+
+          return  unpinMessage(id,messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnpinMessageMutationResult = NonNullable<Awaited<ReturnType<typeof unpinMessage>>>
+
+    export type UnpinMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Unpin a message
+ */
+export const useUnpinMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unpinMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unpinMessage>>,
+        TError,
+        {id: number;messageId: number},
+        TContext
+      > => {
+      return useMutation(getUnpinMessageMutationOptions(options));
+    }
+
+export const getStarMessageUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/conversations/${id}/messages/${messageId}/star`
+}
+
+/**
+ * @summary Star a message
+ */
+export const starMessage = async (id: number,
+    messageId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getStarMessageUrl(id,messageId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getStarMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof starMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof starMessage>>, TError,{id: number;messageId: number}, TContext> => {
+
+const mutationKey = ['starMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof starMessage>>, {id: number;messageId: number}> = (props) => {
+          const {id,messageId} = props ?? {};
+
+          return  starMessage(id,messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StarMessageMutationResult = NonNullable<Awaited<ReturnType<typeof starMessage>>>
+
+    export type StarMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Star a message
+ */
+export const useStarMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof starMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof starMessage>>,
+        TError,
+        {id: number;messageId: number},
+        TContext
+      > => {
+      return useMutation(getStarMessageMutationOptions(options));
+    }
+
+export const getUnstarMessageUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/conversations/${id}/messages/${messageId}/star`
+}
+
+/**
+ * @summary Unstar a message
+ */
+export const unstarMessage = async (id: number,
+    messageId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getUnstarMessageUrl(id,messageId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getUnstarMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unstarMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unstarMessage>>, TError,{id: number;messageId: number}, TContext> => {
+
+const mutationKey = ['unstarMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unstarMessage>>, {id: number;messageId: number}> = (props) => {
+          const {id,messageId} = props ?? {};
+
+          return  unstarMessage(id,messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnstarMessageMutationResult = NonNullable<Awaited<ReturnType<typeof unstarMessage>>>
+
+    export type UnstarMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Unstar a message
+ */
+export const useUnstarMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unstarMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unstarMessage>>,
+        TError,
+        {id: number;messageId: number},
+        TContext
+      > => {
+      return useMutation(getUnstarMessageMutationOptions(options));
+    }
+
+export const getListStarredMessagesUrl = () => {
+
+
+
+
+  return `/api/me/starred`
+}
+
+/**
+ * @summary List my starred messages
+ */
+export const listStarredMessages = async ( options?: RequestInit): Promise<Message[]> => {
+
+  return customFetch<Message[]>(getListStarredMessagesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStarredMessagesQueryKey = () => {
+    return [
+    `/api/me/starred`
+    ] as const;
+    }
+
+
+export const getListStarredMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listStarredMessages>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStarredMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStarredMessagesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStarredMessages>>> = ({ signal }) => listStarredMessages({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStarredMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStarredMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listStarredMessages>>>
+export type ListStarredMessagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List my starred messages
+ */
+
+export function useListStarredMessages<TData = Awaited<ReturnType<typeof listStarredMessages>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStarredMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStarredMessagesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getReactMessageUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/conversations/${id}/messages/${messageId}/react`
+}
+
+/**
+ * @summary Add an emoji reaction to a message
+ */
+export const reactMessage = async (id: number,
+    messageId: number,
+    reactMessageInput: ReactMessageInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getReactMessageUrl(id,messageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reactMessageInput,)
+  }
+);}
+
+
+
+
+export const getReactMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactMessage>>, TError,{id: number;messageId: number;data: BodyType<ReactMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reactMessage>>, TError,{id: number;messageId: number;data: BodyType<ReactMessageInput>}, TContext> => {
+
+const mutationKey = ['reactMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reactMessage>>, {id: number;messageId: number;data: BodyType<ReactMessageInput>}> = (props) => {
+          const {id,messageId,data} = props ?? {};
+
+          return  reactMessage(id,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReactMessageMutationResult = NonNullable<Awaited<ReturnType<typeof reactMessage>>>
+    export type ReactMessageMutationBody = BodyType<ReactMessageInput>
+    export type ReactMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add an emoji reaction to a message
+ */
+export const useReactMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactMessage>>, TError,{id: number;messageId: number;data: BodyType<ReactMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reactMessage>>,
+        TError,
+        {id: number;messageId: number;data: BodyType<ReactMessageInput>},
+        TContext
+      > => {
+      return useMutation(getReactMessageMutationOptions(options));
+    }
+
+export const getUnreactMessageUrl = (id: number,
+    messageId: number,
+    emoji: string,) => {
+
+
+
+
+  return `/api/conversations/${id}/messages/${messageId}/react/${emoji}`
+}
+
+/**
+ * @summary Remove an emoji reaction from a message
+ */
+export const unreactMessage = async (id: number,
+    messageId: number,
+    emoji: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getUnreactMessageUrl(id,messageId,emoji),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getUnreactMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unreactMessage>>, TError,{id: number;messageId: number;emoji: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unreactMessage>>, TError,{id: number;messageId: number;emoji: string}, TContext> => {
+
+const mutationKey = ['unreactMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unreactMessage>>, {id: number;messageId: number;emoji: string}> = (props) => {
+          const {id,messageId,emoji} = props ?? {};
+
+          return  unreactMessage(id,messageId,emoji,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnreactMessageMutationResult = NonNullable<Awaited<ReturnType<typeof unreactMessage>>>
+
+    export type UnreactMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove an emoji reaction from a message
+ */
+export const useUnreactMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unreactMessage>>, TError,{id: number;messageId: number;emoji: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unreactMessage>>,
+        TError,
+        {id: number;messageId: number;emoji: string},
+        TContext
+      > => {
+      return useMutation(getUnreactMessageMutationOptions(options));
     }
 
 export const getListConversationMembersUrl = (id: number,) => {

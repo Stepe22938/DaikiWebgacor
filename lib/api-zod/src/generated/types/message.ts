@@ -5,6 +5,7 @@
  * MC Roleplay Server API
  * OpenAPI spec version: 0.1.0
  */
+import type { MessageReactionSummary } from './messageReactionSummary';
 
 export interface Message {
   id: number;
@@ -24,6 +25,27 @@ export interface Message {
   attachmentMime?: string | null;
   /** @nullable */
   attachmentSize?: number | null;
+  /** @nullable */
+  forwardedFromMessageId?: number | null;
+  /** @nullable */
+  forwardedFromConversationId?: number | null;
+  /** @nullable */
+  replyToMessageId?: number | null;
+  /** @nullable */
+  replyToMessageContent?: string | null;
+  /** @nullable */
+  replyToMessageSenderUsername?: string | null;
+  pinned?: boolean;
+  /** @nullable */
+  pinnedAt?: Date | null;
+  /** @nullable */
+  pinnedByUserId?: number | null;
+  /** @nullable */
+  deletedAt?: Date | null;
+  /** @nullable */
+  deletedByUserId?: number | null;
+  /** @nullable */
+  deletedScope?: string | null;
   createdAt: string;
   /** @nullable */
   updatedAt?: Date | null;
@@ -37,4 +59,6 @@ export interface Message {
   senderRole?: string | null;
   /** @nullable */
   senderEquippedBorder?: string | null;
+  starred?: boolean;
+  reactions?: MessageReactionSummary[];
 }

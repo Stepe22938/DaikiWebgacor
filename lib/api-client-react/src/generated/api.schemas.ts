@@ -142,6 +142,8 @@ export type AdminUserUpdateRole = typeof AdminUserUpdateRole[keyof typeof AdminU
 
 export const AdminUserUpdateRole = {
   member: 'member',
+  premium: 'premium',
+  premium_plus: 'premium_plus',
   admin: 'admin',
   staff: 'staff',
   dev: 'dev',
@@ -352,6 +354,10 @@ export interface ConversationSummary {
   /** @nullable */
   iconUrl?: string | null;
   /** @nullable */
+  bannerUrl?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
   ownerId?: number | null;
   memberCount: number;
   /** @nullable */
@@ -375,6 +381,13 @@ export interface ConversationSummary {
   createdAt: string;
 }
 
+export interface MessageReactionSummary {
+  emoji: string;
+  count: number;
+  userReacted: boolean;
+  usernames?: string[];
+}
+
 export interface Message {
   id: number;
   conversationId: number;
@@ -383,6 +396,37 @@ export interface Message {
   content: string;
   /** @nullable */
   imageUrl?: string | null;
+  /** @nullable */
+  attachmentDriveFileId?: string | null;
+  /** @nullable */
+  attachmentUrl?: string | null;
+  /** @nullable */
+  attachmentName?: string | null;
+  /** @nullable */
+  attachmentMime?: string | null;
+  /** @nullable */
+  attachmentSize?: number | null;
+  /** @nullable */
+  forwardedFromMessageId?: number | null;
+  /** @nullable */
+  forwardedFromConversationId?: number | null;
+  /** @nullable */
+  replyToMessageId?: number | null;
+  /** @nullable */
+  replyToMessageContent?: string | null;
+  /** @nullable */
+  replyToMessageSenderUsername?: string | null;
+  pinned?: boolean;
+  /** @nullable */
+  pinnedAt?: string | null;
+  /** @nullable */
+  pinnedByUserId?: number | null;
+  /** @nullable */
+  deletedAt?: string | null;
+  /** @nullable */
+  deletedByUserId?: number | null;
+  /** @nullable */
+  deletedScope?: string | null;
   createdAt: string;
   /** @nullable */
   updatedAt?: string | null;
@@ -396,6 +440,8 @@ export interface Message {
   senderRole?: string | null;
   /** @nullable */
   senderEquippedBorder?: string | null;
+  starred?: boolean;
+  reactions?: MessageReactionSummary[];
 }
 
 export type ConversationMemberInfoRolesItem = {
@@ -408,6 +454,8 @@ export interface ConversationMemberInfo {
   id?: number;
   userId: number;
   username: string;
+  userTag: string;
+  mentionTag: string;
   /** @nullable */
   displayName?: string | null;
   /** @nullable */
@@ -437,6 +485,12 @@ export interface UpdateGroupInput {
      * @maxLength 100
      */
   name?: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  iconUrl?: string | null;
+  /** @nullable */
+  bannerUrl?: string | null;
 }
 
 export interface SendMessageInput {
@@ -446,6 +500,16 @@ export interface SendMessageInput {
      */
   content?: string;
   imageUrl?: string;
+  attachmentDriveFileId?: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentMime?: string;
+  attachmentSize?: number;
+  replyToMessageId?: number;
+}
+
+export interface ReactMessageInput {
+  emoji: string;
 }
 
 export interface AddMemberInput {
@@ -1088,3 +1152,4 @@ export interface AdminUpdateCosmeticInput {
   value?: string;
   description?: string;
 }
+
