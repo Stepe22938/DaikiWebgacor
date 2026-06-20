@@ -82,6 +82,7 @@ import {
   TrendingUp,
   Wallet,
   Dices,
+  Zap,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -2698,27 +2699,27 @@ export default function Admin() {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">SKU *</Label>
-                          <Input value={pkgForm.sku} onChange={e => setPkgForm({...pkgForm, sku: e.target.value})} placeholder="boost-1x-30d" disabled={editingPkgId !== null} className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                          <Input value={pkgForm.sku} onChange={e => setPkgForm({...pkgForm, sku: e.target.value})} placeholder="boost-1x-30d" disabled={editingPkgId !== null} className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800 disabled:text-slate-500" />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nama Paket *</Label>
-                          <Input value={pkgForm.displayName} onChange={e => setPkgForm({...pkgForm, displayName: e.target.value})} placeholder="1x Boost 30 Hari" className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                          <Input value={pkgForm.displayName} onChange={e => setPkgForm({...pkgForm, displayName: e.target.value})} placeholder="1x Boost 30 Hari" className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
                         </div>
                       </div>
 
                       <div className="space-y-1">
                         <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Deskripsi (Opsional)</Label>
-                        <Input value={pkgForm.description} onChange={e => setPkgForm({...pkgForm, description: e.target.value})} placeholder="Boost 1 slot selama 30 hari" className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                        <Input value={pkgForm.description} onChange={e => setPkgForm({...pkgForm, description: e.target.value})} placeholder="Boost 1 slot selama 30 hari" className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
                       </div>
 
                       <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Jumlah Boost</Label>
-                          <Input type="number" min={1} value={pkgForm.boostCount} onChange={e => setPkgForm({...pkgForm, boostCount: parseInt(e.target.value) || 1})} className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                          <Input type="number" min={1} value={pkgForm.boostCount} onChange={e => setPkgForm({...pkgForm, boostCount: parseInt(e.target.value) || 1})} className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Durasi (Hari)</Label>
-                          <Input type="number" min={1} value={pkgForm.durationDays} onChange={e => setPkgForm({...pkgForm, durationDays: parseInt(e.target.value) || 30})} className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                          <Input type="number" min={1} value={pkgForm.durationDays} onChange={e => setPkgForm({...pkgForm, durationDays: parseInt(e.target.value) || 30})} className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
                         </div>
                         <div className="space-y-1 flex flex-col">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</Label>
@@ -2733,12 +2734,12 @@ export default function Admin() {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Harga Normal (IDR) *</Label>
-                          <Input type="number" min={1000} value={pkgForm.priceIdr} onChange={e => setPkgForm({...pkgForm, priceIdr: parseInt(e.target.value) || 0})} className={`h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs ${pkgForm.priceIdr > 0 && pkgForm.priceIdr < 1000 ? "border-red-400" : ""}`} />
+                          <Input type="number" min={1000} value={pkgForm.priceIdr} onChange={e => setPkgForm({...pkgForm, priceIdr: parseInt(e.target.value) || 0})} className={`h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800 ${pkgForm.priceIdr > 0 && pkgForm.priceIdr < 1000 ? "border-red-400" : ""}`} />
                           {pkgForm.priceIdr > 0 && pkgForm.priceIdr < 1000 && <p className="text-red-500 text-[9px] font-bold">Min Rp 1.000</p>}
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Harga Diskon (IDR)</Label>
-                          <Input type="number" min={1000} value={pkgForm.discountPriceIdr} onChange={e => setPkgForm({...pkgForm, discountPriceIdr: e.target.value})} placeholder="Kosongkan = no diskon" className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                          <Input type="number" min={1000} value={pkgForm.discountPriceIdr} onChange={e => setPkgForm({...pkgForm, discountPriceIdr: e.target.value})} placeholder="Kosongkan = no diskon" className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
                           {pkgForm.discountPriceIdr && Number(pkgForm.discountPriceIdr) > 0 && Number(pkgForm.discountPriceIdr) < 1000 && <p className="text-red-500 text-[9px] font-bold">Min Rp 1.000</p>}
                           {pkgForm.discountPriceIdr && Number(pkgForm.discountPriceIdr) >= pkgForm.priceIdr && Number(pkgForm.discountPriceIdr) > 0 && <p className="text-orange-500 text-[9px] font-bold">Diskon harus lebih kecil dari harga normal</p>}
                         </div>

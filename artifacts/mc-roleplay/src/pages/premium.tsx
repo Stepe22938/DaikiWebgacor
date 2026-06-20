@@ -118,6 +118,12 @@ export default function Premium() {
   const realmName = realmSettings.realmName || "Arcadia Studio";
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
 
+  // Public boost packages query (for the buy form)
+  const { data: publicBoostPackages = [] } = useQuery({
+    queryKey: ["/api/boost-packages"],
+    queryFn: () => customFetch<any>("/api/boost-packages"),
+  });
+
   // Membership details query
   const { data: membershipData, isLoading: membershipLoading } = useQuery({
     queryKey: ["/api/me/membership"],
@@ -1165,8 +1171,8 @@ export default function Premium() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="bg-white border-[#eae8f5] rounded-xl text-slate-700">
-                                <SelectItem value="premium">Premium (Rp 25.000/bln)</SelectItem>
-                                <SelectItem value="premium_plus">Premium+ (Rp 50.000/bln)</SelectItem>
+                                <SelectItem value="premium">Premium (Rp {(realmSettings?.premiumPrice ?? 25000).toLocaleString("id-ID")}/bln)</SelectItem>
+                                <SelectItem value="premium_plus">Premium+ (Rp {(realmSettings?.premiumPlusPrice ?? 50000).toLocaleString("id-ID")}/bln)</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -1179,9 +1185,17 @@ export default function Premium() {
                                   <SelectValue placeholder="Pilih paket boost" />
                                 </SelectTrigger>
                                 <SelectContent className="bg-white border-[#eae8f5] rounded-xl text-slate-700">
-                                  <SelectItem value="boost_1">1x Boost (Rp 10.000)</SelectItem>
-                                  <SelectItem value="boost_3">3x Boost (Rp 25.000)</SelectItem>
-                                  <SelectItem value="boost_5">5x Boost (Rp 40.000)</SelectItem>
+                                  {publicBoostPackages.length === 0 ? (
+                                    <SelectItem value="__loading" disabled>Memuat paket...</SelectItem>
+                                  ) : (
+                                    publicBoostPackages.map((pkg: any) => {
+                                      const displayPrice = pkg.discountPriceIdr ?? pkg.priceIdr;
+                                      const label = `${pkg.displayName} · Rp ${displayPrice.toLocaleString("id-ID")}${pkg.discountPriceIdr ? " (DISKON)" : ""}`;
+                                      return (
+                                        <SelectItem key={pkg.sku} value={pkg.sku}>{label}</SelectItem>
+                                      );
+                                    })
+                                  )}
                                 </SelectContent>
                               </Select>
                             </div>

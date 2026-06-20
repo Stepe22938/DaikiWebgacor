@@ -271,8 +271,10 @@ router.get("/me/membership", async (req, res): Promise<void> => {
       id: pkg.id,
       sku: pkg.sku,
       displayName: pkg.displayName,
+      description: pkg.description,
       boostCount: pkg.boostCount,
       priceIdr: pkg.priceIdr,
+      discountPriceIdr: pkg.discountPriceIdr,
       durationDays: pkg.durationDays,
     })),
     ownedBoostSlots: ownedSlotsWithAssignments.map((slot) => ({

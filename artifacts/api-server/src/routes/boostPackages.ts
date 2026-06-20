@@ -32,6 +32,19 @@ async function getAdminUser(clerkId: string) {
   return user && (user.role === "admin" || user.role === "dev_website") ? user : null;
 }
 
+// GET /api/boost-packages — list active packages (public, for member/premium pages)
+router.get("/boost-packages", async (req, res): Promise<void> => {
+  try {
+    const packages = await db.query.boostPackagesTable.findMany({
+      where: eq(boostPackagesTable.active, true),
+      orderBy: [asc(boostPackagesTable.boostCount)],
+    });
+    res.json(packages);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to list boost packages" });
+  }
+});
+
 // GET /api/admin/boost-packages — list all packages (admin)
 router.get("/admin/boost-packages", async (req, res): Promise<void> => {
   const auth = getAuth(req);
