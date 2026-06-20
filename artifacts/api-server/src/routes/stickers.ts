@@ -15,7 +15,7 @@ import {
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { hasPermission } from "../lib/permissions";
-import { getDriveDownloadResponse, uploadFileToDrive } from "../lib/googleDrive";
+import { getDriveDownloadResponse, uploadFileToDrive, deleteFileFromDrive } from "../lib/googleDrive";
 import { getUserUploadPolicy, ensureDefaultSharedStoragePool } from "../lib/tierBoosts";
 
 const router: IRouter = Router();
@@ -64,15 +64,40 @@ function parseEditorConfig(input: unknown) {
   return {};
 }
 
+export async function deleteStickerResources(driveFileId: string, sizeBytes: number) {
+  try {
+    await deleteFileFromDrive(driveFileId);
+  } catch (err) {
+    console.error(`[deleteStickerResources] Failed to delete file ${driveFileId} from Google Drive:`, err);
+  }
+
+  try {
+    await db.delete(storageObjectsTable).where(eq(storageObjectsTable.providerFileId, driveFileId));
+  } catch (err) {
+    console.error(`[deleteStickerResources] Failed to delete storage object for ${driveFileId}:`, err);
+  }
+
+  try {
+    const pool = await ensureDefaultSharedStoragePool();
+    if (pool) {
+      await db.update(storagePoolsTable)
+        .set({
+          usedBytes: sql`GREATEST(0, ${storagePoolsTable.usedBytes} - ${sizeBytes})`,
+          updatedAt: new Date(),
+        })
+        .where(eq(storagePoolsTable.id, pool.id));
+    }
+  } catch (err) {
+    console.error(`[deleteStickerResources] Failed to update storage pool for ${driveFileId}:`, err);
+  }
+}
+
 router.get("/stickers", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const user = await getDbUser(auth.userId);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
-
-  const mode = String(req.query.mode || "");
-  const conversationId = req.query.conversationId ? Number(req.query.conversationId) : null;
 
   const policy = await getUserUploadPolicy(user.id);
   const entitlements = {
@@ -83,85 +108,33 @@ router.get("/stickers", async (req, res): Promise<void> => {
     canUseAnimatedStickers: policy.canUseAnimatedStickers,
   };
 
-  if (mode === "owned") {
-    const owned = await db
-      .select({
-        id: stickersTable.id,
-        name: stickersTable.name,
-        scope: stickersTable.scope,
-        conversationId: stickersTable.conversationId,
-        originStickerId: stickersTable.originStickerId,
-        originConversationId: stickersTable.originConversationId,
-        assetUrl: stickersTable.assetUrl,
-        mimeType: stickersTable.mimeType,
-        sizeBytes: stickersTable.sizeBytes,
-        editorConfig: stickersTable.editorConfig,
-        createdAt: stickersTable.createdAt,
-        conversationName: conversationsTable.name,
-      })
-      .from(stickersTable)
-      .leftJoin(conversationsTable, eq(stickersTable.conversationId, conversationsTable.id))
-      .where(and(eq(stickersTable.ownerUserId, user.id), isNull(stickersTable.deletedAt)))
-      .orderBy(desc(stickersTable.createdAt));
+  // Get all conversation IDs the user is a member of
+  const myMemberships = await db
+    .select({ conversationId: conversationMembersTable.conversationId })
+    .from(conversationMembersTable)
+    .where(eq(conversationMembersTable.userId, user.id));
+  const myGroupIds = myMemberships.map((m) => m.conversationId).filter(Boolean) as number[];
 
-    res.json({ entitlements, stickers: owned });
-    return;
-  }
-
-  if (conversationId) {
-    const member = await assertConversationMember(conversationId, user.id);
-    if (!member) {
-      res.status(403).json({ error: "Not a member of this group" });
-      return;
-    }
-
-    let groupCondition = eq(stickersTable.conversationId, conversationId);
-
-    if (policy.tier === "premium" || policy.tier === "premium_plus") {
-      const myMemberships = await db
-        .select({ conversationId: conversationMembersTable.conversationId })
-        .from(conversationMembersTable)
-        .where(eq(conversationMembersTable.userId, user.id));
-      const myGroupIds = myMemberships.map((m) => m.conversationId).filter(Boolean) as number[];
-      if (myGroupIds.length > 0) {
-        groupCondition = inArray(stickersTable.conversationId, myGroupIds);
-      }
-    }
-
-    const conditions = and(
+  let conditions;
+  if (myGroupIds.length > 0) {
+    conditions = and(
       isNull(stickersTable.deletedAt),
       or(
-        groupCondition,
+        inArray(stickersTable.conversationId, myGroupIds),
         and(
           eq(stickersTable.scope, "global_cross_server"),
           eq(stickersTable.ownerUserId, user.id)
         )
       )
     );
-
-    const stickers = await db
-      .select({
-        id: stickersTable.id,
-        name: stickersTable.name,
-        scope: stickersTable.scope,
-        conversationId: stickersTable.conversationId,
-        conversationName: conversationsTable.name,
-        originStickerId: stickersTable.originStickerId,
-        originConversationId: stickersTable.originConversationId,
-        ownerUserId: stickersTable.ownerUserId,
-        assetUrl: stickersTable.assetUrl,
-        mimeType: stickersTable.mimeType,
-        sizeBytes: stickersTable.sizeBytes,
-        editorConfig: stickersTable.editorConfig,
-        createdAt: stickersTable.createdAt,
-      })
-      .from(stickersTable)
-      .leftJoin(conversationsTable, eq(stickersTable.conversationId, conversationsTable.id))
-      .where(conditions)
-      .orderBy(desc(stickersTable.createdAt));
-
-    res.json({ entitlements, stickers });
-    return;
+  } else {
+    conditions = and(
+      isNull(stickersTable.deletedAt),
+      and(
+        eq(stickersTable.scope, "global_cross_server"),
+        eq(stickersTable.ownerUserId, user.id)
+      )
+    );
   }
 
   const stickers = await db
@@ -171,6 +144,7 @@ router.get("/stickers", async (req, res): Promise<void> => {
       scope: stickersTable.scope,
       conversationId: stickersTable.conversationId,
       conversationName: conversationsTable.name,
+      conversationIcon: conversationsTable.iconUrl,
       originStickerId: stickersTable.originStickerId,
       originConversationId: stickersTable.originConversationId,
       ownerUserId: stickersTable.ownerUserId,
@@ -182,11 +156,7 @@ router.get("/stickers", async (req, res): Promise<void> => {
     })
     .from(stickersTable)
     .leftJoin(conversationsTable, eq(stickersTable.conversationId, conversationsTable.id))
-    .where(and(
-      isNull(stickersTable.deletedAt),
-      eq(stickersTable.scope, "global_cross_server"),
-      eq(stickersTable.ownerUserId, user.id),
-    ))
+    .where(conditions)
     .orderBy(desc(stickersTable.createdAt));
 
   res.json({ entitlements, stickers });

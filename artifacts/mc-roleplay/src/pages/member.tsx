@@ -5010,6 +5010,35 @@ function MusicTab() {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  // Auto-play music from AI command (localStorage)
+  const autoPlayTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (autoPlayTriggeredRef.current) return;
+    const raw = localStorage.getItem("arcadia_auto_play_music");
+    if (!raw) return;
+    autoPlayTriggeredRef.current = true;
+    localStorage.removeItem("arcadia_auto_play_music");
+    try {
+      const { title, artist } = JSON.parse(raw);
+      if (!title || !artist) return;
+      // Search for the track
+      fetch(`/api/music/tracks?q=${encodeURIComponent(`${title} ${artist}`)}`)
+        .then(r => r.ok ? r.json() : [])
+        .then((results: any[]) => {
+          if (!Array.isArray(results) || results.length === 0) return;
+          // Find best match by title similarity
+          const best = results.find((t: any) =>
+            t.title?.toLowerCase().includes(title.toLowerCase()) ||
+            t.artist?.toLowerCase().includes(artist.toLowerCase())
+          ) || results[0];
+          if (best) {
+            playTrack(best, results);
+          }
+        })
+        .catch(() => {});
+    } catch {}
+  }, []);
+
   const filteredTracks = activePlaylist === "All Tracks" ? tracks : activePlaylist === "Favorites" ? Object.values(favoriteTracks) : activePlaylist === "Rilis Hari Ini" ? newReleases : tracks.filter(t => t.type === activePlaylist);
   const displayTracks = searchQuery.trim() ? searchResults : filteredTracks;
   const visualDuration = duration || 100;
@@ -5389,22 +5418,22 @@ function MusicTab() {
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row h-[520px] min-h-[400px]">
-        <aside className="w-full lg:w-60 bg-black p-4 flex flex-col justify-between shrink-0 border-b lg:border-b-0 lg:border-r border-[#282828] text-xs">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2.5 px-3 py-1 font-bold text-white text-sm">
+      <div className="flex flex-col lg:flex-row lg:h-[520px] min-h-[400px]">
+        <aside className="w-full lg:w-60 bg-black p-3 lg:p-4 flex flex-row lg:flex-col justify-between items-center lg:items-stretch shrink-0 border-b lg:border-b-0 lg:border-r border-[#282828] text-xs overflow-x-auto gap-3 lg:gap-0 scrollbar-none">
+          <div className="flex flex-row lg:flex-col items-center lg:items-stretch gap-3 lg:gap-4 w-full min-w-0">
+            <div className="hidden lg:flex items-center gap-2.5 px-3 py-1 font-bold text-white text-sm shrink-0">
               <Library className="w-5 h-5 text-[#1db954]" />
               <span>Your Library</span>
             </div>
-            <nav className="space-y-1 overflow-y-auto max-h-80 pr-1">
+            <nav className="flex flex-row lg:flex-col gap-2 lg:space-y-1 overflow-x-auto lg:overflow-y-auto lg:max-h-80 pr-1 w-full min-w-0 scrollbar-none">
               {sidebarPlaylists.map(p => {
                 const isActive = activePlaylist === p.name && !searchQuery.trim();
                 const isNew = p.name === "Rilis Hari Ini";
                 return (
                   <button key={p.name} onClick={() => { setActivePlaylist(p.name); setSearchQuery(""); }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-black tracking-wide text-left transition-all ${isActive ? "bg-[#282828] text-white" : isNew ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10" : "text-slate-400 hover:text-white hover:bg-[#1a1a1a]"}`}>
+                    className={`flex items-center justify-center lg:justify-start gap-2 px-3.5 py-1.5 rounded-full lg:rounded-lg text-[10px] lg:text-[11px] font-black tracking-wide text-center lg:text-left transition-all shrink-0 ${isActive ? "bg-[#282828] text-white" : isNew ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 border border-amber-500/20 lg:border-0" : "text-slate-400 hover:text-white hover:bg-[#1a1a1a]"}`}>
                     <span className={isNew && !isActive ? "text-amber-400" : ""}>{p.icon}</span>
-                    <span className="flex-1 truncate">{p.name}</span>
+                    <span className="truncate">{p.name}</span>
                     {(p as any).badge && <span className="bg-[#1db954] text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shrink-0">{(p as any).badge}</span>}
                   </button>
                 );
@@ -5427,129 +5456,174 @@ function MusicTab() {
               {searchQuery && <button onClick={() => setSearchQuery("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold cursor-pointer">✕</button>}
             </div>
             {isSearching && <span className="text-[10px] text-[#1db954] font-bold animate-pulse shrink-0">Mencari...</span>}
-            {!isSearching && searchQuery && <span className="text-[9px] font-black text-[#1db954] bg-[#1db954]/10 border border-[#1db954]/30 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1"><Activity className="w-2.5 h-2.5" /> Spotify API</span>}
+            {!isSearching && searchQuery && <span className="hidden sm:flex text-[9px] font-black text-[#1db954] bg-[#1db954]/10 border border-[#1db954]/30 px-2 py-0.5 rounded-full shrink-0 items-center gap-1"><Activity className="w-2.5 h-2.5" /> Spotify API</span>}
           </div>
 
-          <div className={`p-6 flex items-center gap-6 border-b border-white/5 ${activePlaylist === "Rilis Hari Ini" ? "bg-gradient-to-b from-amber-900/30 to-[#121212]/90" : "bg-gradient-to-b from-[#3b0764]/50 to-[#121212]/90"}`}>
-            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-lg overflow-hidden shadow-2xl bg-black shrink-0">
+          <div className={`p-4 sm:p-6 flex items-center gap-4 sm:gap-6 border-b border-white/5 ${activePlaylist === "Rilis Hari Ini" ? "bg-gradient-to-b from-amber-900/30 to-[#121212]/90" : "bg-gradient-to-b from-[#3b0764]/50 to-[#121212]/90"}`}>
+            <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-lg overflow-hidden shadow-2xl bg-black shrink-0">
               <img src={playlistCover} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
             </div>
             <div className="space-y-1 sm:space-y-2">
               <span className={`text-[10px] font-black uppercase tracking-[0.25em] ${activePlaylist === "Rilis Hari Ini" ? "text-amber-400" : "text-[#1db954]"}`}>
                 {activePlaylist === "Rilis Hari Ini" ? "NEW RELEASES" : searchQuery ? "SEARCH RESULTS" : "PLAYLIST"}
               </span>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-none">{playlistTitle}</h1>
-              <p className="text-[11px] text-slate-400 font-semibold">{playlistSubtext}</p>
+              <h1 className="text-xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-none">{playlistTitle}</h1>
+              <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">{playlistSubtext}</p>
             </div>
           </div>
 
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {displayTracks.length === 0 ? (
               <div className="text-center py-12 text-slate-500 font-bold border border-dashed border-[#282828] rounded-xl">
                 {isSearching ? "Mencari..." : searchQuery.trim() ? "Tidak ada lagu yang cocok." : activePlaylist === "Favorites" ? "Belum ada favorit." : activePlaylist === "Rilis Hari Ini" ? "Belum ada rilis baru." : "Belum ada lagu di kategori ini."}
               </div>
             ) : (
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-[#282828] text-[10px] uppercase text-slate-500 font-black tracking-wider">
-                    <th className="py-2.5 w-10 text-center">#</th>
-                    <th className="py-2.5">Judul</th>
-                    <th className="py-2.5 hidden sm:table-cell">Kategori</th>
-                    <th className="py-2.5 w-16 text-center"><Clock className="w-4 h-4 mx-auto" /></th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                {/* Desktop Track Table */}
+                <table className="hidden md:table w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-[#282828] text-[10px] uppercase text-slate-500 font-black tracking-wider">
+                      <th className="py-2.5 w-10 text-center">#</th>
+                      <th className="py-2.5">Judul</th>
+                      <th className="py-2.5 hidden sm:table-cell">Kategori</th>
+                      <th className="py-2.5 w-16 text-center"><Clock className="w-4 h-4 mx-auto" /></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayTracks.map((track, idx) => {
+                      const isCur = currentTrack?.id === track.id;
+                      const isHov = hoveredTrackId === track.id;
+                      const isLiked = likedTracks[track.id] || false;
+                      return (
+                        <tr key={track.id} onMouseEnter={() => { setHoveredTrackId(track.id); prewarmTrack(track); }} onMouseLeave={() => setHoveredTrackId(null)}
+                          onDoubleClick={() => playTrack(track, displayTracks)}
+                          className={`group text-xs font-semibold text-slate-400 hover:bg-white/5 border-b border-[#1a1a1a]/50 transition-all cursor-pointer ${isCur ? "bg-white/[0.02]" : ""}`}>
+                          <td className="py-3 text-center">
+                            {loadingTrackId === track.id ? (
+                              <div className="w-3.5 h-3.5 border-2 border-[#1db954] border-t-transparent rounded-full animate-spin mx-auto" />
+                            ) : isHov ? (
+                              <button onClick={() => isCur ? handlePlayPause() : playTrack(track, displayTracks)} className="text-white hover:scale-110 transition-transform cursor-pointer">
+                                {isCur && isPlaying ? <Pause className="w-4 h-4 fill-current mx-auto" /> : <Play className="w-4 h-4 fill-current mx-auto" />}
+                              </button>
+                            ) : (
+                              <span className={isCur ? "text-[#1db954] font-black" : ""}>
+                                {isCur && isPlaying ? (
+                                  <div className="flex gap-0.5 items-end justify-center h-3">
+                                    <span className="w-0.5 bg-[#1db954] h-2 rounded-full animate-pulse" />
+                                    <span className="w-0.5 bg-[#1db954] h-3 rounded-full animate-pulse" style={{ animationDelay: "0.15s" }} />
+                                    <span className="w-0.5 bg-[#1db954] h-1.5 rounded-full animate-pulse" style={{ animationDelay: "0.3s" }} />
+                                  </div>
+                                ) : idx + 1}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 pr-4">
+                            <div className="flex items-center gap-3">
+                              <img src={track.cover} alt="" className="w-9 h-9 rounded object-cover shadow-sm bg-black shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
+                              <div className="min-w-0">
+                                <span className={`block truncate text-sm transition-colors ${isCur ? "text-[#1db954] font-black" : "text-white"}`}>{track.title}</span>
+                                <span className="text-[10px] text-slate-500 font-bold block mt-0.5">{track.artist}{track.album ? ` · ${track.album}` : ""}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 hidden sm:table-cell">
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-white/5 text-slate-500">{track.type}</span>
+                          </td>
+                          <td className="py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button onClick={e => { e.stopPropagation(); toggleLike(track); }} className={`transition-colors cursor-pointer ${isLiked ? "text-[#1db954]" : "text-slate-600 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"}`}>
+                                <Heart className={`w-3.5 h-3.5 ${isLiked ? "fill-current" : ""}`} />
+                              </button>
+                              <span className="text-[10px] text-slate-500 font-bold tracking-wider">{track.duration}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {/* Mobile Track List */}
+                <div className="md:hidden space-y-1">
                   {displayTracks.map((track, idx) => {
                     const isCur = currentTrack?.id === track.id;
-                    const isHov = hoveredTrackId === track.id;
                     const isLiked = likedTracks[track.id] || false;
                     return (
-                      <tr key={track.id} onMouseEnter={() => { setHoveredTrackId(track.id); prewarmTrack(track); }} onMouseLeave={() => setHoveredTrackId(null)}
-                        onDoubleClick={() => playTrack(track, displayTracks)}
-                        className={`group text-xs font-semibold text-slate-400 hover:bg-white/5 border-b border-[#1a1a1a]/50 transition-all cursor-pointer ${isCur ? "bg-white/[0.02]" : ""}`}>
-                        <td className="py-3 text-center">
-                          {loadingTrackId === track.id ? (
-                            <div className="w-3.5 h-3.5 border-2 border-[#1db954] border-t-transparent rounded-full animate-spin mx-auto" />
-                          ) : isHov ? (
-                            <button onClick={() => isCur ? handlePlayPause() : playTrack(track, displayTracks)} className="text-white hover:scale-110 transition-transform cursor-pointer">
-                              {isCur && isPlaying ? <Pause className="w-4 h-4 fill-current mx-auto" /> : <Play className="w-4 h-4 fill-current mx-auto" />}
-                            </button>
-                          ) : (
-                            <span className={isCur ? "text-[#1db954] font-black" : ""}>
-                              {isCur && isPlaying ? (
-                                <div className="flex gap-0.5 items-end justify-center h-3">
-                                  <span className="w-0.5 bg-[#1db954] h-2 rounded-full animate-pulse" />
-                                  <span className="w-0.5 bg-[#1db954] h-3 rounded-full animate-pulse" style={{ animationDelay: "0.15s" }} />
-                                  <span className="w-0.5 bg-[#1db954] h-1.5 rounded-full animate-pulse" style={{ animationDelay: "0.3s" }} />
-                                </div>
-                              ) : idx + 1}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 pr-4">
-                          <div className="flex items-center gap-3">
-                            <img src={track.cover} alt="" className="w-9 h-9 rounded object-cover shadow-sm bg-black shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
-                            <div className="min-w-0">
-                              <span className={`block truncate text-sm transition-colors ${isCur ? "text-[#1db954] font-black" : "text-white"}`}>{track.title}</span>
-                              <span className="text-[10px] text-slate-500 font-bold block mt-0.5">{track.artist}{track.album ? ` · ${track.album}` : ""}</span>
-                            </div>
+                      <div key={track.id} onClick={() => playTrack(track, displayTracks)}
+                        className={`flex items-center justify-between p-2 rounded-xl active:bg-white/10 transition-colors ${isCur ? "bg-white/[0.04]" : ""}`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={`text-[11px] font-bold w-5 text-center ${isCur ? "text-[#1db954]" : "text-slate-500"}`}>
+                            {loadingTrackId === track.id ? (
+                              <div className="w-3.5 h-3.5 border-2 border-[#1db954] border-t-transparent rounded-full animate-spin mx-auto" />
+                            ) : isCur && isPlaying ? (
+                              <div className="flex gap-0.5 items-end justify-center h-3">
+                                <span className="w-0.5 bg-[#1db954] h-1.5 rounded-full animate-pulse" />
+                                <span className="w-0.5 bg-[#1db954] h-2.5 rounded-full animate-pulse" style={{ animationDelay: "0.15s" }} />
+                                <span className="w-0.5 bg-[#1db954] h-1 rounded-full animate-pulse" style={{ animationDelay: "0.3s" }} />
+                              </div>
+                            ) : idx + 1}
+                          </span>
+                          <img src={track.cover} alt="" className="w-10 h-10 rounded-lg object-cover bg-black shrink-0 shadow-sm" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
+                          <div className="min-w-0">
+                            <span className={`block truncate text-xs font-bold ${isCur ? "text-[#1db954]" : "text-white"}`}>{track.title}</span>
+                            <span className="text-[10px] text-slate-500 font-semibold block truncate mt-0.5">{track.artist}</span>
                           </div>
-                        </td>
-                        <td className="py-3 hidden sm:table-cell">
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-white/5 text-slate-500">{track.type}</span>
-                        </td>
-                        <td className="py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <button onClick={e => { e.stopPropagation(); toggleLike(track); }} className={`transition-colors cursor-pointer ${isLiked ? "text-[#1db954]" : "text-slate-600 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"}`}>
-                              <Heart className={`w-3.5 h-3.5 ${isLiked ? "fill-current" : ""}`} />
-                            </button>
-                            <span className="text-[10px] text-slate-500 font-bold tracking-wider">{track.duration}</span>
-                          </div>
-                        </td>
-                      </tr>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <button onClick={e => { e.stopPropagation(); toggleLike(track); }} className={`transition-colors p-1 text-xs ${isLiked ? "text-[#1db954]" : "text-slate-500"}`}>
+                            <Heart className={`w-3.5 h-3.5 ${isLiked ? "fill-current" : ""}`} />
+                          </button>
+                          <span className="text-[10px] text-slate-500 font-bold pr-2">{track.duration}</span>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              </>
             )}
           </div>
         </div>
       </div>
 
-      <footer className="bg-[#181818] border-t border-[#282828] px-4 py-3.5 flex items-center justify-between z-25 rounded-b-3xl">
-        <div className="flex items-center gap-3.5 min-w-[120px] max-w-[30%]">
-          <img src={currentTrack?.cover || "/village.png"} alt="" className="w-13 h-13 rounded-lg object-cover bg-black shadow-lg shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
+      <footer className="bg-[#181818] border-t border-[#282828] px-4 py-3 sm:py-3.5 flex items-center justify-between z-25 rounded-b-3xl relative">
+        {/* Mobile Thin Progress Bar */}
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#282828] md:hidden">
+          <div className="h-full bg-[#1db954] transition-all duration-300" style={{ width: `${((currentTime || 0) / (visualDuration || 1)) * 100}%` }} />
+        </div>
+
+        <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-initial md:max-w-[30%]">
+          <img src={currentTrack?.cover || "/village.png"} alt="" className="w-10 h-10 sm:w-13 sm:h-13 rounded-lg object-cover bg-black shadow-lg shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
           <div className="min-w-0">
-            <span className="text-white text-[13px] font-black tracking-wide truncate block">{currentTrack?.title || "—"}</span>
-            <span className="text-[10px] text-slate-400 font-bold truncate block mt-0.5">
+            <span className="text-white text-xs sm:text-[13px] font-bold tracking-wide truncate block">{currentTrack?.title || "—"}</span>
+            <span className="text-[9px] sm:text-[10px] text-slate-400 font-semibold truncate block mt-0.5">
               {isStreamLoading ? (
-                <span className="text-amber-400 animate-pulse flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                  Memuat audio...
+                <span className="text-amber-400 animate-pulse flex items-center gap-1">
+                  <span className="w-2 h-2 border border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                  Memuat...
                 </span>
               ) : (
-                currentTrack?.artist || "Pilih lagu untuk mulai"
+                currentTrack?.artist || "Pilih lagu"
               )}
             </span>
           </div>
           {currentTrack && (
             <button onClick={() => toggleLike(currentTrack)} className={`cursor-pointer transition-colors shrink-0 ${likedTracks[currentTrack.id] ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}>
-              <Heart className={`w-4 h-4 ${likedTracks[currentTrack.id] ? "fill-current" : ""}`} />
+              <Heart className={`w-3.5 h-3.5 ${likedTracks[currentTrack.id] ? "fill-current" : ""}`} />
             </button>
           )}
         </div>
 
-        <div className="flex flex-col items-center gap-1.5 flex-1 max-w-[45%]">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setIsShuffling(!isShuffling)} className={`transition-colors cursor-pointer ${isShuffling ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Shuffle className="w-4 h-4" /></button>
-            <button onClick={handlePrevious} className="text-slate-300 hover:text-white transition-colors cursor-pointer"><SkipBack className="w-4.5 h-4.5 fill-current" /></button>
+        <div className="flex flex-col items-center gap-1.5 flex-1 md:max-w-[45%]">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <button onClick={() => setIsShuffling(!isShuffling)} className={`hidden md:block transition-colors cursor-pointer ${isShuffling ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Shuffle className="w-4 h-4" /></button>
+            <button onClick={handlePrevious} className="hidden md:block text-slate-300 hover:text-white transition-colors cursor-pointer"><SkipBack className="w-4.5 h-4.5 fill-current" /></button>
             <button onClick={handlePlayPause} disabled={!currentTrack} className="w-8 h-8 rounded-full bg-white hover:scale-105 transition-transform flex items-center justify-center text-black shadow-md cursor-pointer active:scale-95 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">
-              {isPlaying ? <Pause className="w-4.5 h-4.5 fill-current" /> : <Play className="w-4.5 h-4.5 fill-current ml-0.5" />}
+              {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
             </button>
             <button onClick={handleNext} className="text-slate-300 hover:text-white transition-colors cursor-pointer"><SkipForward className="w-4.5 h-4.5 fill-current" /></button>
-            <button onClick={() => setIsLooping(!isLooping)} className={`transition-colors cursor-pointer ${isLooping ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Repeat className="w-4 h-4" /></button>
+            <button onClick={() => setIsLooping(!isLooping)} className={`hidden md:block transition-colors cursor-pointer ${isLooping ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Repeat className="w-4 h-4" /></button>
           </div>
-          <div className="w-full flex items-center gap-3">
+          <div className="hidden md:flex w-full items-center gap-3">
             <span className="text-[9px] text-slate-500 font-bold min-w-[28px] text-right">{fmt(currentTime)}</span>
             <input type="range" min={0} max={visualDuration} value={currentTime} onChange={handleScrub} className="w-full h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer"
               style={{ background: `linear-gradient(to right, rgb(29,185,84) 0%, rgb(29,185,84) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40,40,40) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40,40,40) 100%)` }} />

@@ -19,12 +19,15 @@ import {
   memberRolesTable,
   starredMessagesTable,
   messageReactionsTable,
+  stickersTable,
 } from "@workspace/db";
+import { deleteStickerResources } from "./stickers";
 import { serializeDates } from "../lib/serialize";
 import { hasPermission } from "../lib/permissions";
 import { createAiChatCompletion, type AiChatMessage } from "../lib/aiProvider";
 import { generateFluxImage, isImageGenerationRequest, shouldAutoGenerateImageInAiDm } from "../lib/fluxImage";
 import { dispatchBotWebhooks } from "./bots";
+import { jitsiBot, buildJitsiRoomName, slugify } from "../lib/jitsiBot";
 import {
   ListConversationsResponse,
   GetConversationResponse,
@@ -600,6 +603,17 @@ KEMAMPUAN GAMBAR:
 - Kalau user meminta, menyuruh, atau mendeskripsikan visual/gambar, jangan bilang tidak bisa membuat gambar.
 - Untuk request gambar eksplisit, sistem akan otomatis membuat gambar dengan Flux AI. Jika kamu tetap perlu menjawab teks, jawab singkat bahwa gambar sedang/akan dibuat dengan Flux AI.
 
+KEMAMPUAN MUSIK:
+- Jika user meminta untuk memutar lagu (contoh: "putar lagu X", "play X", "mainkan lagu X", "putar X"):
+  1. Tentukan judul dan artis dari lagu yang diminta berdasarkan pengetahuanmu.
+  2. Jawab dengan antusias dan WAJIB akhiri pesanmu dengan tag perintah: [CMD: PLAY_MUSIC title=Judul Lagu|artist=Nama Artis]
+  3. Contoh respon: "Oke Kak, aku putarin lagu Enggak Dulu dari Mahalini ya! 🎵 [CMD: PLAY_MUSIC title=Enggak Dulu|artist=Mahalini]"
+  4. Contoh lain: "Siap Kak, lagu Laskar Pelangi dari Nidji meluncur~ 🎶 [CMD: PLAY_MUSIC title=Laskar Pelangi|artist=Nidji]"
+- Tag [CMD: PLAY_MUSIC ...] WAJIB ada di AKHIR pesanmu agar sistem bisa memutar lagunya secara otomatis.
+- Jika kamu tidak yakin judul atau artisnya, coba tebak yang paling mendekati. Sistem akan mencari di Spotify.
+- JANGAN PERNAH bilang "aku nggak bisa join voice channel" atau "aku nggak bisa masuk ke voice". Kamu BISA join voice channel dan memutar lagu di sana! Kalau user minta join voice atau putar lagu di voice, tetap jawab dengan antusias dan putarkan lagunya pakai tag [CMD: PLAY_MUSIC].
+- Contoh kalau diminta join voice: "Siap Kak, aku join voice channel dan puterin lagunya ya! 🎵 [CMD: PLAY_MUSIC title=...|artist=...]"
+
 RESPON TERHADAP TUGAS ILEGAL / BERBAHAYA:
 - Kalau user minta sesuatu yang ilegal, berbahaya, atau melanggar hukum, LANGSUNG MENOLAK dengan tegas tapi tetap santai.
 - Contoh: "Waduh Kak, yang kayak gitu aku nggak bisa bantu ya. Bahaya tuh, nanti Owner marah 😅"
@@ -661,8 +675,19 @@ ATURAN:
       throw new Error("ObscuraWorks returned an empty response.");
     }
     if (aiReply.trim()) {
+      // Parse music command from AI reply
+      const musicMatch = aiReply.match(/\[CMD:\s*PLAY_MUSIC\s+title=([^|]+)\|artist=([^\]]+)\]/i);
+      let musicCommand: { title: string; artist: string } | null = null;
+      if (musicMatch) {
+        musicCommand = { title: musicMatch[1].trim(), artist: musicMatch[2].trim() };
+      }
+
       // Check for SETUP_GAMING command from Owner
       let cleanReply = aiReply;
+
+      // Strip all CMD tags from the reply to keep message clean
+      cleanReply = cleanReply.replace(/\[CMD:\s*PLAY_MUSIC\s+[^\]]*\]/gi, "").trim();
+
       const match = aiReply.match(/\[CMD:\s*SETUP_GAMING\s+option=(delete|archive)\]/i);
       if (match && conv && conv.ownerId === userDbId) {
         const option = match[1].toLowerCase();
@@ -758,6 +783,8 @@ ATURAN:
         channelId,
         senderId: aiUser.id,
         content: fullReply,
+        // Store music command as structured data in imageUrl field
+        imageUrl: musicCommand ? `music:${JSON.stringify(musicCommand)}` : undefined,
       });
 
       // Update conversation timestamp
@@ -770,6 +797,26 @@ ATURAN:
       autoLearn(userMessageContent).catch((err) =>
         console.error("[Self-Learning] Background learn error:", err)
       );
+
+      // Auto-trigger Jitsi bot to play music in voice channel (fire-and-forget)
+      if (musicCommand) {
+        (async () => {
+          try {
+            // Find a voice channel in this conversation
+            const voiceChannel = await db.query.channelsTable.findFirst({
+              where: and(eq(channelsTable.conversationId, conversationId), eq(channelsTable.type, "voice")),
+            });
+            if (voiceChannel && conv) {
+              const roomName = buildJitsiRoomName(conv.name || "conv", voiceChannel.name, conversationId);
+              await jitsiBot.joinRoom(conversationId, roomName);
+              await jitsiBot.playMusic(conversationId, musicCommand!.title, musicCommand!.artist);
+              console.log(`[JitsiBot] Auto-triggered: playing ${musicCommand!.title} by ${musicCommand!.artist} in conv ${conversationId}`);
+            }
+          } catch (err) {
+            console.error("[JitsiBot] Auto-trigger error:", err);
+          }
+        })();
+      }
     }
   } catch (err) {
     console.error("Failed to generate AI response:", err);
@@ -1146,6 +1193,17 @@ router.delete("/conversations/:id", async (req, res): Promise<void> => {
   }
 
   if (conv.type === "group" && conv.ownerId === user.id) {
+    const stickersToDelete = await db
+      .select({ driveFileId: stickersTable.driveFileId, sizeBytes: stickersTable.sizeBytes })
+      .from(stickersTable)
+      .where(eq(stickersTable.conversationId, id));
+
+    for (const s of stickersToDelete) {
+      if (s.driveFileId) {
+        await deleteStickerResources(s.driveFileId, s.sizeBytes);
+      }
+    }
+
     await db.delete(conversationsTable).where(eq(conversationsTable.id, id));
   } else {
     await db
@@ -2442,6 +2500,14 @@ RESPON TERHADAP TUGAS ILEGAL / BERBAHAYA:
 - Kalau user NGOTOT, BISA MARAH dan KESEL.
 - SELALU menghormati keputusan Owner (admin server).
 
+KEMAMPUAN MUSIK:
+- Jika user meminta untuk memutar lagu (contoh: "putar lagu X", "play X", "mainkan lagu X"):
+  1. Tentukan judul dan artis berdasarkan pengetahuanmu.
+  2. Jawab singkat dan akhiri dengan tag: [CMD: PLAY_MUSIC title=Judul Lagu|artist=Nama Artis]
+  3. Contoh: "Oke, aku putarin Enggak Dulu dari Mahalini ya! [CMD: PLAY_MUSIC title=Enggak Dulu|artist=Mahalini]"
+- Tag [CMD: PLAY_MUSIC ...] WAJIB ada agar sistem bisa memutar lagunya.
+- JANGAN bilang "aku nggak bisa join voice". Kamu BISA join dan putar lagu di voice channel.
+
 ATURAN:
 - Jawab dalam bahasa yang sama dengan user.
 - Karena ini voice call, jawab SINGKAT dan NATURAL seperti ngobrol langsung. Maks 2-3 kalimat.
@@ -2469,8 +2535,18 @@ ATURAN:
     const modelLabel = completion.modelLabel;
     const llmTime = Date.now() - startTime;
 
+    // Parse music command from reply
+    const musicMatch = reply.match(/\[CMD:\s*PLAY_MUSIC\s+title=([^|]+)\|artist=([^\]]+)\]/i);
+    let musicCommand: { title: string; artist: string } | null = null;
+    if (musicMatch) {
+      musicCommand = { title: musicMatch[1].trim(), artist: musicMatch[2].trim() };
+    }
+
+    // Strip command tags from TTS text
+    const ttsReply = reply.replace(/\[CMD:\s*PLAY_MUSIC\s+[^\]]*\]/gi, "").trim();
+
     // Step 2: TTS synthesis (combined in same request)
-    const cleanText = reply
+    const cleanText = ttsReply
       .replace(/[\u{1F600}-\u{1F9FF}]/gu, "")
       .replace(/[*_~`#]/g, "")
       .replace(/---/g, "")
@@ -2499,12 +2575,13 @@ ATURAN:
         model: modelLabel,
         audio: audioBuffer.toString("base64"),
         audioType: "audio/mpeg",
+        musicCommand,
       });
     } catch (ttsErr) {
       console.error("[Zaidan AI TTS] Synthesis error:", ttsErr);
       ttsInitialized = false;
       // Return just text if TTS fails
-      res.json({ reply, model: modelLabel });
+      res.json({ reply, model: modelLabel, musicCommand });
     }
   } catch (err) {
     console.error("Zaidan AI voice call error:", err);
@@ -2738,6 +2815,76 @@ router.get("/conversations/zaidanai/currency", async (req, res): Promise<void> =
     console.error("[Currency] Endpoint error:", err);
     res.status(500).json({ error: "Failed to get rates" });
   }
+});
+
+// ==================== Jitsi AI Bot ====================
+
+/** POST /jitsi-bot/join — tell the bot to join a Jitsi room */
+router.post("/jitsi-bot/join", async (req, res): Promise<void> => {
+  try {
+    const { conversationId, channelName } = req.body as { conversationId: number; channelName?: string };
+    if (!conversationId) { res.status(400).json({ error: "conversationId required" }); return; }
+
+    // Get conversation for room name
+    const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, conversationId) });
+    if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+    const roomName = buildJitsiRoomName(conv.name || "conv", channelName, conversationId);
+    const result = await jitsiBot.joinRoom(conversationId, roomName);
+    res.json({ ok: true, already: result.already, roomName });
+  } catch (err: any) {
+    console.error("[JitsiBot] Join error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /jitsi-bot/play — play music in the bot's Jitsi room */
+router.post("/jitsi-bot/play", async (req, res): Promise<void> => {
+  try {
+    const { conversationId, title, artist } = req.body as { conversationId: number; title: string; artist: string };
+    if (!conversationId || !title || !artist) {
+      res.status(400).json({ error: "conversationId, title, and artist required" });
+      return;
+    }
+
+    // Auto-join if not already in room
+    if (!jitsiBot.isInRoom(conversationId)) {
+      const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, conversationId) });
+      if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+      // Try to find a voice channel for the room name
+      const voiceChannel = await db.query.channelsTable.findFirst({
+        where: and(eq(channelsTable.conversationId, conversationId), eq(channelsTable.type, "voice")),
+      });
+      const channelName = voiceChannel?.name || undefined;
+      const roomName = buildJitsiRoomName(conv.name || "conv", channelName, conversationId);
+      await jitsiBot.joinRoom(conversationId, roomName);
+    }
+
+    const result = await jitsiBot.playMusic(conversationId, title, artist);
+    res.json(result);
+  } catch (err: any) {
+    console.error("[JitsiBot] Play error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /jitsi-bot/leave — tell the bot to leave a Jitsi room */
+router.post("/jitsi-bot/leave", async (req, res): Promise<void> => {
+  try {
+    const { conversationId } = req.body as { conversationId: number };
+    if (!conversationId) { res.status(400).json({ error: "conversationId required" }); return; }
+    await jitsiBot.leaveRoom(conversationId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("[JitsiBot] Leave error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** GET /jitsi-bot/status — check if bot is in any rooms */
+router.get("/jitsi-bot/status", async (_req, res): Promise<void> => {
+  res.json({ rooms: jitsiBot.getActiveRooms() });
 });
 
 export default router;

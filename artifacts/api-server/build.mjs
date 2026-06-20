@@ -1,20 +1,87 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { build as esbuild } from "esbuild";
+import { build as esbuild, context } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
+import { spawn, execSync } from "node:child_process";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
+function killPortProcess(port) {
+  try {
+    let stdout;
+    if (process.platform === "win32") {
+      stdout = execSync(`netstat -ano | findstr :${port}`, { stdio: ["pipe", "pipe", "ignore"] }).toString();
+      const lines = stdout.split("\n");
+      for (const line of lines) {
+        if (line.includes("LISTENING")) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && pid !== "0") {
+            console.log(`[API-Build] Port ${port} is in use by PID ${pid}. Killing it...`);
+            execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" });
+          }
+        }
+      }
+    } else {
+      stdout = execSync(`lsof -t -i:${port}`, { stdio: ["pipe", "pipe", "ignore"] }).toString();
+      const pids = stdout.split("\n").filter(Boolean);
+      for (const pid of pids) {
+        console.log(`[API-Build] Port ${port} is in use by PID ${pid}. Killing it...`);
+        execSync(`kill -9 ${pid}`, { stdio: "ignore" });
+      }
+    }
+  } catch (err) {
+    // Port not in use or netstat/lsof failed
+  }
+}
+
+let child = null;
+
+const runServerPlugin = {
+  name: "run-server",
+  setup(build) {
+    build.onEnd(() => {
+      if (child) {
+        console.log("[API-Build] Restarting API server...");
+        child.kill();
+      } else {
+        console.log("[API-Build] Starting API server...");
+      }
+      child = spawn("node", ["--enable-source-maps", "./dist/index.mjs"], {
+        stdio: "inherit"
+      });
+    });
+  }
+};
+
+process.on("exit", () => {
+  if (child) child.kill();
+});
+process.on("SIGINT", () => {
+  if (child) child.kill();
+  process.exit(0);
+});
+process.on("SIGTERM", () => {
+  if (child) child.kill();
+  process.exit(0);
+});
+
 async function buildAll() {
+  const watchMode = process.argv.includes("--watch");
+
+  // Clean stale ports to avoid conflict
+  killPortProcess(5000);
+  killPortProcess(5173);
+
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
-  await esbuild({
+  const esbuildOptions = {
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
     platform: "node",
     bundle: true,
@@ -104,7 +171,8 @@ async function buildAll() {
     sourcemap: "linked",
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
-      esbuildPluginPino({ transports: ["pino-pretty"] })
+      esbuildPluginPino({ transports: ["pino-pretty"] }),
+      ...(watchMode ? [runServerPlugin] : [])
     ],
     // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {
@@ -117,7 +185,15 @@ globalThis.__filename = __bannerUrl.fileURLToPath(import.meta.url);
 globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
-  });
+  };
+
+  if (watchMode) {
+    console.log("[API-Build] Running esbuild in watch mode...");
+    const ctx = await context(esbuildOptions);
+    await ctx.watch();
+  } else {
+    await esbuild(esbuildOptions);
+  }
 }
 
 buildAll().catch((err) => {

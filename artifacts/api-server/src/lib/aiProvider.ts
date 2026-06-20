@@ -57,7 +57,7 @@ function getProviderConfig(requestedModel?: string | null) {
   const baseUrl =
     process.env.AI_BASE_URL ||
     process.env.OBSCURAWORKS_BASE_URL ||
-    "https://api.obscuraworks.com/v1";
+    "https://api.obscuraworks.org/v1";
 
   const apiKey =
     process.env.AI_API_KEY ||
@@ -91,49 +91,19 @@ function messagesToPrompt(messages: AiChatMessage[]) {
     .join("\n\n");
 }
 
-async function create9RouterCompletion(options: AiChatCompletionOptions): Promise<AiChatCompletionResult | null> {
-  const baseUrl = process.env.NINEROUTER_BASE_URL;
-  const apiKey = process.env.NINEROUTER_API_KEY;
-  const model = process.env.NINEROUTER_MODEL || options.model?.trim() || "gpt-4o";
-  if (!baseUrl || !apiKey) return null;
-
-  const url = getChatCompletionsUrl(baseUrl);
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${apiKey}`,
-  };
-  const body: Record<string, unknown> = {
-    model,
-    messages: options.messages,
-    max_tokens: options.maxTokens ?? 1024,
-  };
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
-    };
-    const rawContent = data.choices?.[0]?.message?.content;
-    const content = Array.isArray(rawContent)
-      ? rawContent.map((p) => p.text ?? "").join("").trim()
-      : (rawContent ?? "").trim();
-    if (!content) return null;
-    return { content, model, modelLabel: getModelLabel(model), provider: "9router" };
-  } catch {
-    return null;
-  }
-}
-
 async function createObscuraWorksCompletion(config: ReturnType<typeof getProviderConfig>, options: AiChatCompletionOptions) {
+  let errors: string[] = [];
+
   // Try 1: ObscuraWorks custom GET endpoint
   try {
-    const url = new URL(`${config.baseUrl}/api/ai/groq`);
+    const origin = (() => {
+      try {
+        return new URL(config.baseUrl).origin;
+      } catch {
+        return config.baseUrl;
+      }
+    })();
+    const url = new URL(`${origin}/api/ai/groq`);
     url.searchParams.set("prompt", messagesToPrompt(options.messages));
     url.searchParams.set("model", config.model);
 
@@ -161,10 +131,14 @@ async function createObscuraWorksCompletion(config: ReturnType<typeof getProvide
           modelLabel: getModelLabel(config.model),
           provider: config.provider,
         };
+      } else {
+        errors.push(`GET error: ${payload.error || payload.message || "Unknown error"}`);
       }
+    } else {
+      errors.push(`GET status ${res.status}`);
     }
-  } catch {
-    // Silently fall through to OpenAI-compat fallback
+  } catch (err: any) {
+    errors.push(`GET fetch failed: ${err.message || err}`);
   }
 
   // Try 2: Standard OpenAI-compatible POST /chat/completions (fallback)
@@ -203,14 +177,19 @@ async function createObscuraWorksCompletion(config: ReturnType<typeof getProvide
             modelLabel: getModelLabel(config.model),
             provider: config.provider,
           };
+        } else {
+          errors.push(`POST ${candidateUrl} returned empty response`);
         }
+      } else {
+        errors.push(`POST ${candidateUrl} status ${res.status}`);
       }
-    } catch {
+    } catch (err: any) {
+      errors.push(`POST ${candidateUrl} failed: ${err.message || err}`);
       continue;
     }
   }
 
-  throw new Error("ObscuraWorks returned an empty response.");
+  throw new Error(`ObscuraWorks failed: ${errors.join(" | ")}`);
 }
 
 export async function createAiChatCompletion(options: AiChatCompletionOptions): Promise<AiChatCompletionResult> {
@@ -218,44 +197,31 @@ export async function createAiChatCompletion(options: AiChatCompletionOptions): 
 
   // Try primary provider (ObscuraWorks)
   if (config.provider === "obscuraworks") {
-    try {
-      return await createObscuraWorksCompletion(config, options);
-    } catch (err) {
-      console.warn("[AI] ObscuraWorks failed:", (err as Error).message);
-      // Fall through to 9Router fallback
-    }
+    return await createObscuraWorksCompletion(config, options);
   }
-
-  // Fallback: 9Router
-  const routerResult = await create9RouterCompletion(options);
-  if (routerResult) return routerResult;
 
   // Final fallback: generic OpenAI-compat with AI_BASE_URL/AI_API_KEY
-  if (config.provider !== "obscuraworks") {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
-    const body: Record<string, unknown> = { model: config.model, messages: options.messages };
-    if (typeof options.maxTokens === "number") body.max_tokens = options.maxTokens;
-    const urls = [getChatCompletionsUrl(config.baseUrl)];
-    type CompletionsData = { choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }> };
-    let data: CompletionsData | null = null;
-    let lastError = "";
-    for (const url of urls) {
-      try {
-        const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
-        if (res.ok) { data = (await res.json()) as CompletionsData; break; }
-        lastError = `${config.provider} API error (${res.status}) at ${url}`;
-        if (res.status !== 404) break;
-      } catch { continue; }
-    }
-    if (data) {
-      const rawContent = data.choices?.[0]?.message?.content;
-      const content = Array.isArray(rawContent) ? rawContent.map((p) => p.text ?? "").join("").trim() : (rawContent ?? "").trim();
-      if (content) return { content, model: config.model, modelLabel: getModelLabel(config.model), provider: config.provider };
-    }
-    throw new Error(lastError || `${config.provider} API error: no response`);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+  const body: Record<string, unknown> = { model: config.model, messages: options.messages };
+  if (typeof options.maxTokens === "number") body.max_tokens = options.maxTokens;
+  const urls = [getChatCompletionsUrl(config.baseUrl)];
+  type CompletionsData = { choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }> };
+  let data: CompletionsData | null = null;
+  let lastError = "";
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+      if (res.ok) { data = (await res.json()) as CompletionsData; break; }
+      lastError = `${config.provider} API error (${res.status}) at ${url}`;
+      if (res.status !== 404) break;
+    } catch { continue; }
   }
-
-  throw new Error("All AI providers failed (ObscuraWorks + 9Router).");
+  if (data) {
+    const rawContent = data.choices?.[0]?.message?.content;
+    const content = Array.isArray(rawContent) ? rawContent.map((p) => p.text ?? "").join("").trim() : (rawContent ?? "").trim();
+    if (content) return { content, model: config.model, modelLabel: getModelLabel(config.model), provider: config.provider };
+  }
+  throw new Error(lastError || `${config.provider} API error: no response`);
 }
 

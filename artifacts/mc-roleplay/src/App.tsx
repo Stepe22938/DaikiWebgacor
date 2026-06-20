@@ -18,8 +18,12 @@ import Messages from "@/pages/messages";
 import Premium from "@/pages/premium";
 import NotFound from "@/pages/not-found";
 
+const isLocal = window.location.hostname === "localhost" ||
+                window.location.hostname === "127.0.0.1" ||
+                window.location.hostname.startsWith("192.168.");
+
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-  ? publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY)
+  ? (isLocal ? import.meta.env.VITE_CLERK_PUBLISHABLE_KEY : publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY))
   : undefined;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");

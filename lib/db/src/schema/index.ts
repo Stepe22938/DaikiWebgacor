@@ -18,3 +18,4 @@ export * from "./knowledge";
 export * from "./bots";
 export * from "./memberships";
 export * from "./stickers";
+export * from "./emojis";

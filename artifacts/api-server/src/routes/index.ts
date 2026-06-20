@@ -21,6 +21,7 @@ import botsRouter from "./bots";
 import membershipsRouter from "./memberships";
 import paymentsRouter from "./payments";
 import stickersRouter from "./stickers";
+import emojisRouter from "./emojis";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,7 @@ router.use(botsRouter);
 router.use(membershipsRouter);
 router.use(paymentsRouter);
 router.use(stickersRouter);
+router.use(emojisRouter);
+
 
 export default router;

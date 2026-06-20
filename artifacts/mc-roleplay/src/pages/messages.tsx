@@ -96,6 +96,13 @@ import {
   Pin,
   Forward,
   Upload,
+  Clock,
+  Smile,
+  Search,
+  Music,
+  Play,
+  Pause,
+  Volume2,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -141,6 +148,134 @@ function formatFileSize(bytes?: number | null) {
     unitIndex += 1;
   }
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+const STANDARD_EMOJIS = [
+  { char: "💀", name: "skull" },
+  { char: "🇮🇩", name: "indonesia" },
+  { char: "💜", name: "purple_heart" },
+  { char: "🔪", name: "knife" },
+  { char: "🎉", name: "tada" },
+  { char: "🍪", name: "cookie" },
+  { char: "🇭🇺", name: "hungary" },
+  { char: "🍦", name: "icecream" },
+  { char: "🔥", name: "fire" },
+  { char: "🥔", name: "potato" },
+  { char: "💥", name: "boom" },
+  { char: "🧩", name: "puzzle" },
+  { char: "🤙", name: "call_me" },
+  { char: "🏀", name: "basketball" },
+  { char: "1️⃣", name: "one" },
+  { char: "🔫", name: "gun" },
+  { char: "🌍", name: "earth" },
+  { char: "💎", name: "gem" },
+  { char: "📱", name: "phone" },
+  { char: "❌", name: "x" },
+  { char: "⚠️", name: "warning" },
+  { char: "😊", name: "smile" },
+  { char: "😂", name: "joy" },
+  { char: "🤣", name: "rofl" },
+  { char: "😍", name: "heart_eyes" },
+  { char: "😭", name: "sob" },
+  { char: "🥺", name: "pleading" },
+  { char: "👍", name: "thumbsup" },
+  { char: "👏", name: "clap" },
+  { char: "🙏", name: "pray" },
+  { char: "🎉", name: "party" },
+  { char: "✨", name: "sparkles" },
+  { char: "❤️", name: "heart" },
+  { char: "🤔", name: "thinking" },
+  { char: "😎", name: "cool" },
+  { char: "💩", name: "poop" },
+  { char: "🤡", name: "clown" },
+  { char: "👀", name: "eyes" },
+  { char: "💯", name: "hundred" },
+  { char: "🚀", name: "rocket" },
+  { char: "🍕", name: "pizza" },
+  { char: "🍔", name: "burger" },
+  { char: "🍿", name: "popcorn" },
+  { char: "🎮", name: "game" },
+  { char: "🐱", name: "cat" },
+  { char: "🐶", name: "dog" }
+];
+
+function renderMessageTextWithEmojis(content: string, customEmojis: any[] = [], currentConversationId: number | null = null) {
+  if (!content) return null;
+  const regex = /:([a-zA-Z0-9_]{1,40}):/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  const emojiMap = new Map();
+  for (const e of customEmojis) {
+    if (e.name) {
+      const key = e.name.toLowerCase();
+      if (!emojiMap.has(key) || e.conversationId === currentConversationId) {
+        emojiMap.set(key, e);
+      }
+    }
+  }
+
+  while ((match = regex.exec(content)) !== null) {
+    const matchIndex = match.index;
+    const emojiName = match[1].toLowerCase();
+
+    if (matchIndex > lastIndex) {
+      parts.push(content.substring(lastIndex, matchIndex));
+    }
+
+    const customEmoji = emojiMap.get(emojiName);
+    if (customEmoji) {
+      parts.push(
+        <img
+          key={`emoji-${matchIndex}`}
+          src={customEmoji.assetUrl}
+          alt={`:${customEmoji.name}:`}
+          title={`:${customEmoji.name}:`}
+          className="inline-block w-5 h-5 align-middle object-contain select-all mx-0.5"
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+            const parent = e.currentTarget.parentNode;
+            if (parent) {
+              const textNode = document.createTextNode(`:${customEmoji.name}:`);
+              parent.insertBefore(textNode, e.currentTarget);
+            }
+          }}
+        />
+      );
+    } else {
+      parts.push(match[0]);
+    }
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push(content.substring(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : content;
+}
+
+function parseMusicCommandFromMsg(msg: any): { title: string; artist: string } | null {
+  // Check imageUrl field for music command data
+  if (msg.imageUrl && typeof msg.imageUrl === "string" && msg.imageUrl.startsWith("music:")) {
+    try {
+      return JSON.parse(msg.imageUrl.slice(6));
+    } catch {
+      return null;
+    }
+  }
+  // Fallback: check content for raw tag (legacy/backward compat)
+  if (msg.content) {
+    const match = msg.content.match(/\[CMD:\s*PLAY_MUSIC\s+title=([^|]+)\|artist=([^\]]+)\]/i);
+    if (match) return { title: match[1].trim(), artist: match[2].trim() };
+  }
+  return null;
+}
+
+function stripMusicCommand(content: string): string {
+  if (!content) return content;
+  return content.replace(/\[CMD:\s*PLAY_MUSIC\s+[^\]]*\]/gi, "").trim();
 }
 
 interface VoiceMember {
@@ -671,6 +806,16 @@ function ZaidanAiCall({
       setModelName(data.model || "");
       setHistory((h) => [...h, { role: "assistant", content: reply }]);
 
+      // Handle music command from AI
+      if (data.musicCommand) {
+        localStorage.setItem("arcadia_auto_play_music", JSON.stringify(data.musicCommand));
+        // Show a brief notification before redirecting
+        setAiReply(`${reply}\n\n🎵 Memutar: ${data.musicCommand.title} - ${data.musicCommand.artist}`);
+        setTimeout(() => {
+          window.location.href = "/member?tab=music";
+        }, 2000);
+      }
+
       // Play audio from combined response (no separate TTS call needed!)
       if (data.audio) {
         playAudio(data.audio, data.audioType || "audio/mpeg");
@@ -900,6 +1045,7 @@ function getInitials(name: string | null | undefined): string {
 function getMessagePreviewText(msg: { content?: string | null; imageUrl?: string | null; attachmentUrl?: string | null }) {
   if (msg.content) return msg.content;
   if (msg.imageUrl) {
+    if (msg.imageUrl.startsWith("music:")) return "🎵 Music";
     if (msg.imageUrl.includes("/api/stickers/")) return "🖼️ Stiker";
     return "📷 Foto";
   }
@@ -982,6 +1128,9 @@ function MessageBubble({
   onReact,
   onBubbleClick,
   me,
+  customEmojis = [],
+  currentConversationId = null,
+  onPlayMusic,
 }: {
   msg: Message;
   isOwn: boolean;
@@ -995,11 +1144,16 @@ function MessageBubble({
   onReact?: (emoji: string) => void;
   onBubbleClick?: (e: React.MouseEvent, msg: Message) => void;
   me: any;
+  customEmojis?: any[];
+  currentConversationId?: number | null;
+  onPlayMusic?: (title: string, artist: string) => void;
 }) {
   const name = msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
   const [isZoomed, setIsZoomed] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
-  const isStickerMessage = !!msg.imageUrl && msg.imageUrl.includes("/api/stickers/");
+  const isMusicCommandMsg = !!msg.imageUrl && typeof msg.imageUrl === "string" && msg.imageUrl.startsWith("music:");
+  const realImageUrl = isMusicCommandMsg ? null : msg.imageUrl;
+  const isStickerMessage = !!realImageUrl && realImageUrl.includes("/api/stickers/");
   const isForwarded = !!(msg as any).forwardedFromMessageId;
   const isDeleted = !!(msg as any).deletedAt;
 
@@ -1120,22 +1274,22 @@ function MessageBubble({
                   deleted message
                 </div>
               )}
-              {msg.imageUrl && !imageFailed && (
+              {realImageUrl && !imageFailed && (
                 <div 
                   className={`${isStickerMessage ? "mb-0 max-w-[160px] sm:max-w-[180px]" : "mb-2 max-w-sm"} rounded-lg overflow-hidden cursor-zoom-in hover:brightness-95 transition-all duration-200`}
                   onClick={() => setIsZoomed(true)}
                 >
                   <img
-                    src={msg.imageUrl}
+                    src={realImageUrl || undefined}
                     alt="Chat attachment"
                     className={`w-full h-auto ${isStickerMessage ? "object-contain max-h-40 border-0 drop-shadow-sm" : "object-cover max-h-64 rounded-md border border-black/5"}`}
                     onError={() => setImageFailed(true)}
                   />
                 </div>
               )}
-              {msg.imageUrl && imageFailed && (
+              {realImageUrl && imageFailed && (
                 <a
-                  href={msg.imageUrl}
+                  href={realImageUrl!}
                   target="_blank"
                   rel="noreferrer"
                   className="mb-2 block rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100"
@@ -1170,7 +1324,42 @@ function MessageBubble({
                   </a>
                 </div>
               )}
-              {msg.content && <span className="block min-w-0 pb-3 pr-10 [overflow-wrap:anywhere]">{msg.content}</span>}
+              {msg.content && (() => {
+                const musicCmd = parseMusicCommandFromMsg(msg);
+                const displayContent = musicCmd ? stripMusicCommand(msg.content) : msg.content;
+                return (
+                  <>
+                    {displayContent && <span className="block min-w-0 pb-3 pr-10 [overflow-wrap:anywhere]">{renderMessageTextWithEmojis(displayContent, customEmojis, currentConversationId)}</span>}
+                    {musicCmd && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onPlayMusic) {
+                            onPlayMusic(musicCmd.title, musicCmd.artist);
+                          }
+                        }}
+                        className={`block w-full mt-1 mb-3 rounded-lg p-2.5 flex items-center gap-2.5 transition-all hover:scale-[1.02] cursor-pointer border ${
+                          isGroup
+                            ? "bg-[#1E1F22] border-[#3F4147] hover:bg-[#26282C]"
+                            : "bg-[#edf5f1] border-[#d0e3db] hover:bg-[#e0efe8]"
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isGroup ? "bg-[#5865F2]" : "bg-[#0b6b58]"}`}>
+                          <Music className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0 text-left">
+                          <p className={`text-xs font-bold truncate ${isGroup ? "text-[#DCDDDE]" : "text-[#18251f]"}`}>{musicCmd.title}</p>
+                          <p className={`text-[10px] font-semibold truncate ${isGroup ? "text-[#949BA4]" : "text-[#66756f]"}`}>{musicCmd.artist}</p>
+                          <p className={`text-[9px] mt-0.5 ${isGroup ? "text-[#5865F2]" : "text-[#0b6b58]"}`}>Tap to play</p>
+                        </div>
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${isGroup ? "bg-[#5865F2]" : "bg-[#0b6b58]"}`}>
+                          <Play className="w-3.5 h-3.5 text-white fill-white ml-0.5" />
+                        </div>
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
               <span className={`absolute ${isStickerMessage ? "bottom-0.5 right-1.5" : "bottom-1.5 right-3"} text-[9px] font-semibold ${isGroup ? "text-[#949BA4]" : "text-[#66756f]"} flex items-center gap-1`}>
                 {msg.pinned && <Pin className="w-2.5 h-2.5 rotate-45 shrink-0 text-sky-400" />}
                 {msg.starred && <Star className="w-2.5 h-2.5 fill-current text-amber-400 shrink-0" />}
@@ -1273,7 +1462,7 @@ function MessageBubble({
         <DialogContent className="max-w-4xl p-1 bg-transparent border-0 shadow-none flex items-center justify-center">
           <div className="relative max-h-[90vh] max-w-full overflow-hidden rounded-lg">
             <img
-              src={msg.imageUrl ?? undefined}
+              src={realImageUrl || undefined}
               alt="Zoomed attachment"
               className="max-h-[85vh] max-w-full object-contain rounded-lg shadow-2xl border border-[#eae8f5]"
             />
@@ -1376,6 +1565,24 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [showStickerPicker, setShowStickerPicker] = useState(false);
   const [stickerSearch, setStickerSearch] = useState("");
   const [collapsedStickerGroups, setCollapsedStickerGroups] = useState<Set<string>>(new Set());
+  const [activePickerTab, setActivePickerTab] = useState<"stickers" | "emoji">("stickers");
+  const [hoveredSticker, setHoveredSticker] = useState<{ name: string; groupName: string } | null>(null);
+  const [recentStickers, setRecentStickers] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (showStickerPicker) {
+      try {
+        const stored = localStorage.getItem("recently-used-stickers");
+        if (stored) {
+          setRecentStickers(JSON.parse(stored));
+        } else {
+          setRecentStickers([]);
+        }
+      } catch (e) {
+        console.error("Failed to load recent stickers:", e);
+      }
+    }
+  }, [showStickerPicker]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1407,6 +1614,16 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [studioImage, setStudioImage] = useState<string | null>(null);
   const [studioImageFile, setStudioImageFile] = useState<File | null>(null);
   const [studioName, setStudioName] = useState("");
+
+  // Emoji Studio & Modals States
+  const [emojiSearch, setEmojiSearch] = useState("");
+  const [hoveredEmoji, setHoveredEmoji] = useState<any | null>(null);
+  const [showEmojiManager, setShowEmojiManager] = useState(false);
+  const [showEmojiStudio, setShowEmojiStudio] = useState(false);
+  const [emojiStudioFile, setEmojiStudioFile] = useState<File | null>(null);
+  const [emojiStudioPreview, setEmojiStudioPreview] = useState<string | null>(null);
+  const [emojiStudioName, setEmojiStudioName] = useState("");
+  const [uploadingEmoji, setUploadingEmoji] = useState(false);
   const [studioCaption, setStudioCaption] = useState("");
   const [studioFont, setStudioFont] = useState("Impact");
   const [studioFontSize, setStudioFontSize] = useState(40);
@@ -1853,10 +2070,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   });
 
   const { data: stickerLibrary } = useQuery<{ entitlements?: any; stickers?: Array<any> }>({
-    queryKey: ["stickers", selectedId, isGroup ? "group" : "dm"],
-    queryFn: () => customFetch<{ entitlements?: any; stickers?: Array<any> }>(
-      isGroup && selectedId ? `/api/stickers?conversationId=${selectedId}` : "/api/stickers",
-    ),
+    queryKey: ["stickers", selectedId],
+    queryFn: () => customFetch<{ entitlements?: any; stickers?: Array<any> }>("/api/stickers"),
     enabled: selectedId !== null,
     refetchInterval: 10000,
   });
@@ -1865,14 +2080,115 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     const stickers = stickerLibrary?.stickers ?? [];
     const query = stickerSearch.trim().toLowerCase();
     const filtered = query ? stickers.filter((s: any) => s.name.toLowerCase().includes(query)) : stickers;
-    const groups: Record<string, any[]> = {};
+    
+    const groups: Record<string, { id: number | null; name: string; iconUrl: string | null; stickers: any[] }> = {};
     for (const s of filtered) {
-      const groupName = s.conversationName || selectedConv?.name || "Stickers";
-      if (!groups[groupName]) groups[groupName] = [];
-      groups[groupName].push(s);
+      const convId = s.conversationId || 0;
+      const groupName = s.conversationName || "Global Stickers";
+      const icon = s.conversationIcon || null;
+      if (!groups[convId]) {
+        groups[convId] = {
+          id: s.conversationId,
+          name: groupName,
+          iconUrl: icon,
+          stickers: []
+        };
+      }
+      groups[convId].stickers.push(s);
     }
-    return Object.entries(groups);
-  }, [stickerLibrary?.stickers, stickerSearch, selectedConv?.name]);
+
+    // Ensure currently selected conversation is represented in the list even if it has 0 stickers
+    if (selectedId && !groups[selectedId] && !query) {
+      groups[selectedId] = {
+        id: selectedId,
+        name: selectedConv?.name || "Server Pack",
+        iconUrl: selectedConv?.iconUrl || null,
+        stickers: []
+      };
+    }
+
+    // Sort groups so that the current active server pack is always at the top of the list
+    return Object.values(groups).sort((a, b) => {
+      if (a.id === selectedId) return -1;
+      if (b.id === selectedId) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [stickerLibrary?.stickers, stickerSearch, selectedId, selectedConv]);
+
+  const { data: emojiLibrary, refetch: refetchEmojis } = useQuery<{ emojis?: Array<any> }>({
+    queryKey: ["emojis", selectedId],
+    queryFn: () => customFetch<{ emojis?: Array<any> }>("/api/emojis"),
+    enabled: selectedId !== null,
+    refetchInterval: 10000,
+  });
+
+  const emojiGroups = useMemo(() => {
+    const customEmojis = emojiLibrary?.emojis ?? [];
+    const query = emojiSearch.trim().toLowerCase();
+    
+    const standardFiltered = query 
+      ? STANDARD_EMOJIS.filter(e => e.name.toLowerCase().includes(query) || e.char.includes(query))
+      : STANDARD_EMOJIS;
+      
+    const groups: Array<{ id: string | number; name: string; iconUrl: string | null; isStandard: boolean; emojis: any[] }> = [];
+    
+    if (standardFiltered.length > 0) {
+      groups.push({
+        id: "standard",
+        name: "Frequently Used",
+        iconUrl: null,
+        isStandard: true,
+        emojis: standardFiltered.map(e => ({
+          id: `standard-${e.name}`,
+          name: e.name,
+          char: e.char,
+          isStandard: true
+        }))
+      });
+    }
+
+    const customFiltered = query 
+      ? customEmojis.filter((e: any) => e.name.toLowerCase().includes(query))
+      : customEmojis;
+
+    const customGroupsRecord: Record<number, { id: number; name: string; iconUrl: string | null; isStandard: boolean; emojis: any[] }> = {};
+    for (const e of customFiltered) {
+      const convId = e.conversationId;
+      if (!convId) continue;
+      if (!customGroupsRecord[convId]) {
+        customGroupsRecord[convId] = {
+          id: convId,
+          name: e.conversationName || "Group Emojis",
+          iconUrl: e.conversationIcon || null,
+          isStandard: false,
+          emojis: []
+        };
+      }
+      customGroupsRecord[convId].emojis.push({
+        ...e,
+        isStandard: false
+      });
+    }
+
+    if (selectedId && !customGroupsRecord[selectedId] && !query) {
+      customGroupsRecord[selectedId] = {
+        id: selectedId,
+        name: selectedConv?.name || "Server Emojis",
+        iconUrl: selectedConv?.iconUrl || null,
+        isStandard: false,
+        emojis: []
+      };
+    }
+
+    const sortedCustom = Object.values(customGroupsRecord).sort((a, b) => {
+      if (a.id === selectedId) return -1;
+      if (b.id === selectedId) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    groups.push(...sortedCustom);
+    return groups;
+  }, [emojiLibrary?.emojis, emojiSearch, selectedId, selectedConv]);
 
   const channelEditorSections = useMemo(() => {
     const byPosition = (a: Channel, b: Channel) => a.position - b.position || a.id - b.id;
@@ -2573,6 +2889,21 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
       }
 
+      // Save to recently used stickers in localStorage
+      try {
+        const stored = localStorage.getItem("recently-used-stickers");
+        let currentRecents: any[] = stored ? JSON.parse(stored) : [];
+        currentRecents = currentRecents.filter((s: any) => s.id !== sticker.id);
+        currentRecents.unshift(sticker);
+        if (currentRecents.length > 12) {
+          currentRecents = currentRecents.slice(0, 12);
+        }
+        localStorage.setItem("recently-used-stickers", JSON.stringify(currentRecents));
+        setRecentStickers(currentRecents);
+      } catch (e) {
+        console.error("Failed to save recent sticker:", e);
+      }
+
       setShowStickerPicker(false);
       setAttachedImageUrl(null);
       setAttachedFile(null);
@@ -2816,6 +3147,100 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       toast({ title: "Gagal menghapus stiker", description: err.message, variant: "destructive" });
     }
   }
+
+  const handleSelectEmoji = (emoji: any) => {
+    if (emoji.isStandard) {
+      const char = emoji.char;
+      setMessageText((prev) => prev + char);
+    } else {
+      const isLocked = emoji.conversationId !== selectedId;
+      const isPremium = me?.role === "premium" || me?.role === "premium_plus" || me?.role === "dev_website" || me?.role === "admin";
+      
+      if (isLocked && !isPremium) {
+        toast({ title: "Emoji Terkunci", description: "Beli Premium untuk menggunakan emoji kustom antar server!", variant: "destructive" });
+        return;
+      }
+      
+      const code = `:${emoji.name}:`;
+      setMessageText((prev) => prev + code);
+    }
+    
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 50);
+  };
+
+  const handleUploadEmoji = async () => {
+    if (!emojiStudioFile || !emojiStudioName.trim() || !selectedId) return;
+    setUploadingEmoji(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", emojiStudioFile);
+      formData.append("name", emojiStudioName.trim());
+      formData.append("conversationId", String(selectedId));
+
+      const response = await fetch(`/api/emojis/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Gagal mengunggah emoji");
+      }
+
+      toast({ title: "Sukses!", description: "Emoji kustom berhasil ditambahkan!" });
+      setShowEmojiStudio(false);
+      setShowEmojiManager(true);
+      setEmojiStudioFile(null);
+      setEmojiStudioPreview(null);
+      setEmojiStudioName("");
+      void refetchEmojis();
+    } catch (e: any) {
+      console.error(e);
+      toast({ title: "Gagal Mengunggah", description: e.message, variant: "destructive" });
+    } finally {
+      setUploadingEmoji(false);
+    }
+  };
+
+  const handleEditEmojiName = async (emojiId: number, nextName: string) => {
+    try {
+      const response = await fetch(`/api/emojis/${emojiId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nextName }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Gagal mengubah nama");
+      }
+
+      toast({ title: "Sukses!", description: "Nama emoji berhasil diubah." });
+      void refetchEmojis();
+    } catch (e: any) {
+      toast({ title: "Gagal Mengubah", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteEmoji = async (emojiId: number) => {
+    try {
+      const response = await fetch(`/api/emojis/${emojiId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Gagal menghapus emoji");
+      }
+
+      toast({ title: "Sukses!", description: "Emoji kustom berhasil dihapus." });
+      void refetchEmojis();
+    } catch (e: any) {
+      toast({ title: "Gagal Menghapus", description: e.message, variant: "destructive" });
+    }
+  };
 
   async function handleSendCallMessage() {
     const text = callMessageText.trim();
@@ -4025,6 +4450,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                                 });
                               }}
                               me={me}
+                              customEmojis={emojiLibrary?.emojis}
+                              currentConversationId={selectedId}
                             />
                           </div>
                         );
@@ -4160,90 +4587,388 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             <Sparkles className="h-5 w-5" />
                           </Button>
                           {showStickerPicker && (
-                            <div className={`absolute bottom-full right-0 mb-2 w-80 rounded-2xl border shadow-2xl z-50 overflow-hidden ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#e2e8f0] bg-white"}`}>
-                              {/* Header */}
-                              <div className={`px-3 py-2.5 flex justify-between items-center ${isGroupView ? "bg-[#1E1F22]" : "bg-slate-50"}`}>
-                                <p className={`text-xs font-black uppercase tracking-widest ${isGroupView ? "text-[#DCDDDE]" : "text-[#18251f]"}`}>Stickers</p>
-                                {selectedConv?.ownerId === me?.id && (
-                                  <Button
-                                    type="button"
-                                    onClick={() => {
-                                      setShowStickerPicker(false);
-                                      setStickerStudioSource("chat");
-                                      setShowStickerStudio(true);
-                                    }}
-                                    className="h-6 px-2.5 text-[9px] font-black uppercase tracking-wider bg-violet-600 hover:bg-violet-700 text-white rounded-md cursor-pointer shrink-0"
-                                  >
-                                    + Buat
-                                  </Button>
+                            <div className={`absolute bottom-full left-0 mb-2 w-[480px] h-[480px] rounded-2xl border shadow-2xl z-50 overflow-hidden flex ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#e2e8f0] bg-white text-slate-900"}`}>
+                              {/* Left Sidebar */}
+                              <div className={`w-[60px] flex flex-col items-center py-3 gap-2 border-r shrink-0 overflow-y-auto ${isGroupView ? "bg-[#1E1F22] border-[#3F4147]" : "bg-slate-50 border-[#e2e8f0]"}`}>
+                                {activePickerTab === "stickers" ? (
+                                  <>
+                                    {recentStickers.length > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const el = document.getElementById("sticker-group-recent");
+                                          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                                        }}
+                                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${isGroupView ? "bg-[#2B2D31] text-[#5865F2] hover:bg-[#313338]" : "bg-white text-violet-600 hover:bg-slate-100 shadow-sm"} hover:scale-105`}
+                                        title="Frequently Used"
+                                      >
+                                        <Clock className="w-5 h-5" />
+                                      </button>
+                                    )}
+                                    {stickerGroups.map((group) => {
+                                      const initials = group.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+                                      return (
+                                        <button
+                                          key={group.id || 0}
+                                          type="button"
+                                          onClick={() => {
+                                            const el = document.getElementById(`sticker-group-${group.id || 0}`);
+                                            if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                                          }}
+                                          className="group relative w-9 h-9 rounded-full overflow-hidden flex items-center justify-center transition-all hover:rounded-xl cursor-pointer shadow-sm shrink-0 hover:scale-105"
+                                          title={group.name}
+                                        >
+                                          {group.iconUrl ? (
+                                            <img src={group.iconUrl} alt={group.name} className="w-full h-full object-cover" />
+                                          ) : (
+                                            <div className={`w-full h-full flex items-center justify-center text-[10px] font-black ${isGroupView ? "bg-[#313338] text-[#DCDDDE]" : "bg-slate-200 text-slate-700"}`}>
+                                              {initials}
+                                            </div>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </>
+                                ) : (
+                                  <>
+                                    {emojiGroups.map((group) => {
+                                      const isStandard = group.isStandard;
+                                      const initials = group.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+                                      const isLocked = !isStandard && group.id !== selectedId && 
+                                        me?.role !== "premium" && me?.role !== "premium_plus" && me?.role !== "dev_website" && me?.role !== "admin";
+                                      
+                                      return (
+                                        <button
+                                          key={group.id}
+                                          type="button"
+                                          onClick={() => {
+                                            const el = document.getElementById(`emoji-group-${group.id}`);
+                                            if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                                          }}
+                                          className="group relative w-9 h-9 rounded-full overflow-hidden flex items-center justify-center transition-all hover:rounded-xl cursor-pointer shadow-sm shrink-0 hover:scale-105"
+                                          title={group.name}
+                                        >
+                                          {isStandard ? (
+                                            <div className={`w-full h-full flex items-center justify-center text-lg ${isGroupView ? "bg-[#313338] text-white" : "bg-slate-200 text-slate-700"}`}>
+                                              <Clock className="w-5 h-5" />
+                                            </div>
+                                          ) : group.iconUrl ? (
+                                            <img src={group.iconUrl} alt={group.name} className="w-full h-full object-cover" />
+                                          ) : (
+                                            <div className={`w-full h-full flex items-center justify-center text-[10px] font-black ${isGroupView ? "bg-[#313338] text-[#DCDDDE]" : "bg-slate-200 text-slate-700"}`}>
+                                              {initials}
+                                            </div>
+                                          )}
+                                          {isLocked && (
+                                            <div className="absolute bottom-0 right-0 bg-black/70 text-amber-400 rounded-full p-0.5 border border-[#3F4147]">
+                                              <svg className="w-2 h-2 fill-current" viewBox="0 0 24 24"><path d="M18,8H17V6A5,5 0 0,0 12,1A5,5 0 0,0 7,6V8H6A2,2 0 0,0 4,10V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V10A2,2 0 0,0 18,8M8.9,6C8.9,4.29 10.29,2.9 12,2.9C13.71,2.9 15.1,4.29 15.1,6V8H8.9V6M18,20H6V10H18V20Z"/></svg>
+                                            </div>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </>
                                 )}
                               </div>
-                              {/* Search */}
-                              <div className={`px-3 py-2 border-b ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
-                                <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg ${isGroupView ? "bg-[#1E1F22]" : "bg-slate-100"}`}>
-                                  <Search className={`h-3.5 w-3.5 shrink-0 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`} />
-                                  <input
-                                    type="text"
-                                    value={stickerSearch}
-                                    onChange={(e) => setStickerSearch(e.target.value)}
-                                    placeholder="Search stickers..."
-                                    className={`w-full bg-transparent text-xs font-medium outline-none ${isGroupView ? "text-[#DCDDDE] placeholder:text-[#949BA4]" : "text-slate-800 placeholder:text-slate-400"}`}
-                                  />
-                                  {stickerSearch && (
-                                    <button type="button" onClick={() => setStickerSearch("")} className={`shrink-0 ${isGroupView ? "text-[#949BA4] hover:text-white" : "text-slate-400 hover:text-slate-600"}`}>
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  )}
+
+                              {/* Right Main Panel */}
+                              <div className="flex-1 flex flex-col min-w-0">
+                                {/* Tabs */}
+                                <div className={`flex border-b shrink-0 px-3 py-1 gap-2 ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-white border-[#e2e8f0]"}`}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActivePickerTab("stickers")}
+                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                      activePickerTab === "stickers"
+                                        ? isGroupView ? "bg-[#35373C] text-white" : "bg-slate-100 text-slate-900"
+                                        : isGroupView ? "text-[#949BA4] hover:text-white" : "text-slate-500 hover:text-slate-900"
+                                    }`}
+                                  >
+                                    Stickers
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActivePickerTab("emoji")}
+                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                      activePickerTab === "emoji"
+                                        ? isGroupView ? "bg-[#35373C] text-white" : "bg-slate-100 text-slate-900"
+                                        : isGroupView ? "text-[#949BA4] hover:text-white" : "text-slate-500 hover:text-slate-900"
+                                    }`}
+                                  >
+                                    Emoji
+                                  </button>
                                 </div>
-                              </div>
-                              {/* Sticker Groups */}
-                              <div className="max-h-72 overflow-y-auto">
-                                {(stickerLibrary?.stickers?.length ?? 0) === 0 ? (
-                                  <div className={`p-4 text-center text-xs font-semibold ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
-                                    Belum ada sticker.
-                                  </div>
-                                ) : stickerGroups.length === 0 ? (
-                                  <div className={`p-4 text-center text-xs font-semibold ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
-                                    Tidak ada sticker yang cocok.
-                                  </div>
-                                ) : (
-                                  stickerGroups.map(([groupName, stickers]) => {
-                                    const isCollapsed = collapsedStickerGroups.has(groupName);
-                                    return (
-                                      <div key={groupName} className={`border-b last:border-b-0 ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
-                                        {/* Group Header */}
+
+                                {/* Search */}
+                                {(activePickerTab === "stickers" || activePickerTab === "emoji") && (
+                                  <div className={`px-3 py-2 border-b shrink-0 ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
+                                    <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg ${isGroupView ? "bg-[#1E1F22]" : "bg-slate-100"}`}>
+                                      <Search className={`h-3.5 w-3.5 shrink-0 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`} />
+                                      {activePickerTab === "stickers" ? (
+                                        <input
+                                          type="text"
+                                          value={stickerSearch}
+                                          onChange={(e) => setStickerSearch(e.target.value)}
+                                          placeholder="Find the perfect sticker"
+                                          className={`w-full bg-transparent text-xs font-medium outline-none ${isGroupView ? "text-[#DCDDDE] placeholder:text-[#949BA4]" : "text-slate-800 placeholder:text-slate-400"}`}
+                                        />
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          value={emojiSearch}
+                                          onChange={(e) => setEmojiSearch(e.target.value)}
+                                          placeholder="Search emojis"
+                                          className={`w-full bg-transparent text-xs font-medium outline-none ${isGroupView ? "text-[#DCDDDE] placeholder:text-[#949BA4]" : "text-slate-800 placeholder:text-slate-400"}`}
+                                        />
+                                      )}
+                                      {((activePickerTab === "stickers" && stickerSearch) || (activePickerTab === "emoji" && emojiSearch)) && (
                                         <button
                                           type="button"
-                                          onClick={() => setCollapsedStickerGroups((prev) => {
-                                            const next = new Set(prev);
-                                            if (next.has(groupName)) next.delete(groupName); else next.add(groupName);
-                                            return next;
-                                          })}
-                                          className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${isGroupView ? "hover:bg-[#35373C]" : "hover:bg-slate-50"}`}
+                                          onClick={() => activePickerTab === "stickers" ? setStickerSearch("") : setEmojiSearch("")}
+                                          className={`shrink-0 ${isGroupView ? "text-[#949BA4] hover:text-white" : "text-slate-400 hover:text-slate-600"}`}
                                         >
-                                          <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""} ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`} />
-                                          <span className={`text-[10px] font-black uppercase tracking-wider truncate ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>{groupName}</span>
-                                          <span className={`ml-auto text-[9px] font-bold ${isGroupView ? "text-[#5865F2]" : "text-violet-500"}`}>{stickers.length}</span>
+                                          <X className="h-3.5 w-3.5" />
                                         </button>
-                                        {/* Sticker Grid */}
-                                        {!isCollapsed && (
-                                          <div className="grid grid-cols-4 gap-1.5 px-3 pb-3">
-                                            {stickers.map((sticker) => (
-                                              <button
-                                                key={sticker.id}
-                                                type="button"
-                                                onClick={() => handleSendSticker(sticker)}
-                                                className={`aspect-square rounded-lg p-1.5 transition-all hover:scale-110 ${isGroupView ? "hover:bg-[#404249]" : "hover:bg-slate-100"}`}
-                                                title={sticker.name}
-                                              >
-                                                <img src={sticker.assetUrl} alt={sticker.name} className="h-full w-full object-contain" />
-                                              </button>
-                                            ))}
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Content Grid */}
+                                <div className="flex-1 overflow-y-auto min-h-0 relative">
+                                  {activePickerTab === "emoji" && (
+                                    <div className="space-y-4 py-2">
+                                      {emojiGroups.map((group) => {
+                                        const isStandard = group.isStandard;
+                                        return (
+                                          <div key={group.id} id={`emoji-group-${group.id}`} className={`border-b last:border-b-0 pb-3 ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
+                                            <div className="flex items-center justify-between px-3 py-1.5 mb-1">
+                                              <span className={`text-[10px] font-black uppercase tracking-wider truncate max-w-[200px] ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                                                {group.name}
+                                              </span>
+                                              {!isStandard && group.id === selectedId && selectedConv?.ownerId === me?.id && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setShowStickerPicker(false);
+                                                    setShowEmojiManager(true);
+                                                  }}
+                                                  className="text-[9px] font-black uppercase tracking-wider text-[#5865F2] hover:underline"
+                                                >
+                                                  Manage Emojis
+                                                </button>
+                                              )}
+                                            </div>
+
+                                            {group.emojis.length > 0 ? (
+                                              <div className="grid grid-cols-8 gap-1.5 px-3">
+                                                {group.emojis.map((emoji: any) => {
+                                                  const isLocked = !isStandard && emoji.conversationId !== selectedId && 
+                                                    me?.role !== "premium" && me?.role !== "premium_plus" && me?.role !== "dev_website" && me?.role !== "admin";
+                                                  
+                                                  return (
+                                                    <button
+                                                      key={emoji.id}
+                                                      type="button"
+                                                      onClick={() => handleSelectEmoji(emoji)}
+                                                      onMouseEnter={() => setHoveredEmoji({
+                                                        name: emoji.name,
+                                                        char: emoji.char,
+                                                        isStandard: emoji.isStandard,
+                                                        groupName: group.name
+                                                      })}
+                                                      onMouseLeave={() => setHoveredEmoji(null)}
+                                                      className={`aspect-square rounded-lg p-1 transition-all hover:scale-110 flex items-center justify-center relative ${isGroupView ? "hover:bg-[#404249]" : "hover:bg-slate-100"}`}
+                                                      title={isStandard ? `:${emoji.name}:` : `:${emoji.name}: (Custom)`}
+                                                    >
+                                                      {isStandard ? (
+                                                        <span className="text-xl select-none">{emoji.char}</span>
+                                                      ) : (
+                                                        <img src={emoji.assetUrl} alt={emoji.name} className="max-h-full max-w-full object-contain" />
+                                                      )}
+                                                      {isLocked && (
+                                                        <div className="absolute -bottom-0.5 -right-0.5 bg-black/70 text-amber-400 rounded-full p-0.5 border border-[#3F4147]">
+                                                          <svg className="w-2.5 h-2.5 fill-current" viewBox="0 0 24 24"><path d="M18,8H17V6A5,5 0 0,0 12,1A5,5 0 0,0 7,6V8H6A2,2 0 0,0 4,10V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V10A2,2 0 0,0 18,8M8.9,6C8.9,4.29 10.29,2.9 12,2.9C13.71,2.9 15.1,4.29 15.1,6V8H8.9V6M18,20H6V10H18V20Z"/></svg>
+                                                        </div>
+                                                      )}
+                                                    </button>
+                                                  );
+                                                })}
+                                              </div>
+                                            ) : (
+                                              <div className={`mx-3 p-3 rounded-lg flex flex-col gap-2 items-center justify-center text-center border border-dashed ${isGroupView ? "border-[#3F4147] bg-[#1E1F22]/40" : "border-[#e2e8f0] bg-slate-50"}`}>
+                                                <p className={`text-[11px] font-semibold ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                                                  Grup ini belum mengupload emoji kustom.
+                                                </p>
+                                                {!isStandard && group.id === selectedId && selectedConv?.ownerId === me?.id && (
+                                                  <Button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setShowStickerPicker(false);
+                                                      setShowEmojiStudio(true);
+                                                    }}
+                                                    className="h-6 px-3 text-[9px] font-black uppercase tracking-wider bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-md cursor-pointer"
+                                                  >
+                                                    Upload Emoji
+                                                  </Button>
+                                                )}
+                                              </div>
+                                            )}
                                           </div>
-                                        )}
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  {activePickerTab === "stickers" && (
+                                    <>
+                                      {(stickerLibrary?.stickers?.length ?? 0) === 0 ? (
+                                        <div className={`p-8 text-center text-xs font-semibold h-full flex flex-col items-center justify-center gap-2 ${isGroupView ? "text-[#949BA4]" : "text-slate-50"}`}>
+                                          <p>Belum ada stiker.</p>
+                                          {selectedConv?.ownerId === me?.id && (
+                                            <Button
+                                              type="button"
+                                              onClick={() => {
+                                                setShowStickerPicker(false);
+                                                setStickerStudioSource("chat");
+                                                setShowStickerStudio(true);
+                                              }}
+                                              className="bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl text-xs px-4 py-2 mt-2 cursor-pointer"
+                                            >
+                                              Buat Stiker
+                                            </Button>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="space-y-4 py-2">
+                                          {/* Recently Used Stickers */}
+                                          {recentStickers.length > 0 && !stickerSearch && (
+                                            <div id="sticker-group-recent" className={`border-b pb-3 ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
+                                              <div className="flex items-center gap-2 px-3 py-1.5 mb-1">
+                                                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                                                  Frequently Used
+                                                </span>
+                                              </div>
+                                              <div className="grid grid-cols-4 gap-2 px-3">
+                                                {recentStickers.map((sticker) => (
+                                                  <button
+                                                    key={`recent-${sticker.id}`}
+                                                    type="button"
+                                                    onClick={() => handleSendSticker(sticker)}
+                                                    onMouseEnter={() => setHoveredSticker({
+                                                      name: sticker.name,
+                                                      groupName: sticker.conversationName || "Global Stickers"
+                                                    })}
+                                                    onMouseLeave={() => setHoveredSticker(null)}
+                                                    className={`aspect-square rounded-lg p-1.5 transition-all hover:scale-110 flex items-center justify-center ${isGroupView ? "hover:bg-[#404249]" : "hover:bg-slate-100"}`}
+                                                    title={sticker.name}
+                                                  >
+                                                    <img src={sticker.assetUrl} alt={sticker.name} className="max-h-full max-w-full object-contain" />
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* Server Stickers */}
+                                          {stickerGroups.length === 0 ? (
+                                            <div className={`p-8 text-center text-xs font-semibold ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                                              Tidak ada stiker yang cocok.
+                                            </div>
+                                          ) : (
+                                            stickerGroups.map((group) => {
+                                              const hasStickers = group.stickers && group.stickers.length > 0;
+                                              return (
+                                                <div key={group.id || 0} id={`sticker-group-${group.id || 0}`} className={`border-b last:border-b-0 pb-3 ${isGroupView ? "border-[#3F4147]" : "border-[#e2e8f0]"}`}>
+                                                  <div className="flex items-center justify-between px-3 py-1.5 mb-1">
+                                                    <span className={`text-[10px] font-black uppercase tracking-wider truncate max-w-[200px] ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                                                      {group.name}
+                                                    </span>
+                                                    {group.id === selectedId && selectedConv?.ownerId === me?.id && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setShowStickerPicker(false);
+                                                          setShowStickerManager(true);
+                                                        }}
+                                                        className="text-[9px] font-black uppercase tracking-wider text-[#5865F2] hover:underline"
+                                                      >
+                                                        Manage Stickers
+                                                      </button>
+                                                    )}
+                                                  </div>
+
+                                                  {hasStickers ? (
+                                                    <div className="grid grid-cols-4 gap-2 px-3">
+                                                      {group.stickers.map((sticker) => (
+                                                        <button
+                                                          key={sticker.id}
+                                                          type="button"
+                                                          onClick={() => handleSendSticker(sticker)}
+                                                          onMouseEnter={() => setHoveredSticker({
+                                                            name: sticker.name,
+                                                            groupName: group.name
+                                                          })}
+                                                          onMouseLeave={() => setHoveredSticker(null)}
+                                                          className={`aspect-square rounded-lg p-1.5 transition-all hover:scale-110 flex items-center justify-center ${isGroupView ? "hover:bg-[#404249]" : "hover:bg-slate-100"}`}
+                                                          title={sticker.name}
+                                                        >
+                                                          <img src={sticker.assetUrl} alt={sticker.name} className="max-h-full max-w-full object-contain" />
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                  ) : (
+                                                    <div className={`mx-3 p-3 rounded-lg flex flex-col gap-2 items-center justify-center text-center border border-dashed ${isGroupView ? "border-[#3F4147] bg-[#1E1F22]/40" : "border-[#e2e8f0] bg-slate-50"}`}>
+                                                      <p className={`text-[11px] font-semibold ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                                                        Your server is waiting for you to upload some stickers!
+                                                      </p>
+                                                      {group.id === selectedId && selectedConv?.ownerId === me?.id && (
+                                                        <Button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            setShowStickerPicker(false);
+                                                            setStickerStudioSource("chat");
+                                                            setShowStickerStudio(true);
+                                                          }}
+                                                          className="h-6 px-3 text-[9px] font-black uppercase tracking-wider bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-md cursor-pointer"
+                                                        >
+                                                          Upload Sticker
+                                                        </Button>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })
+                                          )}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+
+                                {/* Bottom detail panel */}
+                                {activePickerTab === "stickers" && (
+                                  <div className={`h-[56px] border-t px-3 flex items-center gap-3 shrink-0 ${isGroupView ? "bg-[#1E1F22] border-[#3F4147] text-white" : "bg-slate-50 border-[#e2e8f0] text-slate-800"}`}>
+                                    {hoveredSticker ? (
+                                      <>
+                                        <div className={`w-8 h-8 rounded flex items-center justify-center font-bold text-lg select-none ${isGroupView ? "bg-[#2B2D31]" : "bg-white shadow-sm"}`}>
+                                          🎨
+                                        </div>
+                                        <div className="min-w-0 flex-1 leading-tight">
+                                          <p className="text-xs font-black truncate">{hoveredSticker.name}</p>
+                                          <p className={`text-[9px] font-bold uppercase tracking-wider truncate ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                                            from {hoveredSticker.groupName}
+                                          </p>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="flex items-center gap-2 select-none opacity-50">
+                                        <Smile className="w-5 h-5 animate-bounce" />
+                                        <span className="text-xs font-bold">Select a sticker to send</span>
                                       </div>
-                                    );
-                                  })
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -5548,6 +6273,19 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             </button>
           )}
 
+          {selectedConv?.ownerId === me?.id && (
+            <button
+              onClick={() => { setShowEditGroup(false); setShowEmojiManager(true); }}
+              className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
+            >
+              <Smile className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
+              Manage Emojis
+              <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                {(emojiLibrary?.emojis?.filter((e: any) => e.conversationId === selectedId)?.length ?? 0)} emojis
+              </span>
+            </button>
+          )}
+
           <div className="flex gap-2 mt-4">
             <Button
               variant="outline"
@@ -5837,8 +6575,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                                   ? "bg-[#6366f1] text-white rounded-tr-none" 
                                   : "bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/50"
                               }`}>
-                                <p className="break-all whitespace-pre-wrap">{msg.content}</p>
-                                {msg.imageUrl && (
+                                <p className="break-all whitespace-pre-wrap">{renderMessageTextWithEmojis(msg.content, emojiLibrary?.emojis, selectedId)}</p>
+                                {msg.imageUrl && !msg.imageUrl.startsWith("music:") && (
                                   <img src={msg.imageUrl} alt="attached" className="rounded-lg max-w-full mt-1.5 object-cover" />
                                 )}
                               </div>
@@ -7222,6 +7960,210 @@ setInterval(() => {
               }}
             >
               Kembali
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* EMOJI MANAGER MODAL */}
+      <Dialog open={showEmojiManager} onOpenChange={setShowEmojiManager}>
+        <DialogContent className={`max-w-md rounded-2xl p-5 flex flex-col h-[75vh] max-h-[500px] ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147] text-white animate-in zoom-in-95 duration-200" : "bg-white border border-[#eae8f5] text-slate-900 animate-in zoom-in-95 duration-200"}`}>
+          <DialogHeader className="shrink-0">
+            <div className="flex justify-between items-center pr-6">
+              <DialogTitle className="text-md font-black uppercase tracking-wider">Manage Emojis</DialogTitle>
+              <Button
+                type="button"
+                onClick={() => {
+                  setShowEmojiManager(false);
+                  setShowEmojiStudio(true);
+                }}
+                className="h-7 px-3 text-[10px] font-black uppercase tracking-wider bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl cursor-pointer shrink-0"
+              >
+                + Buat Emoji
+              </Button>
+            </div>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+              Daftar emoji kustom untuk grup ini. Pembuat grup dapat mengubah nama shortcode atau menghapusnya.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="flex-1 my-3 pr-1">
+            {(() => {
+              const localEmojis = emojiLibrary?.emojis?.filter((e: any) => e.conversationId === selectedId) || [];
+              if (localEmojis.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-12 gap-4">
+                    <div className={`text-center text-xs font-semibold ${isGroupView ? "text-slate-500" : "text-slate-400"}`}>
+                      Belum ada emoji kustom untuk grup ini.
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setShowEmojiManager(false);
+                        setShowEmojiStudio(true);
+                      }}
+                      className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl text-xs font-bold px-4 py-2 cursor-pointer transition-all hover:scale-105"
+                    >
+                      Buat Emoji Pertama
+                    </Button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {localEmojis.map((emoji: any) => (
+                    <div
+                      key={emoji.id}
+                      className={`flex items-center gap-3 p-3 rounded-xl border ${
+                        isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50 border-slate-200"
+                      }`}
+                    >
+                      <div className={`w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center shrink-0 ${isGroupView ? "bg-[#1E1F22]" : "bg-white border"}`}>
+                        <img src={emoji.assetUrl} alt={emoji.name} className="w-8 h-8 object-contain" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold truncate text-[#DCDDDE]">:{emoji.name}:</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            const newName = window.prompt("Edit nama emoji (hanya huruf/angka/underscore):", emoji.name);
+                            if (newName === null) return;
+                            const trimmed = newName.trim().replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
+                            if (!trimmed) return;
+                            handleEditEmojiName(emoji.id, trimmed);
+                          }}
+                          className={`h-8 w-8 rounded-full ${isGroupView ? "hover:bg-slate-800" : ""}`}
+                          title="Edit nama"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-[#5865F2]" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            if (window.confirm(`Hapus emoji ":${emoji.name}:" dari grup ini?`)) {
+                              handleDeleteEmoji(emoji.id);
+                            }
+                          }}
+                          className={`h-8 w-8 rounded-full text-rose-500 hover:text-rose-600 ${isGroupView ? "hover:bg-slate-800" : "hover:bg-rose-50"}`}
+                          title="Hapus emoji"
+                        >
+                          <X className="w-3.5 h-3.5 text-rose-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </ScrollArea>
+
+          <div className={`flex justify-end pt-3 border-t shrink-0 ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+            <Button
+              className="bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold px-4 cursor-pointer"
+              onClick={() => {
+                setShowEmojiManager(false);
+                setShowEditGroup(true); // Open settings back up
+              }}
+            >
+              Kembali
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* EMOJI STUDIO MODAL */}
+      <Dialog open={showEmojiStudio} onOpenChange={(open) => {
+        if (!open) {
+          setShowEmojiStudio(false);
+        }
+      }}>
+        <DialogContent className={`max-w-md rounded-2xl p-5 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147] text-white animate-in zoom-in-95 duration-200" : "bg-white border border-[#eae8f5] text-slate-900 animate-in zoom-in-95 duration-200"}`}>
+          <DialogHeader>
+            <DialogTitle className="text-md font-black uppercase tracking-wider">Emoji Studio</DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-slate-400" : "text-slate-500"}`}>
+              Unggah gambar kustom untuk dijadikan emoji grup. Rekomendasi rasio gambar kotak (1:1), maksimal file 2MB.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 py-3">
+            {/* PREVIEW CONTAINER */}
+            <div className="flex flex-col items-center justify-center gap-3">
+              <div className={`relative w-24 h-24 rounded-2xl border flex items-center justify-center overflow-hidden shadow-inner ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50 border-slate-200"}`}>
+                {emojiStudioPreview ? (
+                  <img src={emojiStudioPreview} alt="Preview" className="w-16 h-16 object-contain" />
+                ) : (
+                  <span className={`text-[10px] font-bold text-center px-2 ${isGroupView ? "text-slate-500" : "text-slate-400"}`}>
+                    Pilih Gambar
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* CONTROLS */}
+            <div className="space-y-4">
+              <div>
+                <Label className="text-xs font-black uppercase tracking-wider opacity-70">Pilih Gambar (Maks 2MB)</Label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setEmojiStudioFile(file);
+                      setEmojiStudioPreview(URL.createObjectURL(file));
+                      const baseName = file.name.split(".")[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase().slice(0, 40);
+                      setEmojiStudioName(baseName);
+                    }
+                  }}
+                  className={`mt-1 text-xs cursor-pointer ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50"}`}
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs font-black uppercase tracking-wider opacity-70">Nama Shortcode Emoji (Hanya huruf/angka/underscore)</Label>
+                <div className="flex items-center mt-1">
+                  <span className={`text-xs font-bold px-2 py-2.5 rounded-l-xl border-y border-l ${isGroupView ? "bg-[#1E1F22] border-[#3F4147] text-slate-400" : "bg-slate-100 border-slate-200 text-slate-500"}`}>
+                    :
+                  </span>
+                  <Input
+                    type="text"
+                    maxLength={40}
+                    placeholder="pepe"
+                    value={emojiStudioName}
+                    onChange={(e) => setEmojiStudioName(e.target.value.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())}
+                    className={`text-xs rounded-l-none ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50"}`}
+                  />
+                  <span className={`text-xs font-bold px-2 py-2.5 rounded-r-xl border-y border-r ${isGroupView ? "bg-[#1E1F22] border-[#3F4147] text-slate-400" : "bg-slate-100 border-slate-200 text-slate-500"}`}>
+                    :
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={`flex justify-end gap-3 pt-3 border-t ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEmojiStudio(false);
+                setShowEmojiManager(true);
+              }}
+              className={`rounded-xl text-xs font-bold ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : ""}`}
+              disabled={uploadingEmoji}
+            >
+              Kembali
+            </Button>
+            <Button
+              onClick={handleUploadEmoji}
+              disabled={uploadingEmoji || !emojiStudioFile || !emojiStudioName.trim()}
+              className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl text-xs font-bold px-4 cursor-pointer"
+            >
+              {uploadingEmoji ? "Mengunggah..." : "Upload Emoji"}
             </Button>
           </div>
         </DialogContent>

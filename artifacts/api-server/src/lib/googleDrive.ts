@@ -183,3 +183,16 @@ export async function getDriveDownloadResponse(fileId: string) {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
+
+export async function deleteFileFromDrive(fileId: string): Promise<void> {
+  const accessToken = await getDriveAccessToken();
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?supportsAllDrives=true`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Google Drive delete failed: ${res.status} ${text.slice(0, 180)}`);
+  }
+}
+
