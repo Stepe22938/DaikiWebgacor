@@ -630,10 +630,23 @@ export default function Admin() {
       toast({ title: "Settings saved", description: "Homepage configurations updated." });
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+    onError: (err: any) => {
+      const msg = err?.message || err?.error || "Failed to save settings.";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
+
+  const handleSaveSettings = () => {
+    if ((settingsForm.premiumPrice ?? 0) < 1000) {
+      toast({ title: "Harga tidak valid", description: "Premium Plan Price minimal Rp 1.000.", variant: "destructive" });
+      return;
+    }
+    if ((settingsForm.premiumPlusPrice ?? 0) < 1000) {
+      toast({ title: "Harga tidak valid", description: "Premium+ Plan Price minimal Rp 1.000.", variant: "destructive" });
+      return;
+    }
+    saveSettings.mutate(settingsForm);
+  };
 
   const [settingsForm, setSettingsForm] = useState({
     realmName: "",
@@ -646,10 +659,14 @@ export default function Admin() {
     specsMemory: "",
     specsStorage: "",
     specsLocation: "",
+    sayabayarApiKey: "",
+    sayabayarWebhookSecret: "",
+    premiumPrice: 25000,
+    premiumPlusPrice: 50000,
   });
 
-  const [hasInitializedForm, setHasInitializedForm] = useState(false);
-  if (currentSettings && !hasInitializedForm) {
+  useEffect(() => {
+    if (!currentSettings) return;
     setSettingsForm({
       realmName: currentSettings.realmName || "Arcadia Guild",
       realmLogoUrl: currentSettings.realmLogoUrl || "",
@@ -661,9 +678,68 @@ export default function Admin() {
       specsMemory: currentSettings.specsMemory || "",
       specsStorage: currentSettings.specsStorage || "",
       specsLocation: currentSettings.specsLocation || "",
+      sayabayarApiKey: currentSettings.sayabayarApiKey || "",
+      sayabayarWebhookSecret: currentSettings.sayabayarWebhookSecret || "",
+      premiumPrice: currentSettings.premiumPrice ?? 25000,
+      premiumPlusPrice: currentSettings.premiumPlusPrice ?? 50000,
     });
-    setHasInitializedForm(true);
-  }
+  }, [currentSettings]);
+
+  // ── Boost Packages Management ───────────────────────────────────────────────
+  const { data: boostPackagesAdmin, isLoading: boostPkgLoading } = useQuery({
+    queryKey: ["/api/admin/boost-packages"],
+    queryFn: () => customFetch<any[]>("/api/admin/boost-packages"),
+  });
+
+  const emptyPkg = { sku: "", displayName: "", description: "", boostCount: 1, priceIdr: 25000, discountPriceIdr: "", durationDays: 30, active: true };
+  const [pkgForm, setPkgForm] = useState(emptyPkg);
+  const [editingPkgId, setEditingPkgId] = useState<number | null>(null);
+  const [pkgDialogOpen, setPkgDialogOpen] = useState(false);
+
+  const createPkg = useMutation({
+    mutationFn: (data: any) => customFetch<any>("/api/admin/boost-packages", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => { toast({ title: "Paket dibuat" }); queryClient.invalidateQueries({ queryKey: ["/api/admin/boost-packages"] }); setPkgDialogOpen(false); setPkgForm(emptyPkg); },
+    onError: (err: any) => toast({ title: "Error", description: err?.message || "Gagal membuat paket", variant: "destructive" }),
+  });
+  const updatePkg = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => customFetch<any>(`/api/admin/boost-packages/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => { toast({ title: "Paket diperbarui" }); queryClient.invalidateQueries({ queryKey: ["/api/admin/boost-packages"] }); queryClient.invalidateQueries({ queryKey: ["/api/me/membership"] }); setPkgDialogOpen(false); setPkgForm(emptyPkg); setEditingPkgId(null); },
+    onError: (err: any) => toast({ title: "Error", description: err?.message || "Gagal update paket", variant: "destructive" }),
+  });
+  const deletePkg = useMutation({
+    mutationFn: (id: number) => customFetch<any>(`/api/admin/boost-packages/${id}`, { method: "DELETE" }),
+    onSuccess: () => { toast({ title: "Paket dihapus" }); queryClient.invalidateQueries({ queryKey: ["/api/admin/boost-packages"] }); },
+    onError: (err: any) => toast({ title: "Error", description: err?.message || "Gagal hapus paket", variant: "destructive" }),
+  });
+
+  const handleSavePkg = () => {
+    if (!pkgForm.sku.trim() || !pkgForm.displayName.trim()) {
+      toast({ title: "SKU dan nama wajib diisi", variant: "destructive" }); return;
+    }
+    if (pkgForm.priceIdr < 1000) {
+      toast({ title: "Harga minimal Rp 1.000", variant: "destructive" }); return;
+    }
+    const discountVal = pkgForm.discountPriceIdr === "" || pkgForm.discountPriceIdr === null ? null : Number(pkgForm.discountPriceIdr);
+    if (discountVal !== null && discountVal < 1000) {
+      toast({ title: "Harga diskon minimal Rp 1.000", variant: "destructive" }); return;
+    }
+    const payload = {
+      sku: pkgForm.sku.trim(),
+      displayName: pkgForm.displayName.trim(),
+      description: pkgForm.description.trim() || null,
+      boostCount: Number(pkgForm.boostCount),
+      priceIdr: Number(pkgForm.priceIdr),
+      discountPriceIdr: discountVal,
+      durationDays: Number(pkgForm.durationDays),
+      active: pkgForm.active,
+    };
+    if (editingPkgId !== null) {
+      updatePkg.mutate({ id: editingPkgId, data: payload });
+    } else {
+      createPkg.mutate(payload);
+    }
+  };
+
   const realmName = currentSettings?.realmName || "Arcadia Guild";
   const realmLogoUrl = currentSettings?.realmLogoUrl || "";
 
@@ -2477,13 +2553,211 @@ export default function Admin() {
                       </div>
                     </div>
 
+                    <div className="border-t border-[#eae8f5] pt-4 mt-6 space-y-4">
+                      <h3 className="font-extrabold text-xs text-[#110e3d] uppercase tracking-wider">SayaBayar & Pricing Settings</h3>
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-600">SayaBayar API Key</Label>
+                          <Input
+                            type="password"
+                            value={settingsForm.sayabayarApiKey}
+                            onChange={(e) => setSettingsForm({ ...settingsForm, sayabayarApiKey: e.target.value })}
+                            placeholder="Enter your sayabayar.com API key..."
+                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-600">SayaBayar Webhook Secret</Label>
+                          <Input
+                            type="password"
+                            value={settingsForm.sayabayarWebhookSecret}
+                            onChange={(e) => setSettingsForm({ ...settingsForm, sayabayarWebhookSecret: e.target.value })}
+                            placeholder="Enter your sayabayar.com Webhook Secret..."
+                            className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-600">Premium Plan Price (IDR)</Label>
+                            <Input
+                              type="number"
+                              min={1000}
+                              value={settingsForm.premiumPrice}
+                              onChange={(e) => setSettingsForm({ ...settingsForm, premiumPrice: parseInt(e.target.value) || 0 })}
+                              placeholder="25000"
+                              className={`bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800 ${(settingsForm.premiumPrice ?? 0) < 1000 && (settingsForm.premiumPrice ?? 0) > 0 ? 'border-red-400 ring-1 ring-red-400' : ''}`}
+                            />
+                            {(settingsForm.premiumPrice ?? 0) > 0 && (settingsForm.premiumPrice ?? 0) < 1000 && (
+                              <p className="text-red-500 text-[10px] font-semibold mt-0.5">Minimal Rp 1.000</p>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-600">Premium+ Plan Price (IDR)</Label>
+                            <Input
+                              type="number"
+                              min={1000}
+                              value={settingsForm.premiumPlusPrice}
+                              onChange={(e) => setSettingsForm({ ...settingsForm, premiumPlusPrice: parseInt(e.target.value) || 0 })}
+                              placeholder="50000"
+                              className={`bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800 ${(settingsForm.premiumPlusPrice ?? 0) < 1000 && (settingsForm.premiumPlusPrice ?? 0) > 0 ? 'border-red-400 ring-1 ring-red-400' : ''}`}
+                            />
+                            {(settingsForm.premiumPlusPrice ?? 0) > 0 && (settingsForm.premiumPlusPrice ?? 0) < 1000 && (
+                              <p className="text-red-500 text-[10px] font-semibold mt-0.5">Minimal Rp 1.000</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <Button
-                      onClick={() => saveSettings.mutate(settingsForm)}
+                      onClick={handleSaveSettings}
                       disabled={saveSettings.isPending}
                       className="w-full bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs h-10 shadow-md shadow-violet-500/5 mt-4"
                     >
                       {saveSettings.isPending ? "Calibrating systems..." : "Save Realm Configurations"}
                     </Button>
+                  </div>
+                )}
+              </Card>
+
+              {/* BOOST PACKAGES MANAGEMENT CARD */}
+              <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl overflow-hidden p-6 space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-extrabold text-[#110e3d] flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-violet-500" /> Boost Packages
+                    </h2>
+                    <p className="text-xs text-slate-400 font-bold mt-0.5">Kelola paket boost yang tersedia untuk dibeli member. Set diskon langsung dari sini.</p>
+                  </div>
+                  <Button
+                    onClick={() => { setPkgForm(emptyPkg); setEditingPkgId(null); setPkgDialogOpen(true); }}
+                    className="h-9 shrink-0 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-black px-4 shadow-sm active:scale-95 transition-all"
+                  >
+                    + Tambah Paket
+                  </Button>
+                </div>
+
+                {boostPkgLoading ? (
+                  <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full rounded-2xl" />)}</div>
+                ) : !boostPackagesAdmin || boostPackagesAdmin.length === 0 ? (
+                  <div className="rounded-2xl border-2 border-dashed border-[#eae8f5] p-8 text-center">
+                    <Zap className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-xs font-semibold text-slate-400">Belum ada paket boost. Klik "+ Tambah Paket" untuk mulai.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {boostPackagesAdmin.map((pkg: any) => (
+                      <div key={pkg.id} className="flex items-center gap-3 rounded-2xl border-2 border-[#eae8f5] bg-slate-50/50 p-4">
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${pkg.active ? "bg-gradient-to-br from-violet-500 to-indigo-600" : "bg-slate-200"}`}>
+                          <Zap className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-extrabold text-[#110e3d]">{pkg.displayName}</p>
+                            {!pkg.active && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[9px] font-black uppercase text-slate-500">NONAKTIF</span>}
+                            {pkg.discountPriceIdr && <span className="rounded-full bg-green-100 px-2 py-0.5 text-[9px] font-black uppercase text-green-700">DISKON</span>}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-500 flex-wrap mt-0.5">
+                            <span>{pkg.boostCount} boost · {pkg.durationDays}h</span>
+                            {pkg.discountPriceIdr ? (
+                              <><span className="text-green-600 font-black">Rp {pkg.discountPriceIdr.toLocaleString("id-ID")}</span><span className="line-through">Rp {pkg.priceIdr.toLocaleString("id-ID")}</span></>
+                            ) : (
+                              <span className="font-black text-violet-600">Rp {pkg.priceIdr.toLocaleString("id-ID")}</span>
+                            )}
+                            <span className="text-slate-300">·</span>
+                            <span className="font-mono text-slate-400">{pkg.sku}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            onClick={() => { setPkgForm({ sku: pkg.sku, displayName: pkg.displayName, description: pkg.description || "", boostCount: pkg.boostCount, priceIdr: pkg.priceIdr, discountPriceIdr: pkg.discountPriceIdr ?? "", durationDays: pkg.durationDays, active: pkg.active }); setEditingPkgId(pkg.id); setPkgDialogOpen(true); }}
+                            variant="outline" size="sm"
+                            className="h-8 rounded-xl text-xs font-bold border-[#eae8f5] hover:bg-violet-50 hover:border-violet-300"
+                          >Edit</Button>
+                          <Button
+                            onClick={() => { if (confirm(`Hapus paket "${pkg.displayName}"?`)) deletePkg.mutate(pkg.id); }}
+                            disabled={deletePkg.isPending}
+                            variant="outline" size="sm"
+                            className="h-8 rounded-xl text-xs font-bold border-red-200 text-red-500 hover:bg-red-50"
+                          >Hapus</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add/Edit Package Dialog */}
+                {pkgDialogOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) { setPkgDialogOpen(false); setPkgForm(emptyPkg); setEditingPkgId(null); } }}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-extrabold text-[#110e3d]">{editingPkgId !== null ? "Edit Paket Boost" : "Tambah Paket Boost"}</h3>
+                        <button onClick={() => { setPkgDialogOpen(false); setPkgForm(emptyPkg); setEditingPkgId(null); }} className="text-slate-400 hover:text-slate-700 text-lg font-bold leading-none">✕</button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">SKU *</Label>
+                          <Input value={pkgForm.sku} onChange={e => setPkgForm({...pkgForm, sku: e.target.value})} placeholder="boost-1x-30d" disabled={editingPkgId !== null} className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nama Paket *</Label>
+                          <Input value={pkgForm.displayName} onChange={e => setPkgForm({...pkgForm, displayName: e.target.value})} placeholder="1x Boost 30 Hari" className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Deskripsi (Opsional)</Label>
+                        <Input value={pkgForm.description} onChange={e => setPkgForm({...pkgForm, description: e.target.value})} placeholder="Boost 1 slot selama 30 hari" className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Jumlah Boost</Label>
+                          <Input type="number" min={1} value={pkgForm.boostCount} onChange={e => setPkgForm({...pkgForm, boostCount: parseInt(e.target.value) || 1})} className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Durasi (Hari)</Label>
+                          <Input type="number" min={1} value={pkgForm.durationDays} onChange={e => setPkgForm({...pkgForm, durationDays: parseInt(e.target.value) || 30})} className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                        </div>
+                        <div className="space-y-1 flex flex-col">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</Label>
+                          <button
+                            type="button"
+                            onClick={() => setPkgForm({...pkgForm, active: !pkgForm.active})}
+                            className={`h-9 rounded-xl text-xs font-black flex-1 transition-all ${pkgForm.active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}
+                          >{pkgForm.active ? "Aktif" : "Nonaktif"}</button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Harga Normal (IDR) *</Label>
+                          <Input type="number" min={1000} value={pkgForm.priceIdr} onChange={e => setPkgForm({...pkgForm, priceIdr: parseInt(e.target.value) || 0})} className={`h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs ${pkgForm.priceIdr > 0 && pkgForm.priceIdr < 1000 ? "border-red-400" : ""}`} />
+                          {pkgForm.priceIdr > 0 && pkgForm.priceIdr < 1000 && <p className="text-red-500 text-[9px] font-bold">Min Rp 1.000</p>}
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Harga Diskon (IDR)</Label>
+                          <Input type="number" min={1000} value={pkgForm.discountPriceIdr} onChange={e => setPkgForm({...pkgForm, discountPriceIdr: e.target.value})} placeholder="Kosongkan = no diskon" className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs" />
+                          {pkgForm.discountPriceIdr && Number(pkgForm.discountPriceIdr) > 0 && Number(pkgForm.discountPriceIdr) < 1000 && <p className="text-red-500 text-[9px] font-bold">Min Rp 1.000</p>}
+                          {pkgForm.discountPriceIdr && Number(pkgForm.discountPriceIdr) >= pkgForm.priceIdr && Number(pkgForm.discountPriceIdr) > 0 && <p className="text-orange-500 text-[9px] font-bold">Diskon harus lebih kecil dari harga normal</p>}
+                        </div>
+                      </div>
+
+                      {pkgForm.discountPriceIdr && Number(pkgForm.discountPriceIdr) >= 1000 && pkgForm.priceIdr >= 1000 && Number(pkgForm.discountPriceIdr) < pkgForm.priceIdr && (
+                        <div className="rounded-xl bg-green-50 border border-green-200 px-3 py-2 text-xs font-bold text-green-700">
+                          💸 Diskon {Math.round((1 - Number(pkgForm.discountPriceIdr) / pkgForm.priceIdr) * 100)}% · Hemat Rp {(pkgForm.priceIdr - Number(pkgForm.discountPriceIdr)).toLocaleString("id-ID")}
+                        </div>
+                      )}
+
+                      <Button
+                        onClick={handleSavePkg}
+                        disabled={createPkg.isPending || updatePkg.isPending}
+                        className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-black"
+                      >
+                        {(createPkg.isPending || updatePkg.isPending) ? "Menyimpan..." : editingPkgId !== null ? "Simpan Perubahan" : "Buat Paket"}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </Card>

@@ -26,6 +26,10 @@ const HomepageSettingsSchema = z.object({
   gallery: z.array(GalleryItemSchema).optional(),
   galleryTitle: z.string().min(1).optional(),
   gallerySubtitle: z.string().min(1).optional(),
+  sayabayarApiKey: z.string().optional(),
+  sayabayarWebhookSecret: z.string().optional(),
+  premiumPrice: z.number().int().min(1000, "Harga minimal Rp 1.000").optional(),
+  premiumPlusPrice: z.number().int().min(1000, "Harga minimal Rp 1.000").optional(),
 });
 
 const DEFAULT_SETTINGS = {
@@ -41,6 +45,10 @@ const DEFAULT_SETTINGS = {
   specsLocation: "Debian VPS Port 5433",
   galleryTitle: "Explore the Realm of Arcadia",
   gallerySubtitle: "Take a visual tour through our hand-crafted server landscapes, customized cities, and deadly adventure zones.",
+  sayabayarApiKey: "",
+  sayabayarWebhookSecret: "",
+  premiumPrice: 25000,
+  premiumPlusPrice: 50000,
   gallery: [
     {
       src: "/lobby.png",
@@ -73,7 +81,7 @@ router.get("/settings", async (req, res): Promise<void> => {
       res.json(DEFAULT_SETTINGS);
       return;
     }
-    res.json(row.value);
+    res.json({ ...DEFAULT_SETTINGS, ...(row.value as any) });
   } catch (err) {
     res.status(500).json({ error: "Failed to get settings" });
   }

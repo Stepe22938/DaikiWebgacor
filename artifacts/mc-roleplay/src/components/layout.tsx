@@ -128,7 +128,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         <ShieldAlert className="w-4.5 h-4.5 text-amber-500" /> Admin Portal
                       </Link>
                     )}
-                    {me?.role && ["premium", "premium_plus", "admin", "dev_website"].includes(me.role) && (
+                    {me && (
                       <Link href="/premium" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-purple-600 hover:text-purple-700 hover:bg-purple-500/10 rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
                         <Crown className="w-4.5 h-4.5 text-purple-500" /> Premium Area
                       </Link>

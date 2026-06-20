@@ -519,7 +519,7 @@ export default function Member() {
               </div>
             )}
 
-            {user?.role && ["premium", "premium_plus", "admin", "dev_website"].includes(user.role) && (
+            {user && (
               <div className="space-y-1.5">
                 <span className="px-3 text-[10px] font-black text-purple-600 uppercase tracking-widest block">Premium</span>
                 <nav className="space-y-1">
@@ -732,7 +732,7 @@ export default function Member() {
                   </div>
                 )}
 
-                {user?.role && ["premium", "premium_plus", "admin", "dev_website"].includes(user.role) && (
+                {user && (
                   <div className="py-2 border-t border-[#eae8f5] my-2">
                     <span className="px-3 text-[9px] font-black text-purple-600 uppercase tracking-widest block mb-1">Premium</span>
                     <Link
@@ -3952,7 +3952,7 @@ function WalletTab() {
                       </td>
                       <td className="py-3 text-[#110e3d]">{t.description}</td>
                       <td className={`py-3 text-right font-black ${isCredit ? "text-emerald-500" : "text-red-500"}`}>
-                        {isCredit ? "+" : ""}{t.amount} ðŸ’Ž
+                        {isCredit ? "+" : ""}{t.amount} 💎
                       </td>
                     </tr>
                   );
@@ -3966,19 +3966,6 @@ function WalletTab() {
   );
 }
 
-// ─── MusicTab Component ───────────────────────────────────────────────────────────
-function formatBytesCompact(bytes: number) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
-}
-
 function formatIdr(amount: number) {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -3990,112 +3977,45 @@ function formatIdr(amount: number) {
 function MembershipTab() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [requestMode, setRequestMode] = useState<"tier" | "boost">("tier");
-  const [selectedTier, setSelectedTier] = useState("premium");
-  const [selectedPackageSku, setSelectedPackageSku] = useState("");
+
+  const { data: realmSettings = {} } = useQuery({
+    queryKey: ["/api/settings"],
+    queryFn: () => customFetch<any>("/api/settings"),
+  });
+
   const [selectedGroupId, setSelectedGroupId] = useState("none");
-  const [selectedBoostGroupId, setSelectedBoostGroupId] = useState("none");
-  const [selectedBoostAmount, setSelectedBoostAmount] = useState("1");
   const [requestNote, setRequestNote] = useState("");
-  const [stickerName, setStickerName] = useState("");
-  const [stickerGroupId, setStickerGroupId] = useState("none");
-  const [stickerOverlayText, setStickerOverlayText] = useState("");
-  const [stickerFontFamily, setStickerFontFamily] = useState("Inter");
-  const [stickerTextColor, setStickerTextColor] = useState("#111827");
-  const [uploadingSticker, setUploadingSticker] = useState(false);
-  const [slotTargets, setSlotTargets] = useState<Record<number, string>>({});
-  const stickerFileRef = useRef<HTMLInputElement | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["/api/me/membership"],
     queryFn: () => customFetch<any>("/api/me/membership"),
   });
-  const { data: stickerLibrary } = useQuery({
-    queryKey: ["/api/stickers", "owned"],
-    queryFn: () => customFetch<any>("/api/stickers?mode=owned"),
-  });
 
   const paymentRequestMutation = useMutation({
-    mutationFn: async () => customFetch<any>("/api/payment-requests", {
+    mutationFn: async (vars: {
+      tier?: string;
+      packageSku?: string;
+      conversationId?: number;
+      note?: string;
+    }) => customFetch<any>("/api/payment-requests", {
       method: "POST",
-      body: JSON.stringify({
-        tier: requestMode === "tier" ? selectedTier : undefined,
-        packageSku: requestMode === "boost" ? selectedPackageSku : undefined,
-        conversationId: requestMode === "boost" && selectedGroupId !== "none" ? Number(selectedGroupId) : undefined,
-        note: requestNote.trim() || undefined,
-      }),
+      body: JSON.stringify(vars),
       headers: { "Content-Type": "application/json" },
     }),
-    onSuccess: async () => {
+    onSuccess: async (res: any) => {
       toast({
-        title: "Ticket pembayaran dibuat",
-        description: "Admin sekarang bisa cek request ini di tab pembayaran.",
+        title: "Redirecting to checkout...",
+        description: "Mohon tunggu sebentar...",
       });
       setRequestNote("");
-      setSelectedPackageSku("");
       setSelectedGroupId("none");
       await queryClient.invalidateQueries({ queryKey: ["/api/me/membership"] });
+      if (res && res.checkoutUrl) {
+        window.location.href = res.checkoutUrl;
+      }
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err?.message || "Gagal membuat ticket pembayaran.", variant: "destructive" });
-    },
-  });
-
-  const applyBoostMutation = useMutation({
-    mutationFn: async ({ slotId, conversationId }: { slotId: number; conversationId: number }) => customFetch<any>("/api/me/membership/boosts/apply", {
-      method: "POST",
-      body: JSON.stringify({ slotId, conversationId }),
-      headers: { "Content-Type": "application/json" },
-    }),
-    onSuccess: async () => {
-      toast({ title: "Boost dipasang", description: "Server berhasil di-boost." });
-      await queryClient.invalidateQueries({ queryKey: ["/api/me/membership"] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err?.message || "Gagal apply boost.", variant: "destructive" });
-    },
-  });
-
-  const applyBulkBoostMutation = useMutation({
-    mutationFn: async ({ conversationId, boostCount }: { conversationId: number; boostCount: number }) => customFetch<any>("/api/me/membership/boosts/apply-bulk", {
-      method: "POST",
-      body: JSON.stringify({ conversationId, boostCount }),
-      headers: { "Content-Type": "application/json" },
-    }),
-    onSuccess: async (payload: any) => {
-      toast({ title: "Boost dipasang", description: `${payload?.appliedCount ?? selectedBoostAmount} boost berhasil ditempel ke group.` });
-      await queryClient.invalidateQueries({ queryKey: ["/api/me/membership"] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err?.message || "Gagal apply boost bulk.", variant: "destructive" });
-    },
-  });
-
-  const revokeBoostMutation = useMutation({
-    mutationFn: async (slotId: number) => customFetch<any>("/api/me/membership/boosts/revoke", {
-      method: "POST",
-      body: JSON.stringify({ slotId }),
-      headers: { "Content-Type": "application/json" },
-    }),
-    onSuccess: async () => {
-      toast({ title: "Boost dilepas", description: "Boost slot balik jadi available." });
-      await queryClient.invalidateQueries({ queryKey: ["/api/me/membership"] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err?.message || "Gagal cabut boost.", variant: "destructive" });
-    },
-  });
-
-  const deleteStickerMutation = useMutation({
-    mutationFn: async (stickerId: number) => customFetch<any>(`/api/stickers/${stickerId}`, {
-      method: "DELETE",
-    }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/stickers", "owned"] });
-      toast({ title: "Sticker dihapus" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err?.message || "Gagal hapus sticker.", variant: "destructive" });
     },
   });
 
@@ -4125,102 +4045,123 @@ function MembershipTab() {
     );
   }
 
-  const usedPercent = data.sharedStorage.capacityBytes > 0
+  const usedPercent = data.sharedStorage?.capacityBytes > 0
     ? Math.min(100, Math.round((data.sharedStorage.usedBytes / data.sharedStorage.capacityBytes) * 100))
     : 0;
+
   const groupOptions = Array.isArray(data.groups) ? data.groups : [];
-  const paymentTickets = Array.isArray(data.paymentTickets) ? data.paymentTickets : [];
-  const nitro = data.nitro ?? {
-    stickerSyncMode: data.stickerSyncMode,
-    maxStickerCount: 0,
-    maxStickerFileBytes: 0,
-    canUseAnimatedStickers: false,
-    perks: [],
-  };
-  const ownedStickers = Array.isArray(stickerLibrary?.stickers) ? stickerLibrary.stickers : [];
-  const availableBoostSlots = Array.isArray(data.ownedBoostSlots)
-    ? data.ownedBoostSlots.filter((slot: any) => !slot.assignment && slot.status !== "expired")
-    : [];
-  const activeBoostAssignments = Array.isArray(data.ownedBoostSlots)
-    ? data.ownedBoostSlots.filter((slot: any) => !!slot.assignment && slot.status !== "expired")
-    : [];
-  const selectableBoostAmounts = Array.from({
-    length: Math.max(0, Math.min(3, availableBoostSlots.length)),
-  }, (_, index) => String(index + 1));
-  const effectiveSelectedBoostAmount = selectableBoostAmounts.includes(selectedBoostAmount)
-    ? selectedBoostAmount
-    : (selectableBoostAmounts[0] ?? "");
+  const rawPaymentTickets = Array.isArray(data.paymentTickets) ? data.paymentTickets : [];
+  const paymentTickets = rawPaymentTickets.filter((ticket: any) => {
+    if (ticket.adminNotes?.startsWith("[SayaBayar ID:") && ticket.paymentStatus !== "paid") {
+      return false;
+    }
+    return true;
+  });
   const planCards = [
     {
       key: "free",
       title: "Member",
       price: "Rp 0",
       badge: "Free",
-      features: ["Upload 200MB", "Sticker lokal", "0 base boost", "Akses dasar chat dan group"],
+      features: ["Upload 200MB limit", "Sticker lokal per group", "0 boost bawaan", "Akses dasar chat dan guild"],
     },
     {
       key: "premium",
       title: "Premium",
-      price: "Rp 25.000",
+      price: `Rp ${(realmSettings?.premiumPrice ?? 25000).toLocaleString("id-ID")}`,
       badge: "Nitro",
-      features: ["Upload 500MB", "Sticker global cross-server", "Bisa beli dan pasang boost", "Perk Nitro lintas group"],
+      features: ["Upload 500MB limit", "Sticker global cross-server", "Bisa beli & pasang boost", "Perk VIP lintas group"],
     },
     {
       key: "premium_plus",
       title: "Premium+",
-      price: "Rp 50.000",
+      price: `Rp ${(realmSettings?.premiumPlusPrice ?? 50000).toLocaleString("id-ID")}`,
       badge: "Nitro+",
-      features: ["Upload 1GB", "Animated sticker global", "3 boost bawaan", "Auto boost ke semua group yang diikuti"],
+      features: ["Upload 1GB limit", "Sticker animasi global", "3 boost bawaan gratis", "Auto-boost ke semua group"],
     },
   ] as const;
 
-  async function handleStickerUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-
-    if (!stickerName.trim()) {
-      toast({ title: "Nama sticker wajib diisi", variant: "destructive" });
-      return;
-    }
-
-    setUploadingSticker(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("name", stickerName.trim());
-      formData.append("editorConfig", JSON.stringify({
-        overlayText: stickerOverlayText.trim(),
-        fontFamily: stickerFontFamily,
-        textColor: stickerTextColor,
-      }));
-      if (data.currentTier === "free") {
-        if (stickerGroupId === "none") throw new Error("Pilih group dulu untuk sticker lokal.");
-        formData.append("conversationId", stickerGroupId);
-      }
-
-      const response = await fetch("/api/stickers/upload", { method: "POST", body: formData });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || "Gagal upload sticker");
-
-      setStickerName("");
-      setStickerOverlayText("");
-      await queryClient.invalidateQueries({ queryKey: ["/api/stickers", "owned"] });
-      toast({ title: "Sticker berhasil dibuat", description: "Sticker masuk ke library kamu." });
-    } catch (err: any) {
-      toast({ title: "Error", description: err?.message || "Gagal upload sticker.", variant: "destructive" });
-    } finally {
-      setUploadingSticker(false);
-    }
-  }
-
   return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="mb-1 text-base font-extrabold text-[#110e3d]">Premium, Premium+, and Server Boost</h2>
-        <p className="mb-4 text-xs font-semibold text-slate-400">
-          Premium dan Premium+ sekarang diposisikan sebagai Nitro, lalu boost server-nya bisa dikelola manual kayak Discord.
-        </p>
+    <div className="space-y-6">
+      {/* Premium Dashboard Link Banner */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-700 p-6 text-white shadow-md">
+        <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="space-y-1">
+            <h3 className="text-lg font-black flex items-center gap-2">
+              <Crown className="w-5 h-5 text-amber-300" /> Manage Premium in VIP Hub
+            </h3>
+            <p className="text-xs text-purple-100 font-semibold max-w-xl">
+              Sekarang kamu bisa subscribe premium, atur server boost, upload sticker custom, dan pasang border/badge kosmetik langsung di halaman Premium Area.
+            </p>
+          </div>
+          <Link
+            href="/premium"
+            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-white text-purple-700 hover:bg-purple-50 px-5 py-2.5 text-xs font-black transition-all shadow-sm"
+          >
+            Buka Premium Area →
+          </Link>
+        </div>
+      </div>
+
+      {/* Basic Metrics Overview */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm bg-white">
+          <CardContent className="space-y-2 p-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tier Aktif</p>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-amber-500" />
+              <h3 className="text-lg font-black text-[#110e3d]">{data.tierLabel}</h3>
+            </div>
+            <p className="text-xs font-semibold text-slate-500 capitalize">
+              {data.currentTier.replace("_", " ")} Membership
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm bg-white">
+          <CardContent className="space-y-2 p-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Shared Storage</p>
+            <h3 className="text-lg font-black text-[#110e3d]">{usedPercent}% used</h3>
+            <p className="text-xs font-semibold text-slate-500">
+              Limit upload: {formatBytesCompact(data.maxUploadBytes)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm bg-white">
+          <CardContent className="space-y-2 p-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Active Boosts</p>
+            <h3 className="text-lg font-black text-[#110e3d]">{data.totalBoostCount} boost</h3>
+            <p className="text-xs font-semibold text-slate-500">
+              Base {data.baseBoostCount} + purchased {data.purchasedBoostCount}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm bg-white">
+          <CardContent className="space-y-2 p-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Storage Usage</p>
+            <div className="space-y-1">
+              <Progress value={usedPercent} className="h-2 bg-slate-100" />
+              <p className="text-[10px] text-slate-400 font-bold mt-1">
+                {formatBytesCompact(data.sharedStorage?.usedBytes || 0)} / {formatBytesCompact(data.sharedStorage?.capacityBytes || 0)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* PLANS SECTION */}
+      <div className="space-y-4 pt-4 border-t border-[#eae8f5]">
+        <div>
+          <h3 className="text-sm font-extrabold text-[#110e3d] uppercase tracking-wider flex items-center gap-2">
+            <Crown className="w-4 h-4 text-purple-600" /> VIP Membership Plans
+          </h3>
+          <p className="text-xs font-semibold text-slate-400">
+            Pilih paket langganan bulanan atau beli Server Boost di bawah ini untuk meningkatkan level member & server.
+          </p>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-3">
           {planCards.map((plan) => {
             const isCurrent = data.currentTier === plan.key;
@@ -4265,14 +4206,12 @@ function MembershipTab() {
                   <Button
                     onClick={() => {
                       if (plan.key === "free") return;
-                      setRequestMode("tier");
-                      setSelectedTier(plan.key);
-                      paymentRequestMutation.mutate();
+                      paymentRequestMutation.mutate({ tier: plan.key });
                     }}
                     disabled={paymentRequestMutation.isPending || plan.key === "free"}
                     className={`h-10 rounded-xl text-xs font-black text-white ${isPremiumPlus ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400" : isPremium ? "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500" : "bg-slate-400"}`}
                   >
-                    {plan.key === "free" ? "Plan gratis" : paymentRequestMutation.isPending ? "Membuat ticket..." : `Minta ${plan.title}`}
+                    {plan.key === "free" ? "Plan gratis" : paymentRequestMutation.isPending ? "Mengarahkan..." : `Pilih ${plan.title}`}
                   </Button>
                 )}
               </div>
@@ -4281,501 +4220,26 @@ function MembershipTab() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardContent className="space-y-2 p-5">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tier Aktif</p>
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-amber-500" />
-              <h3 className="text-lg font-black text-[#110e3d]">{data.tierLabel}</h3>
-            </div>
-            <p className="text-xs font-semibold text-slate-500">
-              Sticker sync: {nitro.stickerSyncMode === "global_cross_server" ? "Global / Cross-Server" : "Lokal Server"}
+      {/* CHECKOUT & TICKETS QUEUE SECTION */}
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr] pt-4 border-t border-[#eae8f5]">
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm bg-white">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+              <Zap className="w-4 h-4 text-violet-600" /> Server Boost Packages
+            </CardTitle>
+            <p className="text-xs font-semibold text-slate-400 mt-0.5">
+              Beli server boost untuk meningkatkan fitur group. Pembayaran via SayaBayar, aktif otomatis setelah lunas.
             </p>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardContent className="space-y-2 p-5">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Max Upload</p>
-            <h3 className="text-lg font-black text-[#110e3d]">{formatBytesCompact(data.maxUploadBytes)}</h3>
-            <p className="text-xs font-semibold text-slate-500">
-              Proxy upload: {data.sharedStorage.proxyUploadsEnabled ? "On" : "Off"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardContent className="space-y-2 p-5">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Boost Aktif</p>
-            <h3 className="text-lg font-black text-[#110e3d]">{data.totalBoostCount} boost</h3>
-            <p className="text-xs font-semibold text-slate-500">
-              Base {data.baseBoostCount} + purchased {data.purchasedBoostCount}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardContent className="space-y-2 p-5">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sticker Slots</p>
-            <h3 className="text-lg font-black text-[#110e3d]">{ownedStickers.length} / {nitro.maxStickerCount}</h3>
-            <p className="text-xs font-semibold text-slate-500">
-              {formatBytesCompact(nitro.maxStickerFileBytes)} per sticker
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Shared Storage & Nitro Status</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-                <span>{data.sharedStorage.name}</span>
-                <span>{usedPercent}% used</span>
-              </div>
-              <Progress value={usedPercent} className="h-2.5" />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Validation</p>
-                <p className="mt-1 text-sm font-extrabold text-[#110e3d]">{data.sharedStorage.validationMode}</p>
-              </div>
-              <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Available Boost</p>
-                <p className="mt-1 text-sm font-extrabold text-[#110e3d]">{availableBoostSlots.length}</p>
-              </div>
-              <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Boosted Server</p>
-                <p className="mt-1 text-sm font-extrabold text-[#110e3d]">{activeBoostAssignments.length}</p>
-              </div>
-            </div>
-            {data.activeSubscription ? (
-              <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 text-xs font-semibold text-slate-600">
-                Subscription aktif dari <span className="font-black text-[#110e3d]">{format(new Date(data.activeSubscription.startsAt), "dd MMM yyyy")}</span>
-                {data.activeSubscription.endsAt ? (
-                  <> sampai <span className="font-black text-[#110e3d]">{format(new Date(data.activeSubscription.endsAt), "dd MMM yyyy")}</span></>
-                ) : null}
-                .
-              </div>
-            ) : (
-              <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-500">
-                Belum ada subscription premium aktif.
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Nitro-Style Perks</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-xl border border-violet-100 bg-violet-50 p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">Sticker Sync</p>
-              <p className="mt-1 text-sm font-extrabold text-[#110e3d]">
-                {nitro.stickerSyncMode === "global_cross_server" ? "Global / Cross-Server" : "Lokal per Group"}
-              </p>
-              <p className="mt-1 text-xs font-semibold text-slate-600">
-                {nitro.canUseAnimatedStickers ? "Animated stickers enabled." : "Static stickers only."}
-              </p>
-            </div>
-            {nitro.perks?.map((perk: string) => (
-              <div key={perk} className="rounded-xl border border-[#eae8f5] bg-white p-4 text-xs font-bold text-slate-600">
-                {perk}
-              </div>
-            ))}
-            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Premium+ auto boost</p>
-              <p className="mt-1 text-sm font-extrabold text-[#110e3d]">
-                {data.currentTier === "premium_plus" ? "Aktif di semua group yang kamu join" : "Locked sampai kamu upgrade ke Premium+"}
-              </p>
-              <p className="mt-1 text-xs font-semibold text-slate-600">
-                Tiap member Premium+ kasih 1 boost otomatis ke semua server yang dia ikuti.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Your Boost Inventory</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-600">
-              Kalau user sudah Premium atau Premium+, dia bisa pilih group yang mau di-boost dan pilih jumlah boost 1 sampai 3 sesuai stok boost yang tersedia.
-            </div>
-            <div className="rounded-xl border border-violet-100 bg-violet-50 p-4">
-              <div className="grid gap-3 md:grid-cols-[1.2fr_0.6fr_auto]">
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-violet-500">Pilih Group</Label>
-                  <Select value={selectedBoostGroupId} onValueChange={setSelectedBoostGroupId}>
-                    <SelectTrigger className="h-9 rounded-xl border-violet-200 bg-white text-xs font-bold text-[#1e1b4b]">
-                      <SelectValue placeholder="Pilih group target" />
-                    </SelectTrigger>
-                    <SelectContent className="border border-[#eae8f5] bg-white text-slate-700">
-                      <SelectItem value="none">Pilih group</SelectItem>
-                      {groupOptions.map((group: any) => (
-                        <SelectItem key={`bulk-boost-group-${group.id}`} value={String(group.id)}>
-                          {group.name ?? `Group #${group.id}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-violet-500">Jumlah Boost</Label>
-                  <Select value={effectiveSelectedBoostAmount} onValueChange={setSelectedBoostAmount} disabled={selectableBoostAmounts.length === 0}>
-                    <SelectTrigger className="h-9 rounded-xl border-violet-200 bg-white text-xs font-bold text-[#1e1b4b]">
-                      <SelectValue placeholder="0 Boost" />
-                    </SelectTrigger>
-                    <SelectContent className="border border-[#eae8f5] bg-white text-slate-700">
-                      {selectableBoostAmounts.map((amount) => (
-                        <SelectItem key={`boost-amount-${amount}`} value={amount}>
-                          {amount} Boost
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    onClick={() => {
-                      if (selectedBoostGroupId === "none") {
-                        toast({ title: "Pilih group dulu", variant: "destructive" });
-                        return;
-                      }
-                      applyBulkBoostMutation.mutate({
-                        conversationId: Number(selectedBoostGroupId),
-                        boostCount: Number(effectiveSelectedBoostAmount || "0"),
-                      });
-                    }}
-                    disabled={applyBulkBoostMutation.isPending || selectableBoostAmounts.length === 0}
-                    className="h-9 rounded-xl bg-[#6366f1] px-4 text-xs font-black text-white hover:bg-violet-600"
-                  >
-                    {applyBulkBoostMutation.isPending ? "Boosting..." : "Apply Boost"}
-                  </Button>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black uppercase text-violet-700">
-                  Available {availableBoostSlots.length}
-                </span>
-                <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black uppercase text-slate-600">
-                  Base {data.baseBoostCount}
-                </span>
-                <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black uppercase text-emerald-700">
-                  Purchased {data.purchasedBoostCount}
-                </span>
-              </div>
-            </div>
-            {availableBoostSlots.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[#eae8f5] bg-white p-4 text-xs font-semibold text-slate-500">
-                Belum ada boost slot available.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {availableBoostSlots.map((slot: any) => (
-                  <div key={`available-slot-${slot.id}`} className="rounded-xl border border-[#eae8f5] bg-white p-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                      <div>
-                        <p className="text-sm font-extrabold text-[#110e3d]">Boost Slot #{slot.id}</p>
-                        <p className="text-xs font-semibold text-slate-500">
-                          Available{slot.expiresAt ? ` - expires ${format(new Date(slot.expiresAt), "dd MMM yyyy")}` : ""}
-                        </p>
-                      </div>
-                      <div className="w-full max-w-xs space-y-2">
-                        <Select
-                          value={slotTargets[slot.id] ?? "none"}
-                          onValueChange={(value) => setSlotTargets((current) => ({ ...current, [slot.id]: value }))}
-                        >
-                          <SelectTrigger className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs font-bold text-[#1e1b4b]">
-                            <SelectValue placeholder="Pilih server target" />
-                          </SelectTrigger>
-                          <SelectContent className="border border-[#eae8f5] bg-white text-slate-700">
-                            <SelectItem value="none">Pilih server</SelectItem>
-                            {groupOptions.map((group: any) => (
-                              <SelectItem key={`slot-${slot.id}-group-${group.id}`} value={String(group.id)}>
-                                {group.name ?? `Group #${group.id}`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          onClick={() => {
-                            const rawTarget = slotTargets[slot.id];
-                            if (!rawTarget || rawTarget === "none") {
-                              toast({ title: "Pilih server dulu", variant: "destructive" });
-                              return;
-                            }
-                            applyBoostMutation.mutate({ slotId: slot.id, conversationId: Number(rawTarget) });
-                          }}
-                          disabled={applyBoostMutation.isPending}
-                          className="h-9 w-full rounded-xl bg-[#6366f1] text-xs font-black text-white hover:bg-violet-600"
-                        >
-                          {applyBoostMutation.isPending ? "Applying..." : "Boost This Server"}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="border-t border-[#eae8f5] pt-4">
-              <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Manual Boosts Active</p>
-              {activeBoostAssignments.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-500">
-                  Belum ada boost manual yang nempel.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {activeBoostAssignments.map((slot: any) => (
-                    <div key={`active-slot-${slot.id}`} className="rounded-xl border border-[#eae8f5] bg-white p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-extrabold text-[#110e3d]">{slot.assignment?.conversationName ?? `Group #${slot.assignment?.conversationId}`}</p>
-                          <p className="mt-1 text-xs font-semibold text-slate-500">
-                            Boost slot #{slot.id}{slot.expiresAt ? ` - expires ${format(new Date(slot.expiresAt), "dd MMM yyyy")}` : ""}
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          onClick={() => revokeBoostMutation.mutate(slot.id)}
-                          disabled={revokeBoostMutation.isPending}
-                          className="h-8 rounded-lg border-red-200 bg-red-50 px-3 text-[10px] font-black text-red-600 hover:bg-red-100"
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Boosted Servers</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {groupOptions.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-500">
-                Kamu belum join group mana pun.
-              </div>
-            ) : (
-              groupOptions.map((group: any) => (
-                <div key={`boost-group-${group.id}`} className="rounded-xl border border-[#eae8f5] bg-white p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-extrabold text-[#110e3d]">{group.name ?? `Group #${group.id}`}</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-600">Level {group.level}</span>
-                        <span className="rounded-full bg-violet-100 px-2 py-1 text-[10px] font-black uppercase text-violet-700">Manual {group.slotAssignments ?? 0}</span>
-                        <span className="rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-black uppercase text-indigo-700">You {group.myManualBoostCount ?? 0}</span>
-                        <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black uppercase text-amber-700">Auto {group.premiumPlusMemberBoostCount ?? 0}</span>
-                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase text-emerald-700">Total {group.activeBoostCount}</span>
-                      </div>
-                      <p className="mt-3 text-xs font-semibold text-slate-500">
-                        {group.maxChannels} channels cap • {group.maxRoles} roles cap
-                      </p>
-                    </div>
-                    <Link
-                      href={`/member?tab=messages&group=${group.id}`}
-                      className="inline-flex shrink-0 items-center rounded-lg bg-[#6366f1] px-3 py-1.5 text-[10px] font-black text-white transition-colors hover:bg-violet-600"
-                    >
-                      Open
-                    </Link>
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Sticker Creator</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <input ref={stickerFileRef} type="file" accept="image/png,image/webp,image/jpeg,image/gif" className="hidden" onChange={handleStickerUpload} />
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sticker Name</Label>
-              <Input value={stickerName} onChange={(e) => setStickerName(e.target.value.slice(0, 40))} placeholder="contoh: happy_cat" className="rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-1.5 md:col-span-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Overlay Text</Label>
-                <Input value={stickerOverlayText} onChange={(e) => setStickerOverlayText(e.target.value.slice(0, 60))} placeholder="contoh: Halo Kak!" className="rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
-              </div>
+            {/* Group Target Selector */}
+            {groupOptions.length > 0 && (
               <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Font</Label>
-                <Input value={stickerFontFamily} onChange={(e) => setStickerFontFamily(e.target.value.slice(0, 30))} placeholder="Inter" className="rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Text Color</Label>
-                <Input value={stickerTextColor} onChange={(e) => setStickerTextColor(e.target.value.slice(0, 20))} placeholder="#111827" className="rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800" />
-              </div>
-            </div>
-            {data.currentTier === "free" && (
-              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Group</Label>
-                <Select value={stickerGroupId} onValueChange={setStickerGroupId}>
-                  <SelectTrigger className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs font-bold text-[#1e1b4b]">
-                    <SelectValue placeholder="Pilih group target" />
-                  </SelectTrigger>
-                  <SelectContent className="border border-[#eae8f5] bg-white text-slate-700">
-                    <SelectItem value="none">Pilih group</SelectItem>
-                    {groupOptions.map((group: any) => (
-                      <SelectItem key={`sticker-target-${group.id}`} value={String(group.id)}>
-                        {group.name ?? `Group #${group.id}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-600">
-              {data.currentTier === "free"
-                ? "User biasa cuma bisa bikin sticker lokal per group."
-                : data.currentTier === "premium_plus"
-                ? "Premium+ bisa share / reuse sticker antar group, bukan upload sticker baru."
-                : "Premium bisa bikin sticker global lintas semua group."}
-            </div>
-            <Button onClick={() => stickerFileRef.current?.click()} disabled={uploadingSticker || !stickerName.trim() || data.currentTier === "premium_plus"} className="h-10 rounded-xl bg-[#6366f1] px-4 text-xs font-bold text-white shadow-md shadow-violet-500/5 hover:bg-violet-600">
-              {uploadingSticker ? "Uploading..." : data.currentTier === "premium_plus" ? "Premium+ pakai share" : "Upload Sticker"}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-extrabold text-[#110e3d]">My Sticker Library</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {ownedStickers.length === 0 ? (
-                <div className="sm:col-span-2 xl:col-span-3 rounded-xl border border-dashed border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-500">
-                  Belum ada sticker. Bikin satu dulu biar bisa dipakai di chat.
-                </div>
-              ) : (
-                ownedStickers.map((sticker: any) => (
-                  <div key={sticker.id} className="rounded-xl border border-[#eae8f5] bg-white p-3">
-                    <div className="aspect-square overflow-hidden rounded-xl border border-[#eae8f5] bg-slate-50">
-                      <img src={sticker.assetUrl} alt={sticker.name} className="h-full w-full object-contain" />
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      <div>
-                        <p className="truncate text-xs font-extrabold text-[#110e3d]">{sticker.name}</p>
-                        <p className="text-[10px] font-semibold text-slate-500">
-                          {sticker.scope === "global_cross_server" ? "Global Nitro Sticker" : `Local • ${sticker.conversationName ?? "Group"}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-600">{formatBytesCompact(sticker.sizeBytes)}</span>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={async () => {
-                              const nextName = window.prompt("Nama sticker baru (opsional)", sticker.name) ?? sticker.name;
-                              try {
-                                await customFetch(`/api/stickers/${sticker.id}`, {
-                                  method: "PATCH",
-                                  body: JSON.stringify({
-                                    name: nextName.trim(),
-                                    editorConfig: sticker.editorConfig ?? {},
-                                  }),
-                                  headers: { "Content-Type": "application/json" },
-                                });
-                                await queryClient.invalidateQueries({ queryKey: ["/api/stickers", "owned"] });
-                                toast({ title: "Sticker updated" });
-                              } catch (err: any) {
-                                toast({ title: "Error", description: err?.message || "Gagal edit sticker.", variant: "destructive" });
-                              }
-                            }}
-                            className="h-8 rounded-lg border-slate-200 bg-slate-50 px-3 text-[10px] font-black text-slate-600 hover:bg-slate-100"
-                          >
-                            Edit
-                          </Button>
-                          <Button variant="outline" onClick={() => deleteStickerMutation.mutate(sticker.id)} disabled={deleteStickerMutation.isPending} className="h-8 rounded-lg border-red-200 bg-red-50 px-3 text-[10px] font-black text-red-600 hover:bg-red-100">
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Buy Nitro or Server Boost</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Jenis Request</Label>
-                <Select value={requestMode} onValueChange={(value) => setRequestMode(value as "tier" | "boost")}>
-                  <SelectTrigger className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs font-bold text-[#1e1b4b]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border border-[#eae8f5] bg-white text-slate-700">
-                    <SelectItem value="tier">Premium / Premium+</SelectItem>
-                    <SelectItem value="boost">Boost Group</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {requestMode === "tier" ? (
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tier</Label>
-                  <Select value={selectedTier} onValueChange={setSelectedTier}>
-                    <SelectTrigger className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs font-bold text-[#1e1b4b]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="border border-[#eae8f5] bg-white text-slate-700">
-                      <SelectItem value="premium">Premium</SelectItem>
-                      <SelectItem value="premium_plus">Premium+</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Boost Package</Label>
-                  <Select value={selectedPackageSku} onValueChange={setSelectedPackageSku}>
-                    <SelectTrigger className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs font-bold text-[#1e1b4b]">
-                      <SelectValue placeholder="Pilih package boost" />
-                    </SelectTrigger>
-                    <SelectContent className="border border-[#eae8f5] bg-white text-slate-700">
-                      {data.packages.map((pkg: any) => (
-                        <SelectItem key={pkg.sku} value={pkg.sku}>
-                          {pkg.displayName} - {formatIdr(pkg.priceIdr)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
-
-            {requestMode === "boost" && (
-              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Group</Label>
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Group (Opsional)</Label>
                 <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
                   <SelectTrigger className="h-9 rounded-xl border-[#eae8f5] bg-slate-50 text-xs font-bold text-[#1e1b4b]">
-                    <SelectValue placeholder="Pilih group target" />
+                    <SelectValue placeholder="Pilih group target boost" />
                   </SelectTrigger>
                   <SelectContent className="border border-[#eae8f5] bg-white text-slate-700">
                     <SelectItem value="none">Nanti diatur admin</SelectItem>
@@ -4789,54 +4253,113 @@ function MembershipTab() {
               </div>
             )}
 
+            {/* Boost Package Cards */}
+            {Array.isArray(data.packages) && data.packages.length > 0 ? (
+              <div className="grid gap-3">
+                {data.packages.map((pkg: any) => (
+                  <div
+                    key={pkg.sku}
+                    className="group flex items-center justify-between gap-3 rounded-2xl border-2 border-[#eae8f5] bg-white p-4 hover:border-violet-300 hover:bg-violet-50/30 transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm shadow-violet-500/30">
+                        <Zap className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-extrabold text-[#110e3d] truncate">{pkg.displayName}</p>
+                          {pkg.discountPriceIdr && (
+                            <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-green-700">DISKON</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {pkg.discountPriceIdr ? (
+                            <>
+                              <p className="text-xs font-black text-green-600">{formatIdr(pkg.discountPriceIdr)}</p>
+                              <p className="text-[10px] font-semibold text-slate-400 line-through">{formatIdr(pkg.priceIdr)}</p>
+                            </>
+                          ) : (
+                            <p className="text-xs font-black text-violet-600">{formatIdr(pkg.priceIdr)}</p>
+                          )}
+                        </div>
+                        {pkg.description && (
+                          <p className="text-[10px] font-semibold text-slate-400 mt-0.5 truncate">{pkg.description}</p>
+                        )}
+                        <p className="text-[10px] font-semibold text-slate-400">{pkg.boostCount} boost · {pkg.durationDays} hari</p>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        paymentRequestMutation.mutate({
+                          packageSku: pkg.sku,
+                          conversationId: selectedGroupId !== "none" ? Number(selectedGroupId) : undefined,
+                          note: requestNote.trim() || undefined,
+                        });
+                      }}
+                      disabled={paymentRequestMutation.isPending}
+                      className="h-9 shrink-0 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-black px-4 shadow-md shadow-violet-500/20 active:scale-95 transition-all"
+                    >
+                      {paymentRequestMutation.isPending ? (
+                        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin inline-block" />Loading</span>
+                      ) : "Beli →"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border-2 border-dashed border-[#eae8f5] p-8 text-center">
+                <Zap className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-xs font-semibold text-slate-400">Belum ada paket boost tersedia.</p>
+                <p className="text-[10px] text-slate-300 font-semibold mt-0.5">Hubungi admin untuk menambahkan paket.</p>
+              </div>
+            )}
+
+            {/* Optional Note */}
             <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Catatan</Label>
+              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Catatan (Opsional)</Label>
               <Textarea
                 value={requestNote}
                 onChange={(e) => setRequestNote(e.target.value)}
-                placeholder="Masukin bukti transfer, catatan, atau server target."
-                className="resize-none rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800"
-                rows={4}
+                placeholder="Catatan tambahan untuk admin, misal: nama karakter, keperluan boost, dll."
+                className="resize-none rounded-xl border-[#eae8f5] bg-slate-50 text-xs text-slate-800 focus:bg-white"
+                rows={2}
               />
             </div>
 
-            <Button
-              onClick={() => {
-                if (requestMode === "boost" && !selectedPackageSku) {
-                  toast({ title: "Pilih package boost dulu", variant: "destructive" });
-                  return;
-                }
-                paymentRequestMutation.mutate();
-              }}
-              disabled={paymentRequestMutation.isPending}
-              className="h-10 rounded-xl bg-[#6366f1] px-4 text-xs font-bold text-white shadow-md shadow-violet-500/5 hover:bg-violet-600"
-            >
-              {paymentRequestMutation.isPending ? "Membuat ticket..." : "Buka Ticket Pembayaran"}
-            </Button>
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-[#eae8f5] shadow-sm">
+        <Card className="rounded-2xl border-[#eae8f5] shadow-sm bg-white">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-extrabold text-[#110e3d]">Payment Queue</CardTitle>
+            <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+              <Ticket className="w-4 h-4 text-purple-600" /> Riwayat Transaksi
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-xl border border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-600">
-              User buka ticket di sini, lalu admin cek dan grant dari Admin Page &gt; Payments.
+              Daftar riwayat transaksi pembayaran langganan dan booster Anda yang berhasil diproses.
             </div>
             {paymentTickets.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[#eae8f5] bg-slate-50 p-4 text-xs font-semibold text-slate-500">
-                Belum ada ticket pembayaran.
+              <div className="rounded-xl border border-dashed border-[#eae8f5] bg-slate-50 p-4 text-center text-xs font-semibold text-slate-400">
+                Belum ada riwayat transaksi.
               </div>
             ) : (
-              <div className="space-y-3">
-                {paymentTickets.slice(0, 6).map((ticket: any) => (
-                  <div key={ticket.id} className="rounded-xl border border-[#eae8f5] bg-white p-4">
+              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                {paymentTickets.map((ticket: any) => (
+                  <div key={ticket.id} className="rounded-xl border border-[#eae8f5] bg-white p-4 text-xs">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-xs font-extrabold text-[#110e3d]">Payment Ticket #{ticket.id}</p>
-                        <p className="mt-1 text-xs font-semibold text-slate-500">
-                          {ticket.requestedTier ? `Tier ${ticket.requestedTier}` : ticket.requestedPackageSku}
+                        <p className="font-extrabold text-[#110e3d]">Payment Ticket #{ticket.id}</p>
+                        <p className="mt-1 font-semibold text-slate-500">
+                          {ticket.requestedTier
+                            ? `Tier ${ticket.requestedTier === "premium_plus" ? "Premium+" : "Premium"}`
+                            : ticket.requestedPackageSku || "Server Boost"}
+                        </p>
+                        {ticket.note && (
+                          <p className="mt-1 text-[10px] text-slate-400 truncate max-w-[200px]">Note: {ticket.note}</p>
+                        )}
+                        <p className="mt-1 text-[10px] text-slate-400 font-bold">
+                          Requested: {format(new Date(ticket.createdAt), "dd MMM yyyy HH:mm")}
                         </p>
                         {ticket.grantedAt && (
                           <p className="mt-1 text-[10px] font-semibold text-emerald-600">
@@ -4844,7 +4367,7 @@ function MembershipTab() {
                           </p>
                         )}
                       </div>
-                      <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${
+                      <span className={`rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${
                         ticket.paymentStatus === "paid" ? "bg-emerald-100 text-emerald-700" :
                         ticket.paymentStatus === "rejected" ? "bg-red-100 text-red-700" :
                         "bg-amber-100 text-amber-700"
@@ -4861,6 +4384,14 @@ function MembershipTab() {
       </div>
     </div>
   );
+}
+
+function formatBytesCompact(bytes: number) {
+  if (bytes === 0) return "0 Bytes";
+  const k = 1024;
+  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
 function MusicTab() {

@@ -22,6 +22,7 @@ import membershipsRouter from "./memberships";
 import paymentsRouter from "./payments";
 import stickersRouter from "./stickers";
 import emojisRouter from "./emojis";
+import boostPackagesRouter from "./boostPackages";
 
 const router: IRouter = Router();
 
@@ -48,6 +49,7 @@ router.use(membershipsRouter);
 router.use(paymentsRouter);
 router.use(stickersRouter);
 router.use(emojisRouter);
+router.use(boostPackagesRouter);
 
 
 export default router;

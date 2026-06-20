@@ -57,8 +57,10 @@ export const boostPackagesTable = pgTable("boost_packages", {
   id: serial("id").primaryKey(),
   sku: varchar("sku", { length: 50 }).notNull().unique(),
   displayName: varchar("display_name", { length: 100 }).notNull(),
+  description: text("description"),
   boostCount: integer("boost_count").notNull(),
   priceIdr: integer("price_idr").notNull(),
+  discountPriceIdr: integer("discount_price_idr"), // null = no discount
   durationDays: integer("duration_days").notNull().default(30),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

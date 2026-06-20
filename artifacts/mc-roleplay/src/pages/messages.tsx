@@ -102,7 +102,6 @@ import {
   Music,
   Play,
   Pause,
-  Volume2,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";

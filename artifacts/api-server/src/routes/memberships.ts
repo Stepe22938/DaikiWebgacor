@@ -9,6 +9,8 @@ import {
   groupBoostAssignmentsTable,
   ticketsTable,
   usersTable,
+  userTierSubscriptionsTable,
+  systemSettingsTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
@@ -23,6 +25,7 @@ import {
   getTierPolicy,
   revokeGroupBoostAssignment,
   syncTierIncludedBoostSlotsForUser,
+  createBoostOrderWithSlots,
 } from "../lib/tierBoosts";
 
 const router: IRouter = Router();
@@ -41,6 +44,123 @@ router.get("/me/membership", async (req, res): Promise<void> => {
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;
+  }
+
+  // Auto-sync status of any pending SayaBayar transactions
+  const settingsRow = await db.query.systemSettingsTable.findFirst({
+    where: eq(systemSettingsTable.key, "homepage_settings"),
+  });
+  const settings = {
+    sayabayarApiKey: "",
+    sayabayarWebhookSecret: "",
+    premiumPrice: 25000,
+    premiumPlusPrice: 50000,
+    ...(settingsRow?.value || {} as any),
+  };
+  const apiKey = settings.sayabayarApiKey;
+
+  if (apiKey) {
+    const pendingTickets = await db.query.ticketsTable.findMany({
+      where: and(
+        eq(ticketsTable.creatorId, user.id),
+        eq(ticketsTable.ticketType, "payment"),
+        eq(ticketsTable.status, "open"),
+        eq(ticketsTable.paymentStatus, "pending_review"),
+      ),
+    });
+
+    for (const ticket of pendingTickets) {
+      const match = ticket.adminNotes?.match(/\[SayaBayar ID:\s*([^\]\s]+)\]/);
+      if (match && match[1]) {
+        const invoiceId = match[1];
+        try {
+          const apiResponse = await fetch(`https://api.sayabayar.com/v1/invoices/${invoiceId}`, {
+            method: "GET",
+            headers: {
+              "X-API-Key": apiKey,
+            },
+          });
+          if (apiResponse.ok) {
+            const resJson = await apiResponse.json() as any;
+            const invoiceStatus = resJson?.data?.status;
+            if (invoiceStatus === "paid" || invoiceStatus === "success") {
+              const grantTier = ticket.requestedTier;
+              const grantPackageSku = ticket.requestedPackageSku;
+              const targetConversationId = ticket.requestedConversationId;
+
+              if (grantTier) {
+                const endsAt = new Date();
+                endsAt.setMonth(endsAt.getMonth() + 1);
+                await db.insert(userTierSubscriptionsTable).values({
+                  userId: ticket.creatorId,
+                  tier: grantTier,
+                  status: "active",
+                  source: "payment_ticket",
+                  startsAt: new Date(),
+                  endsAt,
+                  autoRenews: false,
+                  notes: `Granted automatically via SayaBayar Status Sync for ticket #${ticket.id}`,
+                });
+
+                const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, ticket.creatorId) });
+                if (targetUser && !["admin", "staff", "dev", "dev_website"].includes(targetUser.role)) {
+                  await db.update(usersTable)
+                    .set({ role: grantTier, updatedAt: new Date() })
+                    .where(eq(usersTable.id, ticket.creatorId));
+                }
+              }
+
+              let createdOrderBoostCount = 0;
+              if (grantPackageSku) {
+                await ensureBoostPackageSeeds();
+                const created = await createBoostOrderWithSlots({
+                  buyerUserId: ticket.creatorId,
+                  packageSku: grantPackageSku,
+                  notes: `Granted automatically via SayaBayar Status Sync for ticket #${ticket.id}`,
+                });
+                createdOrderBoostCount = created.package.boostCount;
+              }
+
+              const boostApplications = targetConversationId && createdOrderBoostCount > 0 ? createdOrderBoostCount : 0;
+              if (targetConversationId && boostApplications > 0) {
+                const availableSlots = await db
+                  .select({ id: boostSlotsTable.id })
+                  .from(boostSlotsTable)
+                  .where(and(
+                    eq(boostSlotsTable.ownerUserId, ticket.creatorId),
+                    eq(boostSlotsTable.status, "available"),
+                  ))
+                  .orderBy(asc(boostSlotsTable.id));
+
+                if (availableSlots.length >= boostApplications) {
+                  for (const slot of availableSlots.slice(0, boostApplications)) {
+                    await applyBoostSlotToConversation({
+                      slotId: slot.id,
+                      actorUserId: ticket.creatorId,
+                      ownerOverrideUserId: ticket.creatorId,
+                      conversationId: targetConversationId,
+                    });
+                  }
+                }
+              }
+
+              const currentNotes = ticket.adminNotes || "";
+              await db.update(ticketsTable)
+                .set({
+                  paymentStatus: "paid",
+                  status: "resolved",
+                  grantedAt: new Date(),
+                  updatedAt: new Date(),
+                  adminNotes: currentNotes ? `${currentNotes} | Auto-Approved via SayaBayar Status Sync` : "Auto-Approved via SayaBayar Status Sync",
+                })
+                .where(eq(ticketsTable.id, ticket.id));
+            }
+          }
+        } catch (err) {
+          console.error(`Error checking SayaBayar invoice ${invoiceId} status:`, err);
+        }
+      }
+    }
   }
 
   await ensureBoostPackageSeeds();

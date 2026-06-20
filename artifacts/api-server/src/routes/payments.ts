@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { aliasedTable, and, asc, desc, eq } from "drizzle-orm";
+import { aliasedTable, and, asc, desc, eq, like } from "drizzle-orm";
 import {
   boostSlotsTable,
   conversationMembersTable,
@@ -8,9 +8,12 @@ import {
   ticketsTable,
   userTierSubscriptionsTable,
   usersTable,
+  systemSettingsTable,
+  boostPackagesTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
+import crypto from "crypto";
 import {
   ensureBoostPackageSeeds,
   createBoostOrderWithSlots,
@@ -97,6 +100,104 @@ router.post("/payment-requests", async (req, res): Promise<void> => {
     conversationName = conversation?.name ?? "Unnamed Group";
   }
 
+  // 1. Get SayaBayar configurations
+  const settingsRow = await db.query.systemSettingsTable.findFirst({
+    where: eq(systemSettingsTable.key, "homepage_settings"),
+  });
+  const settings = {
+    sayabayarApiKey: "",
+    sayabayarWebhookSecret: "",
+    premiumPrice: 25000,
+    premiumPlusPrice: 50000,
+    ...(settingsRow?.value || {} as any),
+  };
+  const apiKey = settings.sayabayarApiKey;
+
+  if (!apiKey) {
+    res.status(400).json({ error: "SayaBayar API Key belum dikonfigurasi di pengaturan admin." });
+    return;
+  }
+
+  // 2. Compute exact price
+  let priceIdr = 0;
+  if (requestedTier) {
+    if (requestedTier === "premium") {
+      priceIdr = settings.premiumPrice ?? 25000;
+    } else if (requestedTier === "premium_plus") {
+      priceIdr = settings.premiumPlusPrice ?? 50000;
+    } else {
+      res.status(400).json({ error: "Membership tier tidak valid." });
+      return;
+    }
+  } else if (requestedPackageSku) {
+    const pkg = await db.query.boostPackagesTable.findFirst({
+      where: eq(boostPackagesTable.sku, requestedPackageSku),
+    });
+    if (!pkg) {
+      res.status(404).json({ error: "Package boost tidak ditemukan." });
+      return;
+    }
+    // Use discount price if one is set, otherwise use regular price
+    priceIdr = pkg.discountPriceIdr ?? pkg.priceIdr;
+  }
+
+  if (priceIdr <= 0) {
+    res.status(400).json({ error: "Harga tidak valid." });
+    return;
+  }
+
+  // 3. Create SayaBayar invoice
+  let invoiceData: any;
+  try {
+    const description = getPaymentDescription({
+      tier: requestedTier,
+      packageSku: requestedPackageSku,
+      conversationName,
+      note,
+    });
+
+    const email = `${user.username || "user"}_${user.id}@arcadiamc.net`;
+    const customerName = user.displayName || user.username || `Player #${user.id}`;
+    const origin = req.headers.origin || "http://localhost:5173";
+    const redirectUrl = `${origin}/premium`;
+
+    const apiResponse = await fetch("https://api.sayabayar.com/v1/invoices", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify({
+        customer_name: customerName,
+        customer_email: email,
+        amount: priceIdr,
+        description: description,
+        channel_preference: "platform",
+        redirect_url: redirectUrl,
+      }),
+    });
+
+    const resJson = await apiResponse.json() as any;
+
+    if (!apiResponse.ok) {
+      console.error("SayaBayar API Error response:", JSON.stringify(resJson, null, 2));
+      res.status(apiResponse.status).json({
+        error: resJson?.error?.message || resJson?.message || resJson?.error || "Gagal membuat invoice di SayaBayar.",
+      });
+      return;
+    }
+
+    invoiceData = resJson.data;
+    if (!invoiceData || !invoiceData.payment_url) {
+      throw new Error("Missing invoice data or payment_url from SayaBayar.");
+    }
+  } catch (error: any) {
+    console.error("Error creating SayaBayar invoice:", error);
+    res.status(500).json({ error: error.message || "Terjadi kesalahan koneksi saat membuat invoice." });
+    return;
+  }
+
+  // 4. Create the payment ticket
   const [ticket] = await db.insert(ticketsTable).values({
     creatorId: user.id,
     ticketType: "payment",
@@ -113,10 +214,149 @@ router.post("/payment-requests", async (req, res): Promise<void> => {
     requestedPackageSku,
     requestedConversationId,
     grantedAt: null,
-    adminNotes: note,
+    adminNotes: `[SayaBayar ID: ${invoiceData.id}]${note ? ' | ' + note : ''}`,
   }).returning();
 
-  res.status(201).json(serializeDates(ticket));
+  res.status(201).json(serializeDates({
+    ...ticket,
+    checkoutUrl: invoiceData.payment_url,
+  }));
+});
+
+router.post("/payments/sayabayar/webhook", async (req, res): Promise<void> => {
+  try {
+    const event = req.body?.event;
+    const status = req.body?.data?.status;
+    const invoiceId = req.body?.data?.invoice_id;
+
+    if (event !== "invoice.paid" || status !== "paid" || !invoiceId) {
+      res.json({ ok: true, message: "Ignoring non-paid event" });
+      return;
+    }
+
+    const settingsRow = await db.query.systemSettingsTable.findFirst({
+      where: eq(systemSettingsTable.key, "homepage_settings"),
+    });
+    const settings = (settingsRow?.value || {}) as any;
+    const webhookSecret = settings.sayabayarWebhookSecret;
+
+    if (webhookSecret) {
+      const signature = req.headers["x-webhook-signature"];
+      if (!signature || typeof signature !== "string") {
+        res.status(400).json({ error: "Missing signature header" });
+        return;
+      }
+      const rawBody = (req as any).rawBody ? (req as any).rawBody.toString("utf8") : "";
+      const computedSignature = crypto
+        .createHmac("sha256", webhookSecret)
+        .update(rawBody)
+        .digest("hex");
+      
+      if (computedSignature !== signature) {
+        res.status(400).json({ error: "Invalid webhook signature" });
+        return;
+      }
+    }
+
+    const likePattern = `%[SayaBayar ID: ${invoiceId}]%`;
+    const [ticket] = await db
+      .select()
+      .from(ticketsTable)
+      .where(and(
+        eq(ticketsTable.ticketType, "payment"),
+        like(ticketsTable.adminNotes, likePattern)
+      ))
+      .limit(1);
+
+    if (!ticket) {
+      res.status(404).json({ error: "No matching payment ticket found" });
+      return;
+    }
+
+    if (ticket.paymentStatus === "paid") {
+      res.json({ ok: true, message: "Payment already processed" });
+      return;
+    }
+
+    // Grant membership/boost logic
+    const grantTier = ticket.requestedTier;
+    const grantPackageSku = ticket.requestedPackageSku;
+    const targetConversationId = ticket.requestedConversationId;
+
+    if (grantTier) {
+      const endsAt = new Date();
+      endsAt.setMonth(endsAt.getMonth() + 1);
+      await db.insert(userTierSubscriptionsTable).values({
+        userId: ticket.creatorId,
+        tier: grantTier,
+        status: "active",
+        source: "payment_ticket",
+        startsAt: new Date(),
+        endsAt,
+        autoRenews: false,
+        notes: `Granted automatically via SayaBayar Webhook for ticket #${ticket.id}`,
+      });
+
+      const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, ticket.creatorId) });
+      if (targetUser && !["admin", "staff", "dev", "dev_website"].includes(targetUser.role)) {
+        await db.update(usersTable)
+          .set({ role: grantTier, updatedAt: new Date() })
+          .where(eq(usersTable.id, ticket.creatorId));
+      }
+    }
+
+    let createdOrderPackageSku: string | null = null;
+    let createdOrderBoostCount = 0;
+    if (grantPackageSku) {
+      await ensureBoostPackageSeeds();
+      const created = await createBoostOrderWithSlots({
+        buyerUserId: ticket.creatorId,
+        packageSku: grantPackageSku,
+        notes: `Granted automatically via SayaBayar Webhook for ticket #${ticket.id}`,
+      });
+      createdOrderPackageSku = created.package.sku;
+      createdOrderBoostCount = created.package.boostCount;
+    }
+
+    const boostApplications = targetConversationId && createdOrderBoostCount > 0 ? createdOrderBoostCount : 0;
+    if (targetConversationId && boostApplications > 0) {
+      const availableSlots = await db
+        .select({ id: boostSlotsTable.id })
+        .from(boostSlotsTable)
+        .where(and(
+          eq(boostSlotsTable.ownerUserId, ticket.creatorId),
+          eq(boostSlotsTable.status, "available"),
+        ))
+        .orderBy(asc(boostSlotsTable.id));
+
+      if (availableSlots.length >= boostApplications) {
+        for (const slot of availableSlots.slice(0, boostApplications)) {
+          await applyBoostSlotToConversation({
+            slotId: slot.id,
+            actorUserId: ticket.creatorId,
+            ownerOverrideUserId: ticket.creatorId,
+            conversationId: targetConversationId,
+          });
+        }
+      }
+    }
+
+    const currentNotes = ticket.adminNotes || "";
+    await db.update(ticketsTable)
+      .set({
+        paymentStatus: "paid",
+        status: "resolved",
+        grantedAt: new Date(),
+        updatedAt: new Date(),
+        adminNotes: currentNotes ? `${currentNotes} | Auto-Approved via SayaBayar Webhook` : "Auto-Approved via SayaBayar Webhook",
+      })
+      .where(eq(ticketsTable.id, ticket.id));
+
+    res.json({ ok: true, message: "Payment processed successfully and rewards granted" });
+  } catch (err: any) {
+    console.error("Error processing SayaBayar webhook:", err);
+    res.status(500).json({ error: err.message || "Internal server error" });
+  }
 });
 
 router.get("/admin/payments", async (req, res): Promise<void> => {
