@@ -42,7 +42,7 @@ testem.log
 Thumbs.db
 
 # local secrets
-.env
+#.env
 .env.*
 
 .cursor/rules/nx-rules.mdc
