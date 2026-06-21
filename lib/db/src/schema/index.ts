@@ -19,3 +19,4 @@ export * from "./bots";
 export * from "./memberships";
 export * from "./stickers";
 export * from "./emojis";
+export * from "./webhooks";

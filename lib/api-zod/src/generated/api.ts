@@ -760,7 +760,8 @@ export const ListConversationsResponseItem = zod.object({
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "inviteCode": zod.string().nullish()
 })
 export const ListConversationsResponse = zod.array(ListConversationsResponseItem)
 
@@ -790,6 +791,8 @@ export const CreateOrGetDmResponse = zod.object({
   "type": zod.enum(['dm', 'group']),
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "otherUserId": zod.number().nullish(),
@@ -801,7 +804,8 @@ export const CreateOrGetDmResponse = zod.object({
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "inviteCode": zod.string().nullish()
 })
 
 
@@ -817,6 +821,8 @@ export const GetConversationResponse = zod.object({
   "type": zod.enum(['dm', 'group']),
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "otherUserId": zod.number().nullish(),
@@ -828,7 +834,8 @@ export const GetConversationResponse = zod.object({
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "inviteCode": zod.string().nullish()
 })
 
 
@@ -841,11 +848,13 @@ export const UpdateGroupParams = zod.object({
 
 export const updateGroupBodyNameMax = 100;
 
+export const updateGroupBodyDescriptionMax = 500;
+
 
 
 export const UpdateGroupBody = zod.object({
   "name": zod.string().min(1).max(updateGroupBodyNameMax).optional(),
-  "description": zod.string().max(500).nullish(),
+  "description": zod.string().max(updateGroupBodyDescriptionMax).nullish(),
   "iconUrl": zod.string().nullish(),
   "bannerUrl": zod.string().nullish()
 })
@@ -868,7 +877,8 @@ export const UpdateGroupResponse = zod.object({
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "inviteCode": zod.string().nullish()
 })
 
 
@@ -891,6 +901,7 @@ export const ListMessagesResponseItem = zod.object({
   "id": zod.number(),
   "conversationId": zod.number(),
   "senderId": zod.number().nullish(),
+  "title": zod.string().nullish(),
   "content": zod.string(),
   "imageUrl": zod.string().nullish(),
   "attachmentDriveFileId": zod.string().nullish(),
@@ -939,6 +950,7 @@ export const sendMessageBodyContentMax = 4000;
 
 
 export const SendMessageBody = zod.object({
+  "title": zod.string().optional(),
   "content": zod.string().min(1).max(sendMessageBodyContentMax).optional(),
   "imageUrl": zod.string().optional(),
   "attachmentDriveFileId": zod.string().optional(),
@@ -970,6 +982,7 @@ export const ListPinnedMessagesResponseItem = zod.object({
   "id": zod.number(),
   "conversationId": zod.number(),
   "senderId": zod.number().nullish(),
+  "title": zod.string().nullish(),
   "content": zod.string(),
   "imageUrl": zod.string().nullish(),
   "attachmentDriveFileId": zod.string().nullish(),
@@ -1018,6 +1031,7 @@ export const PinMessageResponse = zod.object({
   "id": zod.number(),
   "conversationId": zod.number(),
   "senderId": zod.number().nullish(),
+  "title": zod.string().nullish(),
   "content": zod.string(),
   "imageUrl": zod.string().nullish(),
   "attachmentDriveFileId": zod.string().nullish(),
@@ -1065,6 +1079,7 @@ export const UnpinMessageResponse = zod.object({
   "id": zod.number(),
   "conversationId": zod.number(),
   "senderId": zod.number().nullish(),
+  "title": zod.string().nullish(),
   "content": zod.string(),
   "imageUrl": zod.string().nullish(),
   "attachmentDriveFileId": zod.string().nullish(),
@@ -1125,6 +1140,7 @@ export const ListStarredMessagesResponseItem = zod.object({
   "id": zod.number(),
   "conversationId": zod.number(),
   "senderId": zod.number().nullish(),
+  "title": zod.string().nullish(),
   "content": zod.string(),
   "imageUrl": zod.string().nullish(),
   "attachmentDriveFileId": zod.string().nullish(),
@@ -1228,6 +1244,49 @@ export const AddConversationMemberBody = zod.object({
 export const RemoveConversationMemberParams = zod.object({
   "id": zod.coerce.number(),
   "userId": zod.coerce.number()
+})
+
+
+/**
+ * @summary Generate or retrieve the group invite code
+ */
+export const GenerateInviteCodeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GenerateInviteCodeBody = zod.object({
+  "regenerate": zod.boolean().optional()
+})
+
+export const GenerateInviteCodeResponse = zod.object({
+  "inviteCode": zod.string().nullable()
+})
+
+
+/**
+ * @summary Get group details using an invite code
+ */
+export const GetInviteDetailsParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetInviteDetailsResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "iconUrl": zod.string().nullish(),
+  "memberCount": zod.number()
+})
+
+
+/**
+ * @summary Join a group chat using an invite code
+ */
+export const JoinGroupByInviteCodeParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const JoinGroupByInviteCodeResponse = zod.object({
+  "conversationId": zod.number()
 })
 
 

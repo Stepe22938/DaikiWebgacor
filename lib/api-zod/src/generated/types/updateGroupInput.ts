@@ -12,4 +12,13 @@ export interface UpdateGroupInput {
      * @maxLength 100
      */
   name?: string;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  description?: string | null;
+  /** @nullable */
+  iconUrl?: string | null;
+  /** @nullable */
+  bannerUrl?: string | null;
 }

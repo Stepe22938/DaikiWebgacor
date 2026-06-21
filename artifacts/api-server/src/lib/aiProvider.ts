@@ -225,3 +225,95 @@ export async function createAiChatCompletion(options: AiChatCompletionOptions): 
   throw new Error(lastError || `${config.provider} API error: no response`);
 }
 
+export type AiVisionMessage = {
+  role: "system" | "user" | "assistant";
+  content:
+    | string
+    | Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      >;
+};
+
+export async function createAiVisionCompletion(options: {
+  messages: AiVisionMessage[];
+  model?: string | null;
+  maxTokens?: number;
+}): Promise<AiChatCompletionResult> {
+  const config = getProviderConfig(options.model || "gpt-4o");
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${config.apiKey}`,
+    "x-api-key": config.apiKey,
+  };
+
+  const body = {
+    model: config.model,
+    messages: options.messages,
+    max_tokens: options.maxTokens ?? 500,
+  };
+
+  const candidateUrls = getObscuraWorksCandidateUrls(config.baseUrl);
+  let lastError = "";
+
+  for (const candidateUrl of candidateUrls) {
+    try {
+      const res = await fetch(candidateUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        const rawContent = data.choices?.[0]?.message?.content ?? "";
+        if (rawContent.trim()) {
+          return {
+            content: rawContent.trim(),
+            model: config.model,
+            modelLabel: getModelLabel(config.model),
+            provider: config.provider,
+          };
+        }
+      } else {
+        const errText = await res.text().catch(() => "");
+        lastError = `POST ${candidateUrl} returned ${res.status}: ${errText}`;
+      }
+    } catch (err: any) {
+      lastError = `POST ${candidateUrl} failed: ${err.message || err}`;
+    }
+  }
+
+  // Fallback to generic OpenAI compat URL if obscuraworks candidate URLs fail
+  const fallbackUrl = getChatCompletionsUrl(config.baseUrl);
+  try {
+    const res = await fetch(fallbackUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const rawContent = data.choices?.[0]?.message?.content ?? "";
+      if (rawContent.trim()) {
+        return {
+          content: rawContent.trim(),
+          model: config.model,
+          modelLabel: getModelLabel(config.model),
+          provider: config.provider,
+        };
+      }
+    }
+  } catch {}
+
+  throw new Error(lastError || `Vision AI failed: no response`);
+}
+
+

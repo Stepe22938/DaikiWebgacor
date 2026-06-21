@@ -14,7 +14,7 @@ import { hasPermission } from "../lib/permissions";
 import { getGroupBoostState } from "../lib/tierBoosts";
 
 const router: IRouter = Router();
-const channelTypes = ["text", "voice", "announce"] as const;
+const channelTypes = ["text", "voice", "announce", "forum"] as const;
 type ChannelType = (typeof channelTypes)[number];
 
 async function getDbUser(clerkId: string) {

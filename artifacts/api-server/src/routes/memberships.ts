@@ -11,6 +11,7 @@ import {
   usersTable,
   userTierSubscriptionsTable,
   systemSettingsTable,
+  premiumGiftsTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
@@ -88,7 +89,15 @@ router.get("/me/membership", async (req, res): Promise<void> => {
               const grantPackageSku = ticket.requestedPackageSku;
               const targetConversationId = ticket.requestedConversationId;
 
-              if (grantTier) {
+              const giftCodeMatch = ticket.adminNotes?.match(/\[Gift Code:\s*([^\]\s]+)\]/);
+
+              if (giftCodeMatch && giftCodeMatch[1]) {
+                const code = giftCodeMatch[1].trim();
+                await db
+                  .update(premiumGiftsTable)
+                  .set({ status: "active", ticketId: ticket.id })
+                  .where(eq(premiumGiftsTable.giftCode, code));
+              } else if (grantTier) {
                 const endsAt = new Date();
                 endsAt.setMonth(endsAt.getMonth() + 1);
                 await db.insert(userTierSubscriptionsTable).values({

@@ -57,7 +57,11 @@ import type {
   GachaBoardResult,
   GachaClaimResult,
   GachaSettings,
+  GenerateInviteCodeInput,
+  GenerateInviteCodeResult,
   HealthStatus,
+  InviteDetails,
+  JoinGroupResult,
   Message,
   MyFormResponse,
   OwnedCosmetic,
@@ -4308,6 +4312,225 @@ export const useRemoveConversationMember = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRemoveConversationMemberMutationOptions(options));
+    }
+
+export const getGenerateInviteCodeUrl = (id: number,) => {
+
+
+
+
+  return `/api/conversations/${id}/invite`
+}
+
+/**
+ * @summary Generate or retrieve the group invite code
+ */
+export const generateInviteCode = async (id: number,
+    generateInviteCodeInput?: GenerateInviteCodeInput, options?: RequestInit): Promise<GenerateInviteCodeResult> => {
+
+  return customFetch<GenerateInviteCodeResult>(getGenerateInviteCodeUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      generateInviteCodeInput,)
+  }
+);}
+
+
+
+
+export const getGenerateInviteCodeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateInviteCode>>, TError,{id: number;data?: BodyType<GenerateInviteCodeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateInviteCode>>, TError,{id: number;data?: BodyType<GenerateInviteCodeInput>}, TContext> => {
+
+const mutationKey = ['generateInviteCode'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateInviteCode>>, {id: number;data?: BodyType<GenerateInviteCodeInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  generateInviteCode(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateInviteCodeMutationResult = NonNullable<Awaited<ReturnType<typeof generateInviteCode>>>
+    export type GenerateInviteCodeMutationBody = BodyType<GenerateInviteCodeInput> | undefined
+    export type GenerateInviteCodeMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Generate or retrieve the group invite code
+ */
+export const useGenerateInviteCode = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateInviteCode>>, TError,{id: number;data?: BodyType<GenerateInviteCodeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateInviteCode>>,
+        TError,
+        {id: number;data?: BodyType<GenerateInviteCodeInput>},
+        TContext
+      > => {
+      return useMutation(getGenerateInviteCodeMutationOptions(options));
+    }
+
+export const getGetInviteDetailsUrl = (code: string,) => {
+
+
+
+
+  return `/api/invites/${code}`
+}
+
+/**
+ * @summary Get group details using an invite code
+ */
+export const getInviteDetails = async (code: string, options?: RequestInit): Promise<InviteDetails> => {
+
+  return customFetch<InviteDetails>(getGetInviteDetailsUrl(code),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInviteDetailsQueryKey = (code: string,) => {
+    return [
+    `/api/invites/${code}`
+    ] as const;
+    }
+
+
+export const getGetInviteDetailsQueryOptions = <TData = Awaited<ReturnType<typeof getInviteDetails>>, TError = ErrorType<unknown>>(code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInviteDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInviteDetailsQueryKey(code);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInviteDetails>>> = ({ signal }) => getInviteDetails(code, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(code), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInviteDetails>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInviteDetailsQueryResult = NonNullable<Awaited<ReturnType<typeof getInviteDetails>>>
+export type GetInviteDetailsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get group details using an invite code
+ */
+
+export function useGetInviteDetails<TData = Awaited<ReturnType<typeof getInviteDetails>>, TError = ErrorType<unknown>>(
+ code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInviteDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInviteDetailsQueryOptions(code,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getJoinGroupByInviteCodeUrl = (code: string,) => {
+
+
+
+
+  return `/api/invites/${code}/join`
+}
+
+/**
+ * @summary Join a group chat using an invite code
+ */
+export const joinGroupByInviteCode = async (code: string, options?: RequestInit): Promise<JoinGroupResult> => {
+
+  return customFetch<JoinGroupResult>(getJoinGroupByInviteCodeUrl(code),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getJoinGroupByInviteCodeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGroupByInviteCode>>, TError,{code: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinGroupByInviteCode>>, TError,{code: string}, TContext> => {
+
+const mutationKey = ['joinGroupByInviteCode'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinGroupByInviteCode>>, {code: string}> = (props) => {
+          const {code} = props ?? {};
+
+          return  joinGroupByInviteCode(code,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinGroupByInviteCodeMutationResult = NonNullable<Awaited<ReturnType<typeof joinGroupByInviteCode>>>
+
+    export type JoinGroupByInviteCodeMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Join a group chat using an invite code
+ */
+export const useJoinGroupByInviteCode = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGroupByInviteCode>>, TError,{code: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinGroupByInviteCode>>,
+        TError,
+        {code: string},
+        TContext
+      > => {
+      return useMutation(getJoinGroupByInviteCodeMutationOptions(options));
     }
 
 export const getGetMyFriendsUrl = () => {

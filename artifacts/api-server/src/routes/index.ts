@@ -23,10 +23,12 @@ import paymentsRouter from "./payments";
 import stickersRouter from "./stickers";
 import emojisRouter from "./emojis";
 import boostPackagesRouter from "./boostPackages";
+import webhooksRouter from "./webhooks";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(webhooksRouter);
 router.use(usersRouter);
 router.use(developmentsRouter);
 router.use(announcementsRouter);

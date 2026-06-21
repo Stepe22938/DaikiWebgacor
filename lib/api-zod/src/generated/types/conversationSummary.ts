@@ -15,6 +15,10 @@ export interface ConversationSummary {
   /** @nullable */
   iconUrl?: string | null;
   /** @nullable */
+  bannerUrl?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
   ownerId?: number | null;
   memberCount: number;
   /** @nullable */
@@ -36,4 +40,6 @@ export interface ConversationSummary {
   /** @nullable */
   lastMessageSenderId?: number | null;
   createdAt: string;
+  /** @nullable */
+  inviteCode?: string | null;
 }

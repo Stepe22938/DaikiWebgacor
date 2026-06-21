@@ -379,6 +379,8 @@ export interface ConversationSummary {
   /** @nullable */
   lastMessageSenderId?: number | null;
   createdAt: string;
+  /** @nullable */
+  inviteCode?: string | null;
 }
 
 export interface MessageReactionSummary {
@@ -393,6 +395,8 @@ export interface Message {
   conversationId: number;
   /** @nullable */
   senderId?: number | null;
+  /** @nullable */
+  title?: string | null;
   content: string;
   /** @nullable */
   imageUrl?: string | null;
@@ -470,6 +474,27 @@ export interface CreateDmInput {
   targetUserId: number;
 }
 
+export interface GenerateInviteCodeInput {
+  regenerate?: boolean;
+}
+
+export interface GenerateInviteCodeResult {
+  /** @nullable */
+  inviteCode: string | null;
+}
+
+export interface InviteDetails {
+  id: number;
+  name: string;
+  /** @nullable */
+  iconUrl?: string | null;
+  memberCount: number;
+}
+
+export interface JoinGroupResult {
+  conversationId: number;
+}
+
 export interface CreateGroupInput {
   /**
      * @minLength 1
@@ -485,7 +510,10 @@ export interface UpdateGroupInput {
      * @maxLength 100
      */
   name?: string;
-  /** @nullable */
+  /**
+     * @maxLength 500
+     * @nullable
+     */
   description?: string | null;
   /** @nullable */
   iconUrl?: string | null;
@@ -494,6 +522,7 @@ export interface UpdateGroupInput {
 }
 
 export interface SendMessageInput {
+  title?: string;
   /**
      * @minLength 1
      * @maxLength 4000

@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import {
   LayoutGrid,
@@ -129,6 +130,7 @@ export default function Premium() {
     queryKey: ["/api/me/membership"],
     queryFn: () => customFetch<any>("/api/me/membership"),
   });
+  const currentTier = membershipData?.currentTier || "free";
 
   // Stickers library query
   const { data: stickerLibrary, isLoading: stickersLoading } = useQuery({
@@ -174,6 +176,68 @@ export default function Premium() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err?.message || "Gagal membuat ticket pembayaran.", variant: "destructive" });
+    },
+  });
+
+  const paymentGiftMutation = useMutation({
+    mutationFn: async (tier: string) => customFetch<any>("/api/payments/gifts", {
+      method: "POST",
+      body: JSON.stringify({ tier }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: async (res: any) => {
+      toast({
+        title: "Redirecting to checkout...",
+        description: "Mohon tunggu sebentar...",
+      });
+      if (res && res.checkoutUrl) {
+        window.location.href = res.checkoutUrl;
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Gagal membeli gift.", variant: "destructive" });
+    },
+  });
+
+  const { data: myGifts = [], refetch: refetchMyGifts } = useQuery({
+    queryKey: ["/api/me/gifts"],
+    queryFn: () => customFetch<any[]>("/api/me/gifts"),
+    enabled: currentTier !== "free",
+  });
+
+  const [giftParamCode, setGiftParamCode] = useState<string | null>(null);
+  const [showRedeemConfirm, setShowRedeemConfirm] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const giftCode = params.get("gift");
+    if (giftCode) {
+      setGiftParamCode(giftCode);
+      setShowRedeemConfirm(true);
+      // Quietly clean url parameter
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, []);
+
+  const redeemGiftMutation = useMutation({
+    mutationFn: async (code: string) => customFetch<any>("/api/payments/gifts/redeem", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: async (res: any) => {
+      toast({
+        title: "Berhasil!",
+        description: `Gift ${res.tier === "premium_plus" ? "Premium+" : "Premium"} telah di-redeem ke akun Anda.`,
+      });
+      setShowRedeemConfirm(false);
+      setGiftParamCode(null);
+      await queryClient.invalidateQueries({ queryKey: ["/api/me/membership"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal me-redeem gift", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
     },
   });
 
@@ -325,7 +389,6 @@ export default function Premium() {
 
   const activeSub = membershipData?.activeSubscription;
   const tierLabel = membershipData?.tierLabel || "Regular Member";
-  const currentTier = membershipData?.currentTier || "free";
   const ownedStickers = Array.isArray(stickerLibrary?.stickers) ? stickerLibrary.stickers : [];
   const groupOptions = Array.isArray(membershipData?.groups) ? membershipData.groups : [];
 
@@ -780,6 +843,120 @@ export default function Premium() {
                 </div>
               </div>
 
+              {/* Gift Premium Card */}
+              <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden mt-6">
+                <CardHeader className="pb-3 border-b border-[#f3f2f8]">
+                  <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+                    <Crown className="w-4 h-4 text-purple-500" /> Gift Membership
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
+                  <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                    Beli membership Premium atau Premium+ sebagai hadiah untuk teman atau player lain. Setelah pembayaran sukses, Anda akan menerima link redeem yang dapat dibagikan. (Pembeli tidak dapat me-redeem giftnya sendiri).
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="border border-purple-100 rounded-2xl p-4 flex flex-col gap-3 justify-between bg-purple-50/20">
+                      <div>
+                        <h4 className="font-extrabold text-xs text-[#110e3d]">Gift Premium</h4>
+                        <p className="text-[10px] text-slate-400 font-bold">1 Bulan Premium Membership</p>
+                        <p className="mt-2 text-base font-black text-purple-600">Rp {(realmSettings?.premiumPrice ?? 25000).toLocaleString("id-ID")}</p>
+                      </div>
+                      <Button
+                        onClick={() => paymentGiftMutation.mutate("premium")}
+                        disabled={paymentGiftMutation.isPending}
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl h-9 mt-1"
+                      >
+                        {paymentGiftMutation.isPending ? "Mengarahkan..." : "Beli Gift"}
+                      </Button>
+                    </div>
+
+                    <div className="border border-amber-100 rounded-2xl p-4 flex flex-col gap-3 justify-between bg-amber-50/20">
+                      <div>
+                        <h4 className="font-extrabold text-xs text-[#110e3d]">Gift Premium+</h4>
+                        <p className="text-[10px] text-slate-400 font-bold">1 Bulan Premium+ Membership</p>
+                        <p className="mt-2 text-base font-black text-amber-600">Rp {(realmSettings?.premiumPlusPrice ?? 50000).toLocaleString("id-ID")}</p>
+                      </div>
+                      <Button
+                        onClick={() => paymentGiftMutation.mutate("premium_plus")}
+                        disabled={paymentGiftMutation.isPending}
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl h-9 mt-1"
+                      >
+                        {paymentGiftMutation.isPending ? "Mengarahkan..." : "Beli Gift"}
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* My Purchased Gifts Card (Free view) */}
+              {myGifts.length > 0 && (
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden mt-6">
+                  <CardHeader className="pb-3 border-b border-[#f3f2f8]">
+                    <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-500" /> My Purchased Gifts
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="divide-y divide-[#eae8f5]/50 space-y-3">
+                      {myGifts.map((gift: any) => {
+                        const redeemUrl = `${window.location.origin}/premium?gift=${gift.giftCode}`;
+                        const isPending = gift.status === "pending";
+                        const isActive = gift.status === "active";
+                        const isRedeemed = gift.status === "redeemed";
+
+                        return (
+                          <div key={gift.id} className="flex flex-col gap-2 pt-3 first:pt-0">
+                            <div className="flex justify-between items-center text-xs">
+                              <div>
+                                <p className="font-extrabold text-[#110e3d]">
+                                  Gift {gift.tier === "premium_plus" ? "Premium+" : "Premium"}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-bold">
+                                  {format(new Date(gift.createdAt), "dd MMM yyyy HH:mm")}
+                                </p>
+                              </div>
+                              <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider ${
+                                isActive ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
+                                isRedeemed ? "bg-slate-100 text-slate-500 border border-slate-200" :
+                                "bg-amber-50 text-amber-600 border border-amber-100"
+                              }`}>
+                                {gift.status}
+                              </span>
+                            </div>
+
+                            {isActive && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <Input
+                                  readOnly
+                                  value={redeemUrl}
+                                  className="bg-slate-50 border-[#eae8f5] text-slate-500 rounded-xl text-[10px] font-mono h-8 select-all"
+                                />
+                                <Button
+                                  size="sm"
+                                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] rounded-lg px-3 h-8 shrink-0"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(redeemUrl);
+                                    toast({ title: "Redeem Link Copied!" });
+                                  }}
+                                >
+                                  Copy Link
+                                </Button>
+                              </div>
+                            )}
+
+                            {isRedeemed && (
+                              <p className="text-[10px] text-slate-400 font-bold">
+                                Redeemed by <span className="text-purple-600">@{gift.receiverDisplayName || gift.receiverUsername}</span> pada {format(new Date(gift.redeemedAt), "dd MMM yyyy HH:mm")}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Billing Tickets List */}
               {paymentTickets.length > 0 && (
                 <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden">
@@ -1071,9 +1248,123 @@ export default function Premium() {
                           </div>
                         )}
                       </CardContent>
-                    </Card>
+                     </Card>
 
-                    {/* Shared Storage Card */}
+                     {/* Gift Premium Card */}
+                     <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden mt-6">
+                       <CardHeader className="pb-3 border-b border-[#f3f2f8]">
+                         <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+                           <Crown className="w-4 h-4 text-purple-500" /> Gift Membership
+                         </CardTitle>
+                       </CardHeader>
+                       <CardContent className="p-6 space-y-4">
+                         <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                           Beli membership Premium atau Premium+ sebagai hadiah untuk teman atau player lain. Setelah pembayaran sukses, Anda akan menerima link redeem yang dapat dibagikan. (Pembeli tidak dapat me-redeem giftnya sendiri).
+                         </p>
+                         <div className="grid gap-4 sm:grid-cols-2">
+                           <div className="border border-purple-100 rounded-2xl p-4 flex flex-col gap-3 justify-between bg-purple-50/20">
+                             <div>
+                               <h4 className="font-extrabold text-xs text-[#110e3d]">Gift Premium</h4>
+                               <p className="text-[10px] text-slate-400 font-bold">1 Bulan Premium Membership</p>
+                               <p className="mt-2 text-base font-black text-purple-600">Rp {(realmSettings?.premiumPrice ?? 25000).toLocaleString("id-ID")}</p>
+                             </div>
+                             <Button
+                               onClick={() => paymentGiftMutation.mutate("premium")}
+                               disabled={paymentGiftMutation.isPending}
+                               className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl h-9 mt-1"
+                             >
+                               {paymentGiftMutation.isPending ? "Mengarahkan..." : "Beli Gift"}
+                             </Button>
+                           </div>
+
+                           <div className="border border-amber-100 rounded-2xl p-4 flex flex-col gap-3 justify-between bg-amber-50/20">
+                             <div>
+                               <h4 className="font-extrabold text-xs text-[#110e3d]">Gift Premium+</h4>
+                               <p className="text-[10px] text-slate-400 font-bold">1 Bulan Premium+ Membership</p>
+                               <p className="mt-2 text-base font-black text-amber-600">Rp {(realmSettings?.premiumPlusPrice ?? 50000).toLocaleString("id-ID")}</p>
+                             </div>
+                             <Button
+                               onClick={() => paymentGiftMutation.mutate("premium_plus")}
+                               disabled={paymentGiftMutation.isPending}
+                               className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl h-9 mt-1"
+                             >
+                               {paymentGiftMutation.isPending ? "Mengarahkan..." : "Beli Gift"}
+                             </Button>
+                           </div>
+                         </div>
+                       </CardContent>
+                     </Card>
+
+                     {/* My Purchased Gifts Card (Premium view) */}
+                     {myGifts.length > 0 && (
+                       <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden mt-6">
+                         <CardHeader className="pb-3 border-b border-[#f3f2f8]">
+                           <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+                             <Sparkles className="w-4 h-4 text-purple-500" /> My Purchased Gifts
+                           </CardTitle>
+                         </CardHeader>
+                         <CardContent className="p-6 space-y-4">
+                           <div className="divide-y divide-[#eae8f5]/50 space-y-3">
+                             {myGifts.map((gift: any) => {
+                               const redeemUrl = `${window.location.origin}/premium?gift=${gift.giftCode}`;
+                               const isPending = gift.status === "pending";
+                               const isActive = gift.status === "active";
+                               const isRedeemed = gift.status === "redeemed";
+
+                               return (
+                                 <div key={gift.id} className="flex flex-col gap-2 pt-3 first:pt-0">
+                                   <div className="flex justify-between items-center text-xs">
+                                     <div>
+                                       <p className="font-extrabold text-[#110e3d]">
+                                         Gift {gift.tier === "premium_plus" ? "Premium+" : "Premium"}
+                                       </p>
+                                       <p className="text-[10px] text-slate-400 font-bold">
+                                         {format(new Date(gift.createdAt), "dd MMM yyyy HH:mm")}
+                                       </p>
+                                     </div>
+                                     <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider ${
+                                       isActive ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
+                                       isRedeemed ? "bg-slate-100 text-slate-500 border border-slate-200" :
+                                       "bg-amber-50 text-amber-600 border border-amber-100"
+                                     }`}>
+                                       {gift.status}
+                                     </span>
+                                   </div>
+
+                                   {isActive && (
+                                     <div className="flex items-center gap-2 mt-1">
+                                       <Input
+                                         readOnly
+                                         value={redeemUrl}
+                                         className="bg-slate-50 border-[#eae8f5] text-slate-500 rounded-xl text-[10px] font-mono h-8 select-all"
+                                       />
+                                       <Button
+                                         size="sm"
+                                         className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] rounded-lg px-3 h-8 shrink-0"
+                                         onClick={() => {
+                                           navigator.clipboard.writeText(redeemUrl);
+                                           toast({ title: "Redeem Link Copied!" });
+                                         }}
+                                       >
+                                         Copy Link
+                                       </Button>
+                                     </div>
+                                   )}
+
+                                   {isRedeemed && (
+                                     <p className="text-[10px] text-slate-400 font-bold">
+                                       Redeemed by <span className="text-purple-600">@{gift.receiverDisplayName || gift.receiverUsername}</span> pada {format(new Date(gift.redeemedAt), "dd MMM yyyy HH:mm")}
+                                     </p>
+                                   )}
+                                 </div>
+                               );
+                             })}
+                           </div>
+                         </CardContent>
+                       </Card>
+                     )}
+
+                     {/* Shared Storage Card */}
                     <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden">
                       <CardHeader className="pb-3 border-b border-[#f3f2f8]">
                         <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
@@ -1482,6 +1773,55 @@ export default function Premium() {
           )}
         </div>
       </main>
+
+      <Dialog open={showRedeemConfirm} onOpenChange={setShowRedeemConfirm}>
+        <DialogContent className="max-w-md bg-white border border-[#eae8f5] rounded-2xl p-6 shadow-xl">
+          <DialogHeader className="space-y-2">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+              <Crown className="h-6 w-6" />
+            </div>
+            <DialogTitle className="text-center text-lg font-black text-[#110e3d]">
+              Redeem Gift Membership
+            </DialogTitle>
+            <DialogDescription className="text-center text-xs text-slate-500">
+              Seseorang telah membagikan gift membership untuk Anda! Redeem sekarang untuk mengaktifkan keuntungan premium Anda.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="my-4 rounded-xl border border-dashed border-violet-200 bg-violet-50/50 p-4 text-center">
+            <p className="text-[10px] font-black uppercase tracking-wider text-violet-500">Gift Code</p>
+            <p className="mt-1 font-mono text-sm font-bold text-violet-700 tracking-wider">
+              {giftParamCode}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 mt-4">
+            <Button
+              onClick={() => {
+                if (giftParamCode) {
+                  redeemGiftMutation.mutate(giftParamCode);
+                }
+              }}
+              disabled={redeemGiftMutation.isPending}
+              className="w-full bg-[#6366f1] hover:bg-violet-600 text-white font-black rounded-xl py-2 flex items-center justify-center gap-2 transition-colors"
+            >
+              {redeemGiftMutation.isPending ? "Redeeming..." : "Redeem Gift Sekarang"}
+              <Crown className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRedeemConfirm(false);
+                setGiftParamCode(null);
+              }}
+              disabled={redeemGiftMutation.isPending}
+              className="w-full border-[#eae8f5] text-slate-500 font-bold hover:bg-slate-50 rounded-xl py-2 transition-colors"
+            >
+              Batalkan
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

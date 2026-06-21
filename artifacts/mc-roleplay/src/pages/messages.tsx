@@ -44,7 +44,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+
+function formatDistanceToNowHelper(date: Date): string {
+  try {
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch (e) {
+    return "";
+  }
+}
 import { Link, useLocation } from "wouter";
 import {
   Phone,
@@ -102,6 +110,9 @@ import {
   Music,
   Play,
   Pause,
+  ChevronDown,
+  Calendar,
+  CheckCircle2,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -323,7 +334,7 @@ interface Channel {
   conversationId: number;
   categoryId: number | null;
   name: string;
-  type: "text" | "voice" | "announce";
+  type: "text" | "voice" | "announce" | "forum";
   position: number;
   createdAt: string;
   members?: VoiceMember[];
@@ -1489,7 +1500,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
-  const [newChannelType, setNewChannelType] = useState<"text" | "voice" | "announce">("text");
+  const [newChannelType, setNewChannelType] = useState<"text" | "voice" | "announce" | "forum">("text");
   const [newChannelCategoryId, setNewChannelCategoryId] = useState<number | null>(null);
   const [showCreateCategory, setShowCreateCategory] = useState(false);
   const [showChannelEditor, setShowChannelEditor] = useState(false);
@@ -1645,6 +1656,16 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [forwardTargetConvId, setForwardTargetConvId] = useState<number | null>(null);
   const [forwardTargetChannelId, setForwardTargetChannelId] = useState<number | null>(null);
   const [forwarding, setForwarding] = useState(false);
+
+  // Forum states
+  const [forumActivePostId, setForumActivePostId] = useState<number | null>(null);
+  const [showNewPostModal, setShowNewPostModal] = useState(false);
+  const [newPostTitle, setNewPostTitle] = useState("");
+  const [newPostContent, setNewPostContent] = useState("");
+  const [newCommentText, setNewCommentText] = useState("");
+  const [forumSearchQuery, setForumSearchQuery] = useState("");
+  const [forumSortOrder, setForumSortOrder] = useState<"newest" | "oldest">("newest");
+  const [showGetStarted, setShowGetStarted] = useState(true);
 
   const { data: targetChannels } = useQuery<any[]>({
     queryKey: [`/api/conversations/${forwardTargetConvId}/channels`, "forward-target"],
@@ -2191,7 +2212,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   const channelEditorSections = useMemo(() => {
     const byPosition = (a: Channel, b: Channel) => a.position - b.position || a.id - b.id;
-    const messageChannels = (items: Channel[]) => items.filter((ch) => ch.type === "text" || ch.type === "announce").sort(byPosition);
+    const messageChannels = (items: Channel[]) => items.filter((ch) => ch.type === "text" || ch.type === "announce" || ch.type === "forum").sort(byPosition);
     const voiceChannels = (items: Channel[]) => items.filter((ch) => ch.type === "voice").sort(byPosition);
     const sections: Array<{ key: string; label: string; channels: Channel[] }> = [];
 
@@ -2543,7 +2564,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     if (isGroup && channels.length > 0) {
       const hasSelected = channels.some((c) => c.id === selectedChannelId);
       if (!hasSelected) {
-        const firstMessageChannel = channels.find((c) => c.type === "text" || c.type === "announce");
+        const firstMessageChannel = channels.find((c) => c.type === "text" || c.type === "announce" || c.type === "forum");
         if (firstMessageChannel) {
           setSelectedChannelId(firstMessageChannel.id);
         } else {
@@ -2556,6 +2577,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   useEffect(() => {
     setShowStickerPicker(false);
+    setForumActivePostId(null);
+    setForumSearchQuery("");
   }, [selectedId, selectedChannelId]);
 
   // Hide typing indicator when AI responds.
@@ -2762,6 +2785,63 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  }
+
+  async function handleCreatePost() {
+    const title = newPostTitle.trim();
+    const content = newPostContent.trim();
+    if (!title || !content) {
+      toast({ title: "Title and Content are required", variant: "destructive" });
+      return;
+    }
+    if (selectedId === null || !selectedChannelId) return;
+
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/channels/${selectedChannelId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          content,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to create post");
+
+      setNewPostTitle("");
+      setNewPostContent("");
+      setShowNewPostModal(false);
+      
+      // Invalidate queries to reload messages
+      await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+      toast({ title: "Post created successfully" });
+    } catch {
+      toast({ title: "Failed to create post", variant: "destructive" });
+    }
+  }
+
+  async function handleCreateComment() {
+    const content = newCommentText.trim();
+    if (!content) return;
+    if (selectedId === null || !selectedChannelId || forumActivePostId === null) return;
+
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/channels/${selectedChannelId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          replyToMessageId: forumActivePostId,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to add comment");
+
+      setNewCommentText("");
+      
+      // Invalidate queries to reload messages
+      await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+    } catch {
+      toast({ title: "Failed to add comment", variant: "destructive" });
     }
   }
 
@@ -3449,6 +3529,362 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     );
   });
 
+  const renderForumBoardView = () => {
+    const posts = activeMessages.filter(msg => !msg.replyToMessageId && msg.title);
+    const filteredPosts = posts.filter(post => 
+      post.title?.toLowerCase().includes(forumSearchQuery.toLowerCase()) || 
+      post.content?.toLowerCase().includes(forumSearchQuery.toLowerCase())
+    );
+    const sortedPosts = [...filteredPosts].sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime();
+      const timeB = new Date(b.createdAt).getTime();
+      return forumSortOrder === "newest" ? timeB - timeA : timeA - timeB;
+    });
+
+    const hasWelcomingAnnouncement = posts.length > 0;
+    const hasPinnedGuidelines = activePinnedMessages.length > 0;
+    const hasChannelRoles = roles.length > 1;
+    const hasInvitedMembers = (selectedConv?.memberCount ?? 0) > 2;
+
+    const completedCount = 1 
+      + (hasWelcomingAnnouncement ? 1 : 0)
+      + (hasPinnedGuidelines ? 1 : 0)
+      + (hasChannelRoles ? 1 : 0)
+      + (hasInvitedMembers ? 1 : 0);
+
+    return (
+      <div className="flex-1 flex flex-col min-h-0 bg-[#1e1f22]">
+        {/* Search bar & New Post */}
+        <div className="flex items-center gap-3 bg-[#1e1f22] p-4 border-b border-[#3f4147]/50 shrink-0">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#949ba4]" />
+            <Input
+              placeholder="Search or create a post..."
+              value={forumSearchQuery}
+              onChange={(e) => setForumSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 bg-[#2b2d31] border-0 text-[#adbac7] placeholder:text-[#949ba4] focus-visible:ring-1 focus-visible:ring-[#5865f2] rounded-xl h-10 font-semibold"
+            />
+          </div>
+          <Button
+            onClick={() => setShowNewPostModal(true)}
+            className="bg-[#5865f2] hover:bg-[#4752c4] text-white font-bold text-xs px-4 py-2 h-10 rounded-xl transition-all shadow-md shadow-indigo-900/10 cursor-pointer shrink-0 flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" /> New Post
+          </Button>
+        </div>
+
+        {/* Sort & Stats */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-[#3f4147]/30 bg-[#2b2d31]/20 shrink-0 text-white">
+          <span className="text-[10px] font-black text-[#949ba4] uppercase tracking-widest">
+            {sortedPosts.length} {sortedPosts.length === 1 ? "Post" : "Posts"}
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-xs font-bold text-[#adbac7] hover:text-white flex items-center gap-1 hover:bg-[#35373c]/50 rounded-lg py-1 px-2.5 h-8">
+                Sort: {forumSortOrder === "newest" ? "Newest" : "Oldest"} <ChevronDown className="w-3.5 h-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-[#1e1f22] border-[#3f4147] text-[#adbac7] rounded-xl">
+              <DropdownMenuItem onClick={() => setForumSortOrder("newest")} className="text-xs font-bold hover:bg-[#35373c] focus:bg-[#35373c] focus:text-white cursor-pointer rounded-lg">
+                Newest
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setForumSortOrder("oldest")} className="text-xs font-bold hover:bg-[#35373c] focus:bg-[#35373c] focus:text-white cursor-pointer rounded-lg">
+                Oldest
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Get Started Helper Card */}
+        {showGetStarted && (selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+          <div className="mx-6 mt-4 p-5 rounded-2xl bg-gradient-to-br from-[#2b2d31]/80 to-[#1e1f22]/80 border border-[#8b5cf6]/20 relative overflow-hidden shrink-0 shadow-lg text-white">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-violet-600/10 rounded-full blur-2xl pointer-events-none" />
+            <button
+              onClick={() => setShowGetStarted(false)}
+              className="absolute top-4 right-4 text-[#949ba4] hover:text-white transition-colors cursor-pointer"
+              title="Hide"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            
+            <div className="flex items-start gap-4">
+              <div className="p-2.5 rounded-xl bg-violet-500/15 border border-violet-500/30 text-[#8b5cf6] shrink-0">
+                <Calendar className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <div>
+                  <h4 className="text-sm font-black text-white">Get Started in your new Forum!</h4>
+                  <p className="text-xs text-[#949ba4] font-medium leading-relaxed">
+                    Complete these steps to set up a thriving discussion board.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-[#8b5cf6]">
+                    <span>Setup Progress ({completedCount} of 5 Completed)</span>
+                    <span>{Math.round((completedCount / 5) * 100)}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#1e1f22] rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-violet-500 to-[#8b5cf6] rounded-full transition-all duration-500" 
+                      style={{ width: `${(completedCount / 5) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 text-xs font-semibold text-[#adbac7]">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span className="line-through text-[#949ba4]">Create the forum channel</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasWelcomingAnnouncement ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border-2 border-[#3f4147] shrink-0" />
+                    )}
+                    <span className={hasWelcomingAnnouncement ? "line-through text-[#949ba4]" : ""}>Post a welcoming announcement</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasPinnedGuidelines ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border-2 border-[#3f4147] shrink-0" />
+                    )}
+                    <span className={hasPinnedGuidelines ? "line-through text-[#949ba4]" : ""}>Pin a guidelines thread</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasChannelRoles ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border-2 border-[#3f4147] shrink-0" />
+                    )}
+                    <span className={hasChannelRoles ? "line-through text-[#949ba4]" : ""}>Set up channel roles</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasInvitedMembers ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border-2 border-[#3f4147] shrink-0" />
+                    )}
+                    <span className={hasInvitedMembers ? "line-through text-[#949ba4]" : ""}>Invite members to discuss</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Posts list */}
+        <ScrollArea className="flex-1 px-6 py-4 min-h-0 bg-[#1e1f22]">
+          <div className="space-y-3">
+            {sortedPosts.length === 0 ? (
+              <div className="text-center py-16 space-y-2">
+                <MessageSquare className="w-10 h-10 text-[#3f4147] mx-auto opacity-50" />
+                <p className="text-sm font-extrabold text-[#949ba4]">No discussions yet</p>
+                <p className="text-xs text-[#949ba4]/75 max-w-[280px] mx-auto">
+                  {forumSearchQuery ? "Try searching for a different keyword." : "Be the first to start a conversation in this forum!"}
+                </p>
+              </div>
+            ) : (
+              sortedPosts.map((post) => {
+                const count = activeMessages.filter(msg => msg.replyToMessageId === post.id).length;
+                return (
+                  <div
+                    key={post.id}
+                    onClick={() => setForumActivePostId(post.id)}
+                    className="flex gap-4 p-4 rounded-2xl bg-[#2b2d31]/60 hover:bg-[#2b2d31] border border-[#3f4147]/30 hover:border-[#8b5cf6]/30 transition-all cursor-pointer group text-white text-left"
+                  >
+                    <Avatar className="w-10 h-10 shrink-0 border border-[#3f4147]">
+                      <AvatarImage src={post.senderAvatarUrl ?? undefined} />
+                      <AvatarFallback className="bg-slate-800 text-white font-extrabold text-xs">
+                        {post.senderUsername?.[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-start justify-between gap-4">
+                        <h4 className="text-sm font-extrabold text-white group-hover:text-violet-300 transition-colors truncate">
+                          {post.title}
+                        </h4>
+                        <div className="flex items-center gap-1.5 text-xs text-[#949ba4] shrink-0 font-semibold">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{formatDistanceToNowHelper(new Date(post.createdAt))}</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-violet-400 font-bold">
+                        {post.senderDisplayName || post.senderUsername}
+                      </p>
+                      <p className="text-xs text-[#adbac7] font-medium line-clamp-2 leading-relaxed">
+                        {post.content}
+                      </p>
+                      <div className="flex items-center justify-between pt-2">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-[#949ba4] bg-[#1e1f22]/60 px-2.5 py-1 rounded-full group-hover:bg-[#1e1f22] transition-colors shrink-0">
+                          <MessageSquare className="w-3.5 h-3.5 opacity-80" />
+                          <span>{count} {count === 1 ? "comment" : "comments"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+    );
+  };
+
+  const renderForumThreadDetailView = () => {
+    const mainPost = activeMessages.find(msg => msg.id === forumActivePostId);
+    if (!mainPost) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 bg-[#1e1f22] text-white">
+          <p className="text-sm font-extrabold">Thread not found or deleted</p>
+          <Button onClick={() => setForumActivePostId(null)} size="sm" className="bg-[#5865f2]">
+            Back to Forum
+          </Button>
+        </div>
+      );
+    }
+
+    const comments = activeMessages.filter(msg => msg.replyToMessageId === forumActivePostId);
+    const postSenderRole = mainPost.senderRole || "member";
+    const postRoleLabel = ROLE_LABELS[postSenderRole] || "Member";
+    const postBadgeClass = ROLE_BADGE_CLASSES[postSenderRole] || "bg-slate-50 text-slate-500 border border-slate-200/50";
+
+    return (
+      <div className="flex-1 flex flex-col min-h-0 bg-[#1e1f22] text-white">
+        {/* Thread Header Bar */}
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-[#3f4147]/50 bg-[#2b2d31]/50 shrink-0">
+          <Button
+            onClick={() => setForumActivePostId(null)}
+            variant="ghost"
+            size="sm"
+            className="text-xs font-black text-[#adbac7] hover:text-white hover:bg-[#35373c]/50 rounded-xl px-2.5 h-8 cursor-pointer flex items-center gap-1 shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back to Board
+          </Button>
+          <div className="h-4 w-px bg-[#3f4147] shrink-0" />
+          <p className="text-xs text-[#949ba4] font-bold truncate">
+            Post started {formatDistanceToNowHelper(new Date(mainPost.createdAt))} by {mainPost.senderDisplayName || mainPost.senderUsername}
+          </p>
+        </div>
+
+        {/* Scrollable contents: Main Post + Comments */}
+        <ScrollArea className="flex-1 px-6 py-5 min-h-0">
+          <div className="space-y-6">
+            {/* Main Post Card */}
+            <div className="p-5 rounded-2xl bg-[#2b2d31]/60 border border-[#3f4147]/40 space-y-4 text-left">
+              <div className="flex items-start gap-4">
+                <Avatar className="w-11 h-11 shrink-0 border border-[#3f4147]">
+                  <AvatarImage src={mainPost.senderAvatarUrl ?? undefined} />
+                  <AvatarFallback className="bg-slate-800 text-white font-extrabold">
+                    {mainPost.senderUsername?.[0]?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-extrabold text-white">
+                      {mainPost.senderDisplayName || mainPost.senderUsername}
+                    </span>
+                    <Badge className={`text-[9px] font-black uppercase tracking-wider py-0 px-1.5 h-4.5 shrink-0 select-none ${postBadgeClass}`}>
+                      {postRoleLabel}
+                    </Badge>
+                    <span className="text-[10px] text-[#949ba4] font-bold">
+                      {format(new Date(mainPost.createdAt), "PPp")}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-black text-white mt-2 leading-tight">
+                    {mainPost.title}
+                  </h3>
+                </div>
+              </div>
+              <p className="text-sm text-[#adbac7] font-semibold leading-relaxed whitespace-pre-wrap pl-[60px]">
+                {mainPost.content}
+              </p>
+            </div>
+
+            {/* Comments Divider */}
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-black text-[#949ba4] uppercase tracking-widest shrink-0">
+                Comments ({comments.length})
+              </span>
+              <div className="flex-1 h-px bg-[#3f4147]/50" />
+            </div>
+
+            {/* Comments List */}
+            <div className="space-y-4">
+              {comments.length === 0 ? (
+                <div className="text-center py-8 text-xs font-bold text-[#949ba4]">
+                  No comments yet. Start the conversation!
+                </div>
+              ) : (
+                comments.map((comment) => {
+                  const commentSenderRole = comment.senderRole || "member";
+                  const commentRoleLabel = ROLE_LABELS[commentSenderRole] || "Member";
+                  const commentBadgeClass = ROLE_BADGE_CLASSES[commentSenderRole] || "bg-slate-50 text-slate-500 border border-slate-200/50";
+
+                  return (
+                    <div key={comment.id} className="flex gap-4 p-4 rounded-xl hover:bg-[#2b2d31]/30 transition-colors text-left">
+                      <Avatar className="w-9 h-9 shrink-0 border border-[#3f4147]">
+                        <AvatarImage src={comment.senderAvatarUrl ?? undefined} />
+                        <AvatarFallback className="bg-slate-800 text-white font-extrabold text-xs">
+                          {comment.senderUsername?.[0]?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-extrabold text-white">
+                            {comment.senderDisplayName || comment.senderUsername}
+                          </span>
+                          <Badge className={`text-[8px] font-black uppercase tracking-wider py-0 px-1 h-4.5 shrink-0 select-none ${commentBadgeClass}`}>
+                            {commentRoleLabel}
+                          </Badge>
+                          <span className="text-[10px] text-[#949ba4] font-semibold">
+                            {formatDistanceToNowHelper(new Date(comment.createdAt))}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#adbac7] font-semibold leading-relaxed whitespace-pre-wrap">
+                          {comment.content}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </ScrollArea>
+
+        {/* Comment Send Box */}
+        <div className="p-4 border-t border-[#3f4147]/50 bg-[#1e1f22] shrink-0">
+          <div className="flex items-center gap-3 bg-[#2b2d31] rounded-2xl p-2 border border-[#3f4147]/30 focus-within:border-[#5865f2]/50 transition-colors">
+            <Textarea
+              rows={1}
+              placeholder="Write a comment..."
+              value={newCommentText}
+              onChange={(e) => setNewCommentText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleCreateComment();
+                }
+              }}
+              className="flex-1 min-h-10 max-h-24 resize-none border-0 bg-transparent text-white placeholder-[#949ba4] focus-visible:ring-0 rounded-xl px-3 py-2 text-xs font-semibold"
+            />
+            <Button
+              onClick={handleCreateComment}
+              disabled={!newCommentText.trim()}
+              className="bg-[#5865f2] hover:bg-[#4752c4] text-white rounded-xl h-10 px-4 shrink-0 shadow-md font-bold text-xs cursor-pointer flex items-center gap-1.5"
+            >
+              <SendHorizontal className="h-4 w-4" /> Comment
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const isGroupView = isGroup;
 
   return (
@@ -3949,7 +4385,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 <div className="p-2 space-y-3">
                   {categories.length === 0 ? (
                     <>
-                      {channels.filter(c => (c.type === "text" || c.type === "announce") && !c.categoryId).map((ch) => (
+                      {channels.filter(c => (c.type === "text" || c.type === "announce" || c.type === "forum") && !c.categoryId).map((ch) => (
                         <div key={ch.id} className="group relative flex items-center justify-between rounded-md">
                           <button onClick={() => handleSelectChannel(ch.id)}
                             className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
@@ -3957,6 +4393,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             }`}>
                             {ch.type === "announce" ? (
                               <Megaphone className="w-4 h-4 shrink-0 opacity-70" />
+                            ) : ch.type === "forum" ? (
+                              <MessageSquare className="w-4 h-4 shrink-0 opacity-70" />
                             ) : (
                               <Hash className="w-4 h-4 shrink-0 opacity-70" />
                             )}
@@ -4012,7 +4450,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   ) : (
                     categories.map((cat) => {
                       const catChannels = channels.filter(c => c.categoryId === cat.id);
-                      const textChannels = catChannels.filter(c => c.type === "text" || c.type === "announce");
+                      const textChannels = catChannels.filter(c => c.type === "text" || c.type === "announce" || c.type === "forum");
                       const voiceChannels = catChannels.filter(c => c.type === "voice");
                       return (
                         <div key={cat.id}>
@@ -4045,6 +4483,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                                 }`}>
                                 {ch.type === "announce" ? (
                                   <Megaphone className="w-4 h-4 shrink-0 opacity-70" />
+                                ) : ch.type === "forum" ? (
+                                  <MessageSquare className="w-4 h-4 shrink-0 opacity-70" />
                                 ) : (
                                   <Hash className="w-4 h-4 shrink-0 opacity-70" />
                                 )}
@@ -4316,6 +4756,12 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   </div>
                 </div>
 
+                {selectedChannel?.type === "forum" ? (
+                  forumActivePostId !== null
+                    ? renderForumThreadDetailView()
+                    : renderForumBoardView()
+                ) : (
+                  <>
                 {/* Pinned message banner strip (WhatsApp style) */}
                 {latestPinnedMessage && (
                   <div
@@ -5047,7 +5493,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 })()}
               </>
             )}
-          </div>
+          </>
+        )}
+      </div>
 
           {/* Info Panel - Slide in from right */}
           {showInfoPanel && selectedConv && (
@@ -5450,6 +5898,57 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         </DialogContent>
       </Dialog>
 
+      {/* ── New Forum Post Modal ───────────────────────────────────────── */}
+      <Dialog open={showNewPostModal} onOpenChange={(open) => { setShowNewPostModal(open); if (!open) { setNewPostTitle(""); setNewPostContent(""); } }}>
+        <DialogContent className="max-w-lg bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#3F4147]/50">
+            <DialogTitle className="text-sm font-extrabold text-white flex items-center gap-2">
+              <Plus className="w-4 h-4 text-[#5865f2]" /> New Post
+            </DialogTitle>
+            <p className="text-xs text-[#949ba4] font-medium">Create a new discussion thread in <span className="text-[#5865f2] font-bold">#{selectedChannel?.name}</span></p>
+          </DialogHeader>
+          <div className="p-6 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-[#b0b3b8] uppercase tracking-wider">Post Title</label>
+              <Input
+                placeholder="What's this post about?"
+                value={newPostTitle}
+                onChange={(e) => setNewPostTitle(e.target.value)}
+                maxLength={200}
+                className="bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2] rounded-xl font-semibold h-11"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-[#b0b3b8] uppercase tracking-wider">Content</label>
+              <Textarea
+                placeholder="Share your thoughts, questions, or ideas..."
+                value={newPostContent}
+                onChange={(e) => setNewPostContent(e.target.value)}
+                rows={5}
+                maxLength={4000}
+                className="bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2] rounded-xl font-semibold resize-none"
+              />
+            </div>
+          </div>
+          <div className="px-6 pb-6 flex gap-3 justify-end">
+            <Button
+              variant="ghost"
+              onClick={() => { setShowNewPostModal(false); setNewPostTitle(""); setNewPostContent(""); }}
+              className="text-[#949ba4] hover:text-white hover:bg-[#35373c] rounded-xl font-bold text-xs cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreatePost}
+              disabled={!newPostTitle.trim() || !newPostContent.trim()}
+              className="bg-[#5865f2] hover:bg-[#4752c4] text-white rounded-xl px-5 font-bold text-xs cursor-pointer shadow-md shadow-indigo-900/20"
+            >
+              Post
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Dialog Modals ────────────────────────────────────────────────── */}
       <Dialog open={showNewDm} onOpenChange={setShowNewDm}>
         <DialogContent className="max-w-sm bg-white border border-[#eae8f5] rounded-2xl p-5">
@@ -5562,10 +6061,10 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             onChange={(e) => setNewChannelName(e.target.value)}
             className="mb-3 bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2] rounded-xl font-semibold"
           />
-          <div className="flex gap-2 mb-4">
+          <div className="grid grid-cols-2 gap-2 mb-4">
             <button
               onClick={() => setNewChannelType("text")}
-              className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+              className={`flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                 newChannelType === "text" ? "bg-[#5865F2] text-white" : "bg-[#2B2D31] text-[#949BA4] hover:bg-[#35373C]"
               }`}
             >
@@ -5573,7 +6072,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             </button>
             <button
               onClick={() => setNewChannelType("voice")}
-              className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+              className={`flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                 newChannelType === "voice" ? "bg-[#5865F2] text-white" : "bg-[#2B2D31] text-[#949BA4] hover:bg-[#35373C]"
               }`}
             >
@@ -5581,11 +6080,19 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             </button>
             <button
               onClick={() => setNewChannelType("announce")}
-              className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+              className={`flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                 newChannelType === "announce" ? "bg-[#5865F2] text-white" : "bg-[#2B2D31] text-[#949BA4] hover:bg-[#35373C]"
               }`}
             >
               <Megaphone className="w-3.5 h-3.5" /> Announce
+            </button>
+            <button
+              onClick={() => setNewChannelType("forum")}
+              className={`flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                newChannelType === "forum" ? "bg-[#5865F2] text-white" : "bg-[#2B2D31] text-[#949BA4] hover:bg-[#35373C]"
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" /> Forum
             </button>
           </div>
           <Button
@@ -7800,7 +8307,7 @@ setInterval(() => {
             const isTargetGroup = selectedConversation?.type === "group";
             if (!isTargetGroup) return null;
 
-            const textChannels = targetChannels?.filter((ch) => ch.type === "text" || ch.type === "announce") || [];
+            const textChannels = targetChannels?.filter((ch) => ch.type === "text" || ch.type === "announce" || ch.type === "forum") || [];
 
             return (
               <div className={`mt-2 p-3 rounded-xl border shrink-0 ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50 border-slate-200"}`}>

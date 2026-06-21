@@ -19,6 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Link } from "wouter";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   LayoutGrid,
   Megaphone,
@@ -36,7 +37,8 @@ import {
   ArrowUpRight,
   MessageSquare,
   Users,
-  Home
+  Home,
+  QrCode
 } from "lucide-react";
 
 type PublicUser = {
@@ -150,6 +152,8 @@ export default function Friends() {
   const [search, setSearch] = useState("");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showFriendQr, setShowFriendQr] = useState(false);
+  const [friendQrUrl, setFriendQrUrl] = useState("");
   const { signOut } = useClerk();
   const realmName = realmSettings.realmName || "Arcadia Guild";
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
@@ -516,6 +520,44 @@ export default function Friends() {
             </p>
           </div>
 
+          {me && (
+            <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="space-y-1">
+                <h3 className="text-xs font-black text-[#110e3d] uppercase tracking-wider flex items-center gap-1.5">
+                  🤝 Share Your Invite Link
+                </h3>
+                <p className="text-xs font-bold text-slate-400">Let others scan your barcode or visit your link to instantly add you as a friend!</p>
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <code className="text-[10px] font-mono bg-slate-50 text-slate-600 px-2.5 py-1 rounded-lg border border-slate-100 max-w-xs truncate">
+                    {window.location.origin}/add-friend/{me.username}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/add-friend/${me.username}`);
+                      toast({ title: "Copied!", description: "Add friend link copied to clipboard." });
+                    }}
+                    className="h-7 px-2.5 text-[10px] font-bold rounded-lg border-[#eae8f5] text-slate-500 hover:text-slate-700 hover:bg-slate-50 flex items-center gap-1 cursor-pointer h-7"
+                  >
+                    <Copy className="w-3 h-3" /> Copy Link
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setFriendQrUrl(`${window.location.origin}/add-friend/${me.username}`);
+                      setShowFriendQr(true);
+                    }}
+                    className="h-7 px-2.5 text-[10px] font-bold rounded-lg border-[#eae8f5] text-slate-500 hover:text-slate-700 hover:bg-slate-50 flex items-center gap-1 cursor-pointer h-7"
+                  >
+                    <QrCode className="w-3 h-3" /> Show QR
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
           <Tabs defaultValue="explore" className="space-y-6">
             <TabsList className="bg-white border border-[#eae8f5] p-1 rounded-xl shadow-sm h-11">
               <TabsTrigger value="explore" className="rounded-lg text-xs font-bold text-slate-500 data-[state=active]:bg-violet-50 data-[state=active]:text-[#6366f1]">Explore</TabsTrigger>
@@ -585,6 +627,51 @@ export default function Friends() {
           </Tabs>
         </div>
       </main>
+
+      {/* QR Code Dialog */}
+      <Dialog open={showFriendQr} onOpenChange={setShowFriendQr}>
+        <DialogContent className="max-w-xs bg-white border border-[#eae8f5] rounded-3xl p-5 text-center flex flex-col items-center">
+          <DialogHeader className="w-full">
+            <DialogTitle className="text-sm font-extrabold text-[#110e3d]">
+              📱 My Add Friend QR Code
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-400 font-bold">
+              Let other players scan this code to follow you!
+            </DialogDescription>
+          </DialogHeader>
+
+          {friendQrUrl && (
+            <div className="mt-4 p-4 bg-white rounded-3xl border border-violet-100 shadow-xl flex items-center justify-center">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=6366f1&data=${encodeURIComponent(friendQrUrl)}`}
+                alt="My QR Code"
+                className="w-44 h-44"
+              />
+            </div>
+          )}
+
+          <div className="mt-4 w-full flex gap-2">
+            <Button
+              onClick={() => {
+                if (friendQrUrl) {
+                  navigator.clipboard.writeText(friendQrUrl);
+                  toast({ title: "Copied!", description: "Add friend link copied." });
+                }
+              }}
+              className="flex-1 bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold h-9"
+            >
+              Copy Link
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowFriendQr(false)}
+              className="flex-1 rounded-xl border-[#eae8f5] text-slate-500 hover:text-slate-700 text-xs font-bold h-9"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

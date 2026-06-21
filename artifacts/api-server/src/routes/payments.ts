@@ -10,6 +10,7 @@ import {
   usersTable,
   systemSettingsTable,
   boostPackagesTable,
+  premiumGiftsTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
@@ -283,7 +284,15 @@ router.post("/payments/sayabayar/webhook", async (req, res): Promise<void> => {
     const grantPackageSku = ticket.requestedPackageSku;
     const targetConversationId = ticket.requestedConversationId;
 
-    if (grantTier) {
+    const giftCodeMatch = ticket.adminNotes?.match(/\[Gift Code:\s*([^\]\s]+)\]/);
+
+    if (giftCodeMatch && giftCodeMatch[1]) {
+      const code = giftCodeMatch[1].trim();
+      await db
+        .update(premiumGiftsTable)
+        .set({ status: "active", ticketId: ticket.id })
+        .where(eq(premiumGiftsTable.giftCode, code));
+    } else if (grantTier) {
       const endsAt = new Date();
       endsAt.setMonth(endsAt.getMonth() + 1);
       await db.insert(userTierSubscriptionsTable).values({
@@ -430,7 +439,15 @@ router.patch("/admin/payments/:id", async (req, res): Promise<void> => {
       return;
     }
 
-    if (grantTier) {
+    const giftCodeMatch = ticket.adminNotes?.match(/\[Gift Code:\s*([^\]\s]+)\]/);
+
+    if (giftCodeMatch && giftCodeMatch[1]) {
+      const code = giftCodeMatch[1].trim();
+      await db
+        .update(premiumGiftsTable)
+        .set({ status: "active", ticketId: ticket.id })
+        .where(eq(premiumGiftsTable.giftCode, code));
+    } else if (grantTier) {
       const endsAt = new Date();
       endsAt.setMonth(endsAt.getMonth() + 1);
       await db.insert(userTierSubscriptionsTable).values({
@@ -603,6 +620,256 @@ router.get("/conversations/:id/boosts", async (req, res): Promise<void> => {
     conversationName: conversation?.name ?? "Unnamed Group",
     ...state,
   }));
+});
+
+// POST /api/payments/gifts
+router.post("/payments/gifts", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const { tier } = req.body;
+  if (tier !== "premium" && tier !== "premium_plus") {
+    res.status(400).json({ error: "Membership tier tidak valid untuk gift." });
+    return;
+  }
+
+  // 1. Get SayaBayar configurations
+  const settingsRow = await db.query.systemSettingsTable.findFirst({
+    where: eq(systemSettingsTable.key, "homepage_settings"),
+  });
+  const settings = {
+    sayabayarApiKey: "",
+    sayabayarWebhookSecret: "",
+    premiumPrice: 25000,
+    premiumPlusPrice: 50000,
+    ...(settingsRow?.value || {} as any),
+  };
+  const apiKey = settings.sayabayarApiKey;
+
+  if (!apiKey) {
+    res.status(400).json({ error: "SayaBayar API Key belum dikonfigurasi di pengaturan admin." });
+    return;
+  }
+
+  // 2. Compute exact price
+  let priceIdr = tier === "premium" ? (settings.giftPremiumPrice ?? settings.premiumPrice) : (settings.giftPremiumPlusPrice ?? settings.premiumPlusPrice);
+  if (!priceIdr || priceIdr <= 0) {
+    priceIdr = tier === "premium" ? 25000 : 50000;
+  }
+
+  const giftCode = `gft_${crypto.randomBytes(16).toString("hex")}`;
+  const description = `Gift ${tier === "premium_plus" ? "Premium+" : "Premium"} Membership`;
+
+  // 3. Create SayaBayar invoice
+  let invoiceData: any;
+  try {
+    const email = `${user.username || "user"}_${user.id}_gift@arcadiamc.net`;
+    const customerName = user.displayName || user.username || `Player #${user.id}`;
+    const origin = req.headers.origin || "http://localhost:5173";
+    const redirectUrl = `${origin}/premium`;
+
+    const apiResponse = await fetch("https://api.sayabayar.com/v1/invoices", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify({
+        customer_name: customerName,
+        customer_email: email,
+        amount: priceIdr,
+        description: description,
+        channel_preference: "platform",
+        redirect_url: redirectUrl,
+      }),
+    });
+
+    const resJson = await apiResponse.json() as any;
+
+    if (!apiResponse.ok) {
+      console.error("SayaBayar API Error response (Gift):", JSON.stringify(resJson, null, 2));
+      res.status(apiResponse.status).json({
+        error: resJson?.error?.message || resJson?.message || resJson?.error || "Gagal membuat invoice di SayaBayar.",
+      });
+      return;
+    }
+
+    invoiceData = resJson.data;
+    if (!invoiceData || !invoiceData.payment_url) {
+      throw new Error("Missing invoice data or payment_url from SayaBayar.");
+    }
+  } catch (error: any) {
+    console.error("Error creating SayaBayar invoice for Gift:", error);
+    res.status(500).json({ error: error.message || "Terjadi kesalahan koneksi saat membuat invoice." });
+    return;
+  }
+
+  // 4. Create the payment ticket & premium gift entry
+  const [ticket] = await db.insert(ticketsTable).values({
+    creatorId: user.id,
+    ticketType: "payment",
+    reason: `Gift: ${tier}`,
+    description: `Pembelian Gift ${tier === "premium_plus" ? "Premium+" : "Premium"} oleh @${user.username}`,
+    status: "open",
+    paymentStatus: "pending_review",
+    requestedTier: tier,
+    grantedAt: null,
+    adminNotes: `[SayaBayar ID: ${invoiceData.id}] [Gift Code: ${giftCode}]`,
+  }).returning();
+
+  await db.insert(premiumGiftsTable).values({
+    giftCode,
+    buyerId: user.id,
+    tier,
+    status: "pending",
+    ticketId: ticket.id,
+  });
+
+  res.status(201).json(serializeDates({
+    checkoutUrl: invoiceData.payment_url,
+    giftCode,
+  }));
+});
+
+// GET /api/me/gifts
+router.get("/me/gifts", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const gifts = await db
+    .select({
+      id: premiumGiftsTable.id,
+      giftCode: premiumGiftsTable.giftCode,
+      tier: premiumGiftsTable.tier,
+      status: premiumGiftsTable.status,
+      createdAt: premiumGiftsTable.createdAt,
+      redeemedAt: premiumGiftsTable.redeemedAt,
+      receiverUsername: usersTable.username,
+      receiverDisplayName: usersTable.displayName,
+    })
+    .from(premiumGiftsTable)
+    .leftJoin(usersTable, eq(premiumGiftsTable.receiverId, usersTable.id))
+    .where(eq(premiumGiftsTable.buyerId, user.id))
+    .orderBy(desc(premiumGiftsTable.createdAt));
+
+  res.json(gifts.map(serializeDates));
+});
+
+// GET /api/payments/gifts/check/:code
+router.get("/payments/gifts/check/:code", async (req, res): Promise<void> => {
+  const { code } = req.params;
+  if (!code) {
+    res.status(400).json({ error: "Gift code is required." });
+    return;
+  }
+
+  const buyers = aliasedTable(usersTable, "buyers");
+  const receivers = aliasedTable(usersTable, "receivers");
+
+  const [gift] = await db
+    .select({
+      id: premiumGiftsTable.id,
+      giftCode: premiumGiftsTable.giftCode,
+      tier: premiumGiftsTable.tier,
+      status: premiumGiftsTable.status,
+      createdAt: premiumGiftsTable.createdAt,
+      redeemedAt: premiumGiftsTable.redeemedAt,
+      buyerUsername: buyers.username,
+      buyerDisplayName: buyers.displayName,
+      receiverUsername: receivers.username,
+      receiverDisplayName: receivers.displayName,
+    })
+    .from(premiumGiftsTable)
+    .innerJoin(buyers, eq(premiumGiftsTable.buyerId, buyers.id))
+    .leftJoin(receivers, eq(premiumGiftsTable.receiverId, receivers.id))
+    .where(eq(premiumGiftsTable.giftCode, code.trim()))
+    .limit(1);
+
+  if (!gift) {
+    res.status(404).json({ error: "Gift code tidak ditemukan." });
+    return;
+  }
+
+  res.json(serializeDates(gift));
+});
+
+// POST /api/payments/gifts/redeem
+router.post("/payments/gifts/redeem", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const { code } = req.body;
+  if (!code || typeof code !== "string") {
+    res.status(400).json({ error: "Gift code is required." });
+    return;
+  }
+
+  const gift = await db.query.premiumGiftsTable.findFirst({
+    where: eq(premiumGiftsTable.giftCode, code.trim()),
+  });
+
+  if (!gift) {
+    res.status(404).json({ error: "Gift code tidak valid." });
+    return;
+  }
+
+  if (gift.status === "pending") {
+    res.status(400).json({ error: "Gift ini belum dibayar." });
+    return;
+  }
+
+  if (gift.status === "redeemed") {
+    res.status(400).json({ error: "Gift ini sudah diredeem oleh orang lain." });
+    return;
+  }
+
+  if (gift.buyerId === user.id) {
+    res.status(400).json({ error: "Kamu tidak bisa meredeem gift yang kamu beli sendiri." });
+    return;
+  }
+
+  // Perform redemption transaction
+  await db.transaction(async (tx) => {
+    // 1. Mark gift as redeemed
+    await tx
+      .update(premiumGiftsTable)
+      .set({
+        status: "redeemed",
+        receiverId: user.id,
+        redeemedAt: new Date(),
+      })
+      .where(eq(premiumGiftsTable.id, gift.id));
+
+    // 2. Grant subscription to user
+    const endsAt = new Date();
+    endsAt.setMonth(endsAt.getMonth() + 1);
+
+    await tx.insert(userTierSubscriptionsTable).values({
+      userId: user.id,
+      tier: gift.tier,
+      status: "active",
+      source: "gift_redeem",
+      startsAt: new Date(),
+      endsAt,
+      autoRenews: false,
+      notes: `Redeemed gift code ${gift.giftCode} from buyer #${gift.buyerId}`,
+    });
+
+    // 3. Update user role if applicable
+    if (!["admin", "staff", "dev", "dev_website"].includes(user.role)) {
+      await tx.update(usersTable)
+        .set({ role: gift.tier as any, updatedAt: new Date() })
+        .where(eq(usersTable.id, user.id));
+    }
+  });
+
+  res.status(200).json({ success: true, tier: gift.tier });
 });
 
 export default router;

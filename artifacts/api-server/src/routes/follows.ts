@@ -107,6 +107,34 @@ async function buildPublicUser(currentUserId: number, targetUserId: number) {
   return profile;
 }
 
+router.get("/users/resolve/:target", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!me) { res.status(404).json({ error: "User not found" }); return; }
+
+  const targetParam = req.params.target;
+  let targetUser;
+
+  const targetId = parseInt(targetParam, 10);
+  if (!isNaN(targetId) && String(targetId) === targetParam) {
+    targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, targetId) });
+  } else {
+    targetUser = await db.query.usersTable.findFirst({
+      where: sql`lower(${usersTable.username}) = ${targetParam.toLowerCase()}`,
+    });
+  }
+
+  if (!targetUser) {
+    res.status(404).json({ error: "Target user not found" });
+    return;
+  }
+
+  const profile = await buildPublicUser(me.id, targetUser.id);
+  res.json(profile);
+});
+
 router.get("/members", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) {

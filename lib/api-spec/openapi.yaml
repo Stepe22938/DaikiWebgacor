@@ -1074,6 +1074,69 @@ paths:
         "204":
           description: Removed
 
+  /conversations/{id}/invite:
+    post:
+      operationId: generateInviteCode
+      tags: [messaging]
+      summary: Generate or retrieve the group invite code
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateInviteCodeInput"
+      responses:
+        "200":
+          description: The group invite code details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateInviteCodeResult"
+
+  /invites/{code}:
+    get:
+      operationId: getInviteDetails
+      tags: [messaging]
+      summary: Get group details using an invite code
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Group details for joining
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteDetails"
+
+  /invites/{code}/join:
+    post:
+      operationId: joinGroupByInviteCode
+      tags: [messaging]
+      summary: Join a group chat using an invite code
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Joined group details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinGroupResult"
+
   /me/friends:
     get:
       operationId: getMyFriends
@@ -2071,6 +2134,8 @@ components:
           type: ["integer", "null"]
         createdAt:
           type: string
+        inviteCode:
+          type: ["string", "null"]
 
     Message:
       type: object
@@ -2082,6 +2147,8 @@ components:
           type: integer
         senderId:
           type: ["integer", "null"]
+        title:
+          type: ["string", "null"]
         content:
           type: string
         imageUrl:
@@ -2199,6 +2266,39 @@ components:
         targetUserId:
           type: integer
 
+    GenerateInviteCodeInput:
+      type: object
+      properties:
+        regenerate:
+          type: boolean
+
+    GenerateInviteCodeResult:
+      type: object
+      required: [inviteCode]
+      properties:
+        inviteCode:
+          type: ["string", "null"]
+
+    InviteDetails:
+      type: object
+      required: [id, name, memberCount]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        iconUrl:
+          type: ["string", "null"]
+        memberCount:
+          type: integer
+
+    JoinGroupResult:
+      type: object
+      required: [conversationId]
+      properties:
+        conversationId:
+          type: integer
+
     CreateGroupInput:
       type: object
       required: [name, memberIds]
@@ -2230,6 +2330,8 @@ components:
     SendMessageInput:
       type: object
       properties:
+        title:
+          type: string
         content:
           type: string
           minLength: 1

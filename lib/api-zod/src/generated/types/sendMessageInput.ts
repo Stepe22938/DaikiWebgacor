@@ -7,6 +7,7 @@
  */
 
 export interface SendMessageInput {
+  title?: string;
   /**
      * @minLength 1
      * @maxLength 4000

@@ -41,20 +41,35 @@ function killPortProcess(port) {
 }
 
 let child = null;
+let childRunning = false;
 
 const runServerPlugin = {
   name: "run-server",
   setup(build) {
     build.onEnd(() => {
-      if (child) {
+      const spawnNew = () => {
+        console.log("[API-Build] Starting API server...");
+        child = spawn("node", ["--enable-source-maps", "./dist/index.mjs"], {
+          stdio: "inherit"
+        });
+        childRunning = true;
+        child.on("exit", (code) => {
+          childRunning = false;
+          if (code !== 0 && code !== null) {
+            console.error(`[API-Build] API server exited with code ${code}`);
+          }
+        });
+      };
+
+      if (child && childRunning) {
         console.log("[API-Build] Restarting API server...");
+        child.once("exit", () => {
+          spawnNew();
+        });
         child.kill();
       } else {
-        console.log("[API-Build] Starting API server...");
+        spawnNew();
       }
-      child = spawn("node", ["--enable-source-maps", "./dist/index.mjs"], {
-        stdio: "inherit"
-      });
     });
   }
 };
@@ -76,7 +91,6 @@ async function buildAll() {
 
   // Clean stale ports to avoid conflict
   killPortProcess(5000);
-  killPortProcess(5173);
 
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });

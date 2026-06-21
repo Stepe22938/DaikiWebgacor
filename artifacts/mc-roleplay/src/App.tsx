@@ -17,6 +17,8 @@ import Profile from "@/pages/profile";
 import Messages from "@/pages/messages";
 import Premium from "@/pages/premium";
 import NotFound from "@/pages/not-found";
+import AddFriendPage from "@/pages/add-friend";
+
 
 const isLocal = window.location.hostname === "localhost" ||
                 window.location.hostname === "127.0.0.1" ||
@@ -679,6 +681,19 @@ function PremiumProtected() {
   );
 }
 
+function AddFriendProtected() {
+  return (
+    <>
+      <Show when="signed-in">
+        <AddFriendPage />
+      </Show>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+    </>
+  );
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
   const realmSettings = useRealmSettings();
@@ -720,6 +735,10 @@ function ClerkProviderWithRoutes() {
             <Route path="/profile/:id" component={ProfileProtected} />
             <Route path="/messages" component={MessagesProtected} />
             <Route path="/premium" component={PremiumProtected} />
+            <Route path="/invite/:code">
+              {(params) => <Redirect to={`/member?tab=messages&inviteCode=${params.code}`} />}
+            </Route>
+            <Route path="/add-friend/:target" component={AddFriendProtected} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
             <Route component={NotFound} />

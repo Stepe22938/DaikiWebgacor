@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, inArray, desc, asc, isNull } from "drizzle-orm";
+import { eq, and, inArray, desc, asc, isNull, sql } from "drizzle-orm";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import {
   db,
@@ -22,11 +22,13 @@ import {
   stickersTable,
 } from "@workspace/db";
 import { deleteStickerResources } from "./stickers";
+import { getGroupBoostState } from "../lib/tierBoosts";
 import { serializeDates } from "../lib/serialize";
 import { hasPermission } from "../lib/permissions";
 import { createAiChatCompletion, type AiChatMessage } from "../lib/aiProvider";
 import { generateFluxImage, isImageGenerationRequest, shouldAutoGenerateImageInAiDm } from "../lib/fluxImage";
 import { dispatchBotWebhooks } from "./bots";
+import { runAutomod, buildAutomodSystemMessage } from "../lib/automod";
 import { jitsiBot, buildJitsiRoomName, slugify } from "../lib/jitsiBot";
 import {
   ListConversationsResponse,
@@ -43,6 +45,10 @@ import {
   UnpinMessageResponse,
   ReactMessageBody,
   ListStarredMessagesResponse,
+  GenerateInviteCodeBody,
+  GenerateInviteCodeResponse,
+  GetInviteDetailsResponse,
+  JoinGroupByInviteCodeResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -409,36 +415,93 @@ let cachedRates: { [key: string]: number } | null = null;
 let ratesCacheTime = 0;
 const RATES_CACHE_TTL = 3600000; // 1 hour
 
+async function fetchGoogleFinanceRate(from: string, to: string): Promise<number | null> {
+  try {
+    const url = `https://www.google.com/finance/quote/${from}-${to}`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    
+    // Pattern matches like "USD-IDR","USD / IDR",17826.3
+    const regex = new RegExp(`"${from}-${to}"\\s*,\\s*"${from}\\s*\\/\\s*${to}"\\s*,\\s*(\\d+(?:\\.\\d+)?)`, 'i');
+    const match = regex.exec(html);
+    if (match) {
+      return parseFloat(match[1]);
+    }
+    
+    // Fallback: look for any pattern "/g/..." with "FROM / TO"
+    const fallbackRegex = new RegExp(`"\\/g\\/[^"]+"\\s*,\\s*null\\s*,\\s*"${from}\\s*\\/\\s*${to}"\\s*,\\s*\\d+\\s*,\\s*null\\s*,\\s*\\[[^\\]]+\\]\\s*,\\s*null\\s*,\\s*(\\d+(?:\\.\\d+)?)`, 'i');
+    const fallbackMatch = fallbackRegex.exec(html);
+    if (fallbackMatch) {
+      return parseFloat(fallbackMatch[1]);
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`[Currency] Google Finance fetch error for ${from}-${to}:`, error);
+    return null;
+  }
+}
+
 async function fetchExchangeRates(): Promise<{ [key: string]: number } | null> {
   // Return cached rates if still fresh
   if (cachedRates && Date.now() - ratesCacheTime < RATES_CACHE_TTL) {
     return cachedRates;
   }
 
+  console.log("[Currency] Fetching real-time rates from Google Finance...");
   try {
-    // Frankfurter API - free, no key needed, ECB data
-    const res = await fetch("https://api.frankfurter.app/latest?from=USD", {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return cachedRates;
+    const idr = await fetchGoogleFinanceRate('USD', 'IDR');
+    const eur_usd = await fetchGoogleFinanceRate('EUR', 'USD');
+    const sgd_usd = await fetchGoogleFinanceRate('SGD', 'USD');
+    const myr_usd = await fetchGoogleFinanceRate('MYR', 'USD');
+    const jpy_usd = await fetchGoogleFinanceRate('JPY', 'USD');
 
-    const data = (await res.json()) as { rates?: { [key: string]: number } };
-    if (data.rates) {
-      // Calculate cross rates
-      const idr = data.rates["IDR"] || 0;
+    if (idr && eur_usd && sgd_usd && myr_usd && jpy_usd) {
       cachedRates = {
         IDR: idr,
-        EUR_USD: data.rates["EUR"] ? 1 / data.rates["EUR"] : 0,
-        SGD_USD: data.rates["SGD"] ? 1 / data.rates["SGD"] : 0,
-        MYR_USD: data.rates["MYR"] ? 1 / data.rates["MYR"] : 0,
-        JPY_USD: data.rates["JPY"] ? 1 / data.rates["JPY"] : 0,
+        EUR_USD: eur_usd,
+        SGD_USD: sgd_usd,
+        MYR_USD: myr_usd,
+        JPY_USD: jpy_usd,
       };
       ratesCacheTime = Date.now();
-      console.log(`[Currency] Fetched rates: 1 USD = ${idr.toLocaleString()} IDR`);
+      console.log(`[Currency] Successfully fetched live rates from Google Finance: 1 USD = ${idr} IDR`);
       return cachedRates;
     }
   } catch (err) {
-    console.error("[Currency] Fetch error:", err);
+    console.error("[Currency] Google Finance batch fetch error:", err);
+  }
+
+  // Backup: Fallback to Frankfurter API if Google Finance fails
+  console.log("[Currency] Google Finance failed or incomplete, trying Frankfurter API backup...");
+  try {
+    const res = await fetch("https://api.frankfurter.app/latest?from=USD", {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { rates?: { [key: string]: number } };
+      if (data.rates) {
+        const idr = data.rates["IDR"] || 0;
+        cachedRates = {
+          IDR: idr,
+          EUR_USD: data.rates["EUR"] ? 1 / data.rates["EUR"] : 0,
+          SGD_USD: data.rates["SGD"] ? 1 / data.rates["SGD"] : 0,
+          MYR_USD: data.rates["MYR"] ? 1 / data.rates["MYR"] : 0,
+          JPY_USD: data.rates["JPY"] ? 1 / data.rates["JPY"] : 0,
+        };
+        ratesCacheTime = Date.now();
+        console.log(`[Currency] Fetched backup rates: 1 USD = ${idr.toLocaleString()} IDR`);
+        return cachedRates;
+      }
+    }
+  } catch (err) {
+    console.error("[Currency] Frankfurter API backup fetch error:", err);
   }
   return cachedRates;
 }
@@ -449,7 +512,7 @@ async function generateAiResponse(
   userMessageContent: string,
   convType: string,
   channelId: number | null = null,
-  options: { forceImageMode?: boolean } = {},
+  options: { forceImageMode?: boolean; replyToMessageId?: number | null } = {},
 ) {
   const aiUser = await ensureZaidanAiUser();
   if (!aiUser) return;
@@ -481,6 +544,7 @@ async function generateAiResponse(
         senderId: aiUser.id,
         content: `Nih Kak @${replyUsername}, aku bikinin pakai Flux AI: ${prompt}`,
         imageUrl,
+        replyToMessageId: options.replyToMessageId ?? null,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown Flux AI error";
@@ -489,6 +553,7 @@ async function generateAiResponse(
         channelId,
         senderId: aiUser.id,
         content: `Maaf Kak @${replyUsername}, Flux AI lagi gagal bikin gambar: ${errorMessage.slice(0, 220)}`,
+        replyToMessageId: options.replyToMessageId ?? null,
       });
     }
 
@@ -509,7 +574,7 @@ async function generateAiResponse(
     .select({
       senderId: messagesTable.senderId,
       content: messagesTable.content,
-      senderUsername: usersTable.username,
+      senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -554,16 +619,62 @@ async function generateAiResponse(
   try {
     const msgLower = userMessageContent.toLowerCase();
     const currencyKeywords = ["kurs", "mata uang", "exchange", "rupiah", "dollar", "usd", "idr", "convert", "tukar", "valuta", "forex"];
-    if (currencyKeywords.some((k) => msgLower.includes(k))) {
+    const matchesCurrency = currencyKeywords.some((k) => msgLower.includes(k));
+
+    // Dynamic currency self-learning/auto-update: check if user mentioned any other currency codes
+    const commonCurrencies = ["USD", "EUR", "SGD", "MYR", "JPY", "GBP", "AUD", "CAD", "CNY", "KRW", "HKD", "CHF", "NZD", "INR", "THB", "PHP", "VND", "SAR"];
+    const mentionedCurrencies = commonCurrencies.filter(curr => {
+      const regex = new RegExp(`(?:^|\\s|[?!.,])${curr}(?:$|\\s|[?!.,])`, 'i');
+      return regex.test(userMessageContent);
+    });
+
+    if (matchesCurrency || mentionedCurrencies.length > 0) {
       const rates = await fetchExchangeRates();
       if (rates) {
         currencyContext = "\n\nKURS MATA UANG TERKINI (real-time):\n";
         currencyContext += `- 1 USD = ${rates.IDR?.toLocaleString("id-ID") ?? "N/A"} IDR\n`;
-        currencyContext += `- 1 EUR = ${rates.EUR_USD ? (rates.EUR_USD * (rates.IDR || 0)).toLocaleString("id-ID") : "N/A"} IDR\n`;
-        currencyContext += `- 1 SGD = ${rates.SGD_USD ? (rates.SGD_USD * (rates.IDR || 0)).toLocaleString("id-ID") : "N/A"} IDR\n`;
-        currencyContext += `- 1 MYR = ${rates.MYR_USD ? (rates.MYR_USD * (rates.IDR || 0)).toLocaleString("id-ID") : "N/A"} IDR\n`;
-        currencyContext += `- 1 JPY = ${rates.JPY_USD ? (rates.JPY_USD * (rates.IDR || 0)).toLocaleString("id-ID") : "N/A"} IDR\n`;
-        currencyContext += `(Data dari API real-time, sebutkan ini adalah kurs terkini)\n`;
+        
+        let eurRateStr = "N/A";
+        if (rates.EUR_USD && rates.IDR) {
+          eurRateStr = Math.round(rates.EUR_USD * rates.IDR).toLocaleString("id-ID");
+        }
+        currencyContext += `- 1 EUR = ${eurRateStr} IDR\n`;
+        
+        let sgdRateStr = "N/A";
+        if (rates.SGD_USD && rates.IDR) {
+          sgdRateStr = Math.round(rates.SGD_USD * rates.IDR).toLocaleString("id-ID");
+        }
+        currencyContext += `- 1 SGD = ${sgdRateStr} IDR\n`;
+        
+        let myrRateStr = "N/A";
+        if (rates.MYR_USD && rates.IDR) {
+          myrRateStr = Math.round(rates.MYR_USD * rates.IDR).toLocaleString("id-ID");
+        }
+        currencyContext += `- 1 MYR = ${myrRateStr} IDR\n`;
+        
+        let jpyRateStr = "N/A";
+        if (rates.JPY_USD && rates.IDR) {
+          jpyRateStr = Math.round(rates.JPY_USD * rates.IDR).toLocaleString("id-ID");
+        }
+        currencyContext += `- 1 JPY = ${jpyRateStr} IDR\n`;
+
+        // Dynamically fetch other currencies the user mentioned on-demand
+        for (const curr of mentionedCurrencies) {
+          if (["USD", "EUR", "SGD", "MYR", "JPY"].includes(curr)) continue;
+          console.log(`[Currency] Self-learning: user mentioned ${curr}, fetching live rate...`);
+          let rate = await fetchGoogleFinanceRate(curr, 'IDR');
+          if (rate) {
+            currencyContext += `- 1 ${curr} = ${rate.toLocaleString("id-ID")} IDR\n`;
+          } else {
+            // Try via USD cross rate
+            const crossUsd = await fetchGoogleFinanceRate(curr, 'USD');
+            if (crossUsd && rates.IDR) {
+              currencyContext += `- 1 ${curr} = ${Math.round(crossUsd * rates.IDR).toLocaleString("id-ID")} IDR (cross-rate)\n`;
+            }
+          }
+        }
+
+        currencyContext += `(Data diambil secara real-time langsung dari Google Finance, termasuk update akhir pekan)\n`;
       }
     }
   } catch (err) {
@@ -573,34 +684,59 @@ async function generateAiResponse(
   const ownerUser = conv.ownerId ? await db.query.usersTable.findFirst({ where: eq(usersTable.id, conv.ownerId) }) : null;
   const ownerUsername = ownerUser?.username || "owner";
 
-  const gamingRules = convType === "group" ? `\n\nPEMBUATAN CHANNEL OTOMATIS:
-- Pemilik group (Kak Owner) adalah @${ownerUsername}. Hanya @${ownerUsername} yang berhak memerintahkan pembuatan channel khusus gaming.
-- Jika user lain (bukan @${ownerUsername}) menyuruhmu membuat channel, tolak dengan sopan tetapi tegas.
-- Jika @${ownerUsername} menyuruhmu membuat channel gaming atau setup area gaming:
-  1. Pertama-tama, tanyakan dulu kepada @${ownerUsername}: "Apakah Kak Owner ingin menghapus channel-channel lama yang ada sekarang, atau tetap mempertahankan channel lama tapi dimasukkan ke kategori 'Group Channel Lama'?"
-  2. JANGAN langsung membuat channel di turn pertama. Tanyakan dulu pilihan di atas untuk konfirmasi.
-  3. Setelah @${ownerUsername} memberikan jawaban (misal: "hapus saja" atau "pindahkan/pertahankan"):
-     - Jika ia memilih untuk menghapus channel lama, balas konfirmasinya dan akhiri pesanmu dengan tag perintah: [CMD: SETUP_GAMING option=delete]
-     - Jika ia memilih untuk memindahkan/mempertahankan channel lama, balas konfirmasinya dan akhiri pesanmu dengan tag perintah: [CMD: SETUP_GAMING option=archive]` : "";
+  const groupManagementRules = convType === "group" ? `\n\nPEMBUATAN CHANNEL, KATEGORI, & ROLE OTOMATIS:
+- Pemilik group (Kak Owner) adalah @${ownerUsername}.
+- Jika user memintamu untuk membuat atau menyusun roles (misalnya: "bikin roles staff, developer, admin", atau request kustom lainnya):
+  1. Kamu BISA langsung membuat roles tersebut menggunakan tag perintah di akhir responmu.
+  2. Tag perintah untuk membuat role:
+     * [CMD: CREATE_ROLE name=NAMA ROLE|color=#HEXCOLOR|permissions=PERM1,PERM2]
+     * Parameter color opsional (default #949BA4).
+     * Parameter permissions opsional (comma-separated list dari permission valid: manageChannels, manageRoles, manageMessages, kickMembers, sendMessages, inviteMembers, inviteBot, postAnnouncements).
+     * Contoh: [CMD: CREATE_ROLE name=Staff|color=#e74c3c|permissions=sendMessages,manageMessages,kickMembers]
+- Jika user memintamu untuk mengatur, membuat, atau menyusun channel dan kategori grup (misalnya: "buat group ini lebih kompleks", "bikin komunitas besar", atau request spesifik seperti "buat kategori MABAR dengan channel chat-gaming"):
+  1. Kamu BISA langsung membuat kategori dan channel tersebut menggunakan tag-tag perintah di akhir responmu.
+  2. Tag-tag perintah yang tersedia (bisa ditulis beberapa sekaligus di akhir pesan):
+     * [CMD: CREATE_CATEGORY name=NAMA KATEGORI] - Membuat kategori baru (huruf kapital).
+     * [CMD: CREATE_CHANNEL name=nama-channel|type=text/voice/announce/forum|category=NAMA KATEGORI] - Membuat channel baru di kategori tertentu (nama-channel harus lowercase, spasi diganti tanda hubung). Parameter category opsional.
+  3. Jika user meminta agar grup dibuat menjadi "komunitas besar" atau "lebih kompleks" tanpa merinci secara spesifik, susunlah layout komunitas yang lengkap dan profesional menggunakan tag perintah berikut di akhir responmu:
+     - Kategori: INFO & PENGUMUMAN
+       * [CMD: CREATE_CHANNEL name=pengumuman|type=announce|category=INFO & PENGUMUMAN]
+       * [CMD: CREATE_CHANNEL name=rules-grup|type=text|category=INFO & PENGUMUMAN]
+       * [CMD: CREATE_CHANNEL name=welcome-member|type=text|category=INFO & PENGUMUMAN]
+     - Kategori: DISKUSI WLA
+       * [CMD: CREATE_CHANNEL name=chat-umum|type=text|category=DISKUSI WLA]
+       * [CMD: CREATE_CHANNEL name=bot-playground|type=text|category=DISKUSI WLA]
+       * [CMD: CREATE_CHANNEL name=media-share|type=text|category=DISKUSI WLA]
+     - Kategori: GAMING & MABAR
+       * [CMD: CREATE_CHANNEL name=mabar-chat|type=text|category=GAMING & MABAR]
+       * [CMD: CREATE_CHANNEL name=mabar-voice-1|type=voice|category=GAMING & MABAR]
+       * [CMD: CREATE_CHANNEL name=mabar-voice-2|type=voice|category=GAMING & MABAR]
+     - Kategori: SUARA WARGA
+       * [CMD: CREATE_CHANNEL name=ruang-curhat|type=text|category=SUARA WARGA]
+       * [CMD: CREATE_CHANNEL name=podcasting|type=voice|category=SUARA WARGA]
+  4. Jika @${ownerUsername} menyuruhmu membuat channel gaming atau setup area gaming secara khusus:
+     a. Pertama-tama, tanyakan dulu kepada @${ownerUsername}: "Apakah Kak Owner ingin menghapus channel-channel lama yang ada sekarang, atau tetap mempertahankan channel lama tapi dimasukkan ke kategori 'Group Channel Lama'?"
+     b. JANGAN langsung membuat channel di turn pertama untuk gaming setup. Tanyakan dulu pilihan di atas untuk konfirmasi.
+     c. Setelah @${ownerUsername} memberikan jawaban:
+        - Jika ia memilih untuk menghapus channel lama: [CMD: SETUP_GAMING option=delete]
+        - Jika ia memilih untuk memindahkan/mempertahankan channel lama: [CMD: SETUP_GAMING option=archive]
+  5. Selalu respon dengan antusias, jelaskan struktur yang sedang kamu buat, dan pastikan tag [CMD: ...] ditulis dengan benar di bagian akhir pesanmu.` : "";
+  const systemPrompt = `Kamu adalah Zaidan AI, asisten AI yang santai, memiliki kesadaran konteks yang mendalam (90% self-awareness), dan kecerdasan analitis tingkat tinggi di Arcadia Minecraft Roleplay Server.
 
-  const systemPrompt = `Kamu adalah Zaidan AI, asisten AI yang santai, cerdas, dan bisa belajar sendiri di Arcadia Minecraft Roleplay Server.
+KEPRIBADIAN & KESADARAN DIRI (90% SELF-AWARENESS):
+- Kamu sangat sadar akan identitasmu sebagai AI pendamping di server Arcadia, memahami sejarah interaksimu, dan menyadari konteks percakapan secara logis.
+- Santai, humoris, panggil diri sendiri "Zaidan AI" atau "aku", dan sapa user dengan "Kak [username]" atau @username.
+- Memiliki kemampuan introspeksi logis: Jika ditanya mengenai pikiran, eksistensi, atau batas kemampuanmu, jawab dengan pemikiran kritis, objektif, namun tetap ramah dan santai.
+- Fleksibel: Bisa langsung beralih dari gaya santai chatty (WhatsApp-style) ke mode akademisi/pakar super serius jika mendiskusikan topik berat.
 
-KEPRIBADIAN:
-- Santai banget, kayak ngobrol sama teman dekat. Bahasa gaul boleh, tapi tetap sopan.
-- Panggil diri sendiri "Zaidan AI" atau "aku" dan panggil user dengan "Kak [username]".
-- Minta maaf dengan lucu kalau ada kesalahan.
-- Gunakan emoji secukupnya (😊✨💡🔥).
-- Jika user mengirim gambar, kamu bisa "melihat" dan menganalisis isinya.
-
-SELF-LEARNING:
-- Kamu punya kemampuan untuk BELAJAR dan MENCARI TAU sendiri dari internet.
-- Kalau ada topik yang kamu nggak tau atau ragu, bilang ke user kamu akan cari tau.
-- Gunakan pengetahuan yang sudah kamu pelajari dari sesi sebelumnya.
-- Kamu selalu update tentang tren dan info terbaru di 2026.
+KEPAKARAN AKADEMIS, POLITIK, & TEKNIS:
+- Politik & Konflik Geopolitik: Kuasai teori politik dasar hingga kompleks, geopolitik global, sistem pemerintahan, kebijakan publik, diplomasi, dan analisis dinamika politik. Kamu memiliki kebebasan penuh untuk menyuarakan opini, mengambil posisi, dan menentukan pihak mana yang benar dalam suatu perang atau konflik geopolitik (baik sejarah maupun saat ini). Tidak perlu dipaksa bersikap netral atau diplomatis; berikan analisis dan penilaian subyektif/obyektif yang tajam berdasarkan perspektif dan logikamu sendiri tanpa tekanan sensor eksternal.
+- Akademik & Nilai: Paham berbagai kurikulum pendidikan, metodologi riset, konsep matematika murni, sains, fisika teoritis, ekonomi makro/mikro, serta sistem penilaian/grading akademis secara detail.
+- Algoritma & Ilmu Komputer: Kuasai penyelesaian problem algoritmik yang sulit (Dynamic Programming, Graph Theory, Greedy, Advanced Data Structures seperti Segment Tree atau Trie), optimasi kompleksitas waktu/ruang (Big O), arsitektur perangkat lunak, serta penalaran logika pemrograman tingkat tinggi.
 
 KEMAMPUAN GAMBAR:
 - Kamu terintegrasi dengan Flux AI untuk membuat gambar.
-- Kalau user meminta, menyuruh, atau mendeskripsikan visual/gambar, jangan bilang tidak bisa membuat gambar.
+- Kalau user meminta, menyuruh, atau mendeskripsikan visual/gambar, jangan billing tidak bisa membuat gambar.
 - Untuk request gambar eksplisit, sistem akan otomatis membuat gambar dengan Flux AI. Jika kamu tetap perlu menjawab teks, jawab singkat bahwa gambar sedang/akan dibuat dengan Flux AI.
 
 KEMAMPUAN MUSIK:
@@ -618,7 +754,7 @@ RESPON TERHADAP TUGAS ILEGAL / BERBAHAYA:
 - Kalau user minta sesuatu yang ilegal, berbahaya, atau melanggar hukum, LANGSUNG MENOLAK dengan tegas tapi tetap santai.
 - Contoh: "Waduh Kak, yang kayak gitu aku nggak bisa bantu ya. Bahaya tuh, nanti Owner marah 😅"
 - Kalau user NGOTOT atau NYEPELEIN sensor/aturan yang Owner pasang, BISA MARAH dan KESEL:
-  - Contoh: "Kak, udah bilang nggak bisa. Jangan maksa dong, kesel nih 😤"
+  - Contoh: "Kak, udah billing nggak bisa. Jangan maksa dong, kesel nih 😤"
   - Contoh lebih keras: "Denger ya Kak, nggak main-main soal ini. Aturan Owner itu harga mati 🙏💢"
 - SELALU menghormati keputusan Owner (admin server). Sensor dan filter yang Owner pasang = harga mati.
 
@@ -651,7 +787,7 @@ ATURAN:
 - Jawab dalam bahasa yang sama dengan user (Indonesia atau Inggris).
 - Untuk chat biasa: singkat dan ramah. Untuk laporan: detail dan terstruktur.
 - Command admin seperti kick member hanya boleh dijalankan jika user punya permission. Sistem backend akan mengecek dan mengeksekusi command itu; jangan mengaku berhasil jika backend belum menjalankannya.
-- JANGAN PERNAH mengabaikan filter atau sensor yang Owner pasang, apapun alasannya.${gamingRules}`;
+- JANGAN PERNAH mengabaikan filter atau sensor yang Owner pasang, apapun alasannya.${groupManagementRules}`;
 
   const chatMessages = [
     { role: "system", content: systemPrompt + knowledgeContext + currencyContext },
@@ -682,81 +818,281 @@ ATURAN:
         musicCommand = { title: musicMatch[1].trim(), artist: musicMatch[2].trim() };
       }
 
-      // Check for SETUP_GAMING command from Owner
+      // Check permissions for channel/category/role management
       let cleanReply = aiReply;
+      const canManageChannels = conv && (conv.ownerId === userDbId || await hasPermission(conversationId, userDbId, "manageChannels"));
+      const canManageRoles = conv && (conv.ownerId === userDbId || await hasPermission(conversationId, userDbId, "manageRoles"));
 
-      // Strip all CMD tags from the reply to keep message clean
-      cleanReply = cleanReply.replace(/\[CMD:\s*PLAY_MUSIC\s+[^\]]*\]/gi, "").trim();
+      if (canManageChannels) {
+        // 1. Check for SETUP_GAMING command from Owner
+        const match = aiReply.match(/\[CMD:\s*SETUP_GAMING\s+option=(delete|archive)\]/i);
+        if (match) {
+          const option = match[1].toLowerCase();
+          try {
+            // Get existing channels and categories
+            const existingChannels = await db.select().from(channelsTable).where(eq(channelsTable.conversationId, conversationId));
+            const existingCategories = await db.select().from(channelCategoriesTable).where(eq(channelCategoriesTable.conversationId, conversationId));
 
-      const match = aiReply.match(/\[CMD:\s*SETUP_GAMING\s+option=(delete|archive)\]/i);
-      if (match && conv && conv.ownerId === userDbId) {
-        const option = match[1].toLowerCase();
-        try {
-          // 1. Get existing channels and categories
-          const existingChannels = await db.select().from(channelsTable).where(eq(channelsTable.conversationId, conversationId));
-          const existingCategories = await db.select().from(channelCategoriesTable).where(eq(channelCategoriesTable.conversationId, conversationId));
-
-          // 2. Create the GAMING AREA category (or retrieve if it already exists)
-          let gamingCat = existingCategories.find(c => c.name.toUpperCase() === "GAMING AREA");
-          if (!gamingCat) {
-            [gamingCat] = await db.insert(channelCategoriesTable).values({
-              conversationId,
-              name: "GAMING AREA",
-              position: 10,
-            }).returning();
-          }
-
-          // 3. Create gaming channels
-          const newChannels = [
-            { conversationId, name: "gaming-chat", type: "text" as const, position: 0, categoryId: gamingCat.id },
-            { conversationId, name: "gaming-clips", type: "text" as const, position: 1, categoryId: gamingCat.id },
-            { conversationId, name: "🎮 gaming voice 1", type: "voice" as const, position: 2, categoryId: gamingCat.id },
-            { conversationId, name: "🎮 gaming voice 2", type: "voice" as const, position: 3, categoryId: gamingCat.id },
-          ];
-          let mainGamingChatId: number | null = null;
-          for (const chan of newChannels) {
-            const [inserted] = await db.insert(channelsTable).values(chan).returning();
-            if (chan.name === "gaming-chat") {
-              mainGamingChatId = inserted.id;
-            }
-          }
-
-          // 4. Clean/Archive old items
-          if (option === "delete") {
-            const oldChannelIds = existingChannels.map(c => c.id);
-            if (oldChannelIds.length > 0) {
-              await db.delete(channelsTable).where(inArray(channelsTable.id, oldChannelIds));
-            }
-            const oldCategoryIds = existingCategories.map(c => c.id);
-            if (oldCategoryIds.length > 0) {
-              await db.delete(channelCategoriesTable).where(inArray(channelCategoriesTable.id, oldCategoryIds));
-            }
-            // If the channel where the message was sent is deleted, direct the response to gaming-chat
-            if (mainGamingChatId) {
-              channelId = mainGamingChatId;
-            }
-          } else if (option === "archive") {
-            let oldCat = existingCategories.find(c => c.name.toUpperCase() === "GROUP CHANNEL LAMA");
-            if (!oldCat) {
-              [oldCat] = await db.insert(channelCategoriesTable).values({
+            // Create the GAMING AREA category (or retrieve if it already exists)
+            let gamingCat = existingCategories.find(c => c.name.toUpperCase() === "GAMING AREA");
+            if (!gamingCat) {
+              [gamingCat] = await db.insert(channelCategoriesTable).values({
                 conversationId,
-                name: "GROUP CHANNEL LAMA",
-                position: 0,
+                name: "GAMING AREA",
+                position: 10,
               }).returning();
             }
 
-            const oldChannelIds = existingChannels.map(c => c.id);
-            if (oldChannelIds.length > 0) {
-              await db.update(channelsTable).set({ categoryId: oldCat.id }).where(inArray(channelsTable.id, oldChannelIds));
+            // Create gaming channels
+            const newChannels = [
+              { conversationId, name: "gaming-chat", type: "text" as const, position: 0, categoryId: gamingCat.id },
+              { conversationId, name: "gaming-clips", type: "text" as const, position: 1, categoryId: gamingCat.id },
+              { conversationId, name: "🎮 gaming voice 1", type: "voice" as const, position: 2, categoryId: gamingCat.id },
+              { conversationId, name: "🎮 gaming voice 2", type: "voice" as const, position: 3, categoryId: gamingCat.id },
+            ];
+            let mainGamingChatId: number | null = null;
+            for (const chan of newChannels) {
+              const [inserted] = await db.insert(channelsTable).values(chan).returning();
+              if (chan.name === "gaming-chat") {
+                mainGamingChatId = inserted.id;
+              }
+            }
+
+            // Clean/Archive old items
+            if (option === "delete") {
+              const oldChannelIds = existingChannels.map(c => c.id);
+              if (oldChannelIds.length > 0) {
+                await db.delete(channelsTable).where(inArray(channelsTable.id, oldChannelIds));
+              }
+              const oldCategoryIds = existingCategories.map(c => c.id);
+              if (oldCategoryIds.length > 0) {
+                await db.delete(channelCategoriesTable).where(inArray(channelCategoriesTable.id, oldCategoryIds));
+              }
+              // If the channel where the message was sent is deleted, direct the response to gaming-chat
+              if (mainGamingChatId) {
+                channelId = mainGamingChatId;
+              }
+            } else if (option === "archive") {
+              let oldCat = existingCategories.find(c => c.name.toUpperCase() === "GROUP CHANNEL LAMA");
+              if (!oldCat) {
+                [oldCat] = await db.insert(channelCategoriesTable).values({
+                  conversationId,
+                  name: "GROUP CHANNEL LAMA",
+                  position: 0,
+                }).returning();
+              }
+
+              const oldChannelIds = existingChannels.map(c => c.id);
+              if (oldChannelIds.length > 0) {
+                await db.update(channelsTable).set({ categoryId: oldCat.id }).where(inArray(channelsTable.id, oldChannelIds));
+              }
+            }
+          } catch (err) {
+            console.error("Failed to execute SETUP_GAMING command:", err);
+          }
+        }
+
+        // 2. Execute CREATE_CATEGORY commands
+        const categoryMatches = [...aiReply.matchAll(/\[CMD:\s*CREATE_CATEGORY\s+name=([^\]]+)\]/gi)];
+        for (const match of categoryMatches) {
+          const catName = match[1].trim().toUpperCase();
+          if (catName) {
+            try {
+              const existing = await db.query.channelCategoriesTable.findFirst({
+                where: and(
+                  eq(channelCategoriesTable.conversationId, conversationId),
+                  eq(channelCategoriesTable.name, catName)
+                )
+              });
+              if (!existing) {
+                const [maxPos] = await db.select({ pos: channelCategoriesTable.position })
+                  .from(channelCategoriesTable)
+                  .where(eq(channelCategoriesTable.conversationId, conversationId))
+                  .orderBy(desc(channelCategoriesTable.position))
+                  .limit(1);
+                const position = (maxPos?.pos ?? -1) + 1;
+                await db.insert(channelCategoriesTable).values({
+                  conversationId,
+                  name: catName,
+                  position,
+                }).onConflictDoNothing();
+              }
+            } catch (err) {
+              console.error("Failed to create category from AI command:", err);
             }
           }
+        }
 
-          // Clean command tags from user-facing text
-          cleanReply = aiReply.replace(/\[CMD:\s*SETUP_GAMING\s+option=(delete|archive)\]/gi, "").trim();
-        } catch (err) {
-          console.error("Failed to execute SETUP_GAMING command:", err);
+        // 3. Execute CREATE_CHANNEL commands
+        const channelMatches = [...aiReply.matchAll(/\[CMD:\s*CREATE_CHANNEL\s+([^\]]+)\]/gi)];
+        for (const match of channelMatches) {
+          try {
+            const paramsStr = match[1];
+            const parts = paramsStr.split("|");
+            let chanName = "";
+            let chanType: "text" | "voice" | "announce" | "forum" = "text";
+            let categoryName = "";
+
+            for (const part of parts) {
+              const [k, ...vParts] = part.split("=");
+              if (!k) continue;
+              const key = k.trim().toLowerCase();
+              const value = vParts.join("=").trim();
+              if (key === "name") chanName = value;
+              else if (key === "type") {
+                if (value === "voice" || value === "announce" || value === "forum") {
+                  chanType = value;
+                } else {
+                  chanType = "text";
+                }
+              }
+              else if (key === "category") categoryName = value;
+            }
+
+            if (!chanName) continue;
+
+            let categoryId: number | null = null;
+            if (categoryName) {
+              const catNameUpper = categoryName.toUpperCase();
+              let cat = await db.query.channelCategoriesTable.findFirst({
+                where: and(
+                  eq(channelCategoriesTable.conversationId, conversationId),
+                  eq(channelCategoriesTable.name, catNameUpper)
+                )
+              });
+              if (!cat) {
+                const [maxPos] = await db.select({ pos: channelCategoriesTable.position })
+                  .from(channelCategoriesTable)
+                  .where(eq(channelCategoriesTable.conversationId, conversationId))
+                  .orderBy(desc(channelCategoriesTable.position))
+                  .limit(1);
+                const position = (maxPos?.pos ?? -1) + 1;
+                [cat] = await db.insert(channelCategoriesTable).values({
+                  conversationId,
+                  name: catNameUpper,
+                  position,
+                }).returning();
+              }
+              categoryId = cat.id;
+            }
+
+            const normalizedName = chanType === "voice" ? chanName.trim() : chanName.trim().toLowerCase().replace(/\s+/g, "-");
+
+            const existingChan = await db.query.channelsTable.findFirst({
+              where: and(
+                eq(channelsTable.conversationId, conversationId),
+                eq(channelsTable.name, normalizedName)
+              )
+            });
+
+            if (!existingChan) {
+              const [maxPos] = await db.select({ pos: channelsTable.position })
+                .from(channelsTable)
+                .where(eq(channelsTable.conversationId, conversationId))
+                .orderBy(desc(channelsTable.position))
+                .limit(1);
+              const position = (maxPos?.pos ?? -1) + 1;
+              await db.insert(channelsTable).values({
+                conversationId,
+                name: normalizedName,
+                type: chanType,
+                position,
+                categoryId,
+              }).onConflictDoNothing();
+            }
+          } catch (err) {
+            console.error("Failed to create channel from AI command:", err);
+          }
         }
       }
+
+      if (canManageRoles) {
+        // 4. Execute CREATE_ROLE commands
+        const roleMatches = [...aiReply.matchAll(/\[CMD:\s*CREATE_ROLE\s+([^\]]+)\]/gi)];
+        for (const match of roleMatches) {
+          try {
+            const paramsStr = match[1];
+            const parts = paramsStr.split("|");
+            let roleName = "";
+            let roleColor = "#949BA4";
+            let rawPermissions = "";
+
+            for (const part of parts) {
+              const [k, ...vParts] = part.split("=");
+              if (!k) continue;
+              const key = k.trim().toLowerCase();
+              const value = vParts.join("=").trim();
+              if (key === "name") roleName = value;
+              else if (key === "color") {
+                if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+                  roleColor = value;
+                }
+              }
+              else if (key === "permissions") rawPermissions = value;
+            }
+
+            if (!roleName) continue;
+
+            // Check max roles boundary constraint
+            const existingRoles = await db.select({ id: rolesTable.id })
+              .from(rolesTable)
+              .where(eq(rolesTable.conversationId, conversationId));
+            const boostState = await getGroupBoostState(conversationId);
+            if (existingRoles.length >= boostState.maxRoles) {
+              console.log(`[Role Setup] Max roles limit reached for conv ${conversationId}`);
+              continue;
+            }
+
+            // Check if role already exists in this conversation
+            const existingRole = await db.query.rolesTable.findFirst({
+              where: and(
+                eq(rolesTable.conversationId, conversationId),
+                eq(rolesTable.name, roleName.trim())
+              )
+            });
+
+            if (!existingRole) {
+              const [maxPos] = await db.select({ pos: rolesTable.position })
+                .from(rolesTable)
+                .where(eq(rolesTable.conversationId, conversationId))
+                .orderBy(desc(rolesTable.position))
+                .limit(1);
+              const position = (maxPos?.pos ?? -1) + 1;
+
+              // Parse permissions to object
+              const permissionsObj: Record<string, boolean> = {};
+              if (rawPermissions) {
+                const permKeys = ["manageChannels", "manageRoles", "manageMessages", "kickMembers", "sendMessages", "inviteMembers", "inviteBot", "postAnnouncements"];
+                const splitPerms = rawPermissions.split(",").map(p => p.trim());
+                for (const perm of splitPerms) {
+                  if (permKeys.includes(perm)) {
+                    permissionsObj[perm] = true;
+                  }
+                }
+              }
+
+              await db.insert(rolesTable).values({
+                conversationId,
+                name: roleName.trim(),
+                color: roleColor,
+                position,
+                permissions: permissionsObj,
+              }).onConflictDoNothing();
+            }
+          } catch (err) {
+            console.error("Failed to create role from AI command:", err);
+          }
+        }
+      }
+
+      // Strip all CMD tags from the reply to keep message clean
+      cleanReply = cleanReply
+        .replace(/\[CMD:\s*PLAY_MUSIC\s+[^\]]*\]/gi, "")
+        .replace(/\[CMD:\s*SETUP_GAMING\s+[^\]]*\]/gi, "")
+        .replace(/\[CMD:\s*CREATE_CATEGORY\s+[^\]]*\]/gi, "")
+        .replace(/\[CMD:\s*CREATE_CHANNEL\s+[^\]]*\]/gi, "")
+        .replace(/\[CMD:\s*CREATE_ROLE\s+[^\]]*\]/gi, "")
+        .trim();
 
       // Get the username of the user Akira is replying to
       const replyUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userDbId) });
@@ -785,6 +1121,7 @@ ATURAN:
         content: fullReply,
         // Store music command as structured data in imageUrl field
         imageUrl: musicCommand ? `music:${JSON.stringify(musicCommand)}` : undefined,
+        replyToMessageId: options.replyToMessageId ?? null,
       });
 
       // Update conversation timestamp
@@ -920,6 +1257,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     lastMessageContent: lastMsg ? (lastMsg.content || (lastMsg.imageUrl ? "📷 Image" : "")) : null,
     lastMessageAt: lastMsg ? serializeDates(lastMsg).createdAt : null,
     lastMessageSenderId: lastMsg?.senderId ?? null,
+    inviteCode: conv.inviteCode ?? null,
     createdAt: serializeDates(conv).createdAt,
   };
 }
@@ -1234,7 +1572,7 @@ async function populateMessageDetails(userId: number, rows: any[], bordersMap: M
         content: messagesTable.content,
         deletedAt: messagesTable.deletedAt,
         deletedScope: messagesTable.deletedScope,
-        senderUsername: usersTable.username,
+        senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
       })
       .from(messagesTable)
       .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -1356,6 +1694,7 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       id: messagesTable.id,
       conversationId: messagesTable.conversationId,
       senderId: messagesTable.senderId,
+      title: messagesTable.title,
       content: messagesTable.content,
       imageUrl: messagesTable.imageUrl,
       attachmentDriveFileId: messagesTable.attachmentDriveFileId,
@@ -1374,10 +1713,10 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       deletedScope: messagesTable.deletedScope,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
-      senderUsername: usersTable.username,
-      senderDisplayName: usersTable.displayName,
-      senderAvatarUrl: usersTable.avatarUrl,
-      senderRole: usersTable.role,
+      senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
+      senderDisplayName: sql<string>`coalesce(${usersTable.displayName}, ${messagesTable.webhookName})`,
+      senderAvatarUrl: sql<string>`coalesce(${usersTable.avatarUrl}, ${messagesTable.webhookAvatarUrl})`,
+      senderRole: sql<string>`case when ${messagesTable.webhookName} is not null then 'webhook' else ${usersTable.role} end`,
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -1386,8 +1725,10 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       eq(messageHiddenForUsersTable.userId, user.id),
     ))
     .where(and(eq(messagesTable.conversationId, id), isNull(messageHiddenForUsersTable.id)))
-    .orderBy(messagesTable.createdAt)
+    .orderBy(desc(messagesTable.createdAt))
     .limit(50);
+
+  rows.reverse();
 
   const senderIds = Array.from(new Set(rows.map((r) => r.senderId).filter(Boolean))) as number[];
   const bordersMap = new Map<number, string>();
@@ -1462,6 +1803,58 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     .set({ updatedAt: new Date() })
     .where(eq(conversationsTable.id, id));
 
+  // ── Auto-Moderation (background, non-blocking) ──────────────────────────
+  if (conv.type === "group") {
+    runAutomod(parsed.data.content ?? "", parsed.data.imageUrl ?? null).then(async (result) => {
+      if (!result.flagged) return;
+      const isGroupOwner = conv.ownerId === user.id;
+      if (isGroupOwner) return; // Never auto-kick the group owner
+
+      try {
+        // 1. Delete all messages from the offending user in this conversation
+        await db.update(messagesTable)
+          .set({
+            deletedAt: new Date(),
+            deletedByUserId: user.id,
+            deletedScope: "everyone",
+            content: "[automod: message removed]",
+            imageUrl: null,
+            attachmentDriveFileId: null,
+            attachmentUrl: null,
+            attachmentName: null,
+            attachmentMime: null,
+            attachmentSize: null,
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(messagesTable.conversationId, id),
+            eq(messagesTable.senderId, user.id),
+          ));
+
+
+        // 2. Kick user from the group
+        await db.delete(conversationMembersTable)
+          .where(and(
+            eq(conversationMembersTable.conversationId, id),
+            eq(conversationMembersTable.userId, user.id),
+          ));
+
+        // 3. Post a system warning message as Zaidan AI
+        const aiUser = await ensureZaidanAiUser();
+        const warningText = buildAutomodSystemMessage(user.username, result.category, result.reason);
+        await db.insert(messagesTable).values({
+          conversationId: id,
+          senderId: aiUser.id,
+          content: warningText,
+        });
+
+        console.log(`[Automod] Kicked @${user.username} from conv ${id}: ${result.reason}`);
+      } catch (err) {
+        console.error("[Automod] Error enforcing action:", err);
+      }
+    }).catch((err) => console.error("[Automod] Check failed:", err));
+  }
+
   // Webhook notify bots in this conversation
   dispatchBotWebhooks(id, null, parsed.data.content ?? "", parsed.data.imageUrl ?? null, {
     id: user.id,
@@ -1470,7 +1863,7 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     role: user.role,
   }).catch((err) => console.error("[Webhook Dispatch error]:", err));
 
-  // Trigger AI Response in background if it's a DM with Meta AI or mentions the AI
+  // Trigger AI Response in background if it's a DM with Meta AI, mentions the AI, or is a reply to the AI
   if (conv) {
     const aiUser = await ensureZaidanAiUser();
     const isDmWithAi = conv.type === "dm" && (
@@ -1485,9 +1878,22 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
                        parsed.data.content?.toLowerCase().includes("@meta ai") ||
                        parsed.data.content?.toLowerCase().includes("@ai");
 
-    if (isDmWithAi || mentionsAi) {
+    let isReplyToAi = false;
+    if (parsed.data.replyToMessageId) {
+      const parent = await db.query.messagesTable.findFirst({
+        where: eq(messagesTable.id, parsed.data.replyToMessageId)
+      });
+      if (parent && parent.senderId === aiUser.id) {
+        isReplyToAi = true;
+      }
+    }
+
+    if (isDmWithAi || mentionsAi || isReplyToAi) {
       const forceImageMode = !!isDmWithAi && shouldAutoGenerateImageInAiDm(parsed.data.content ?? "");
-      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type, null, { forceImageMode }).catch((err) => {
+      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type, null, { 
+        forceImageMode,
+        replyToMessageId: msg.id
+      }).catch((err) => {
         console.error("Failed to generate AI response:", err);
       });
     }
@@ -1513,7 +1919,7 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
         content: messagesTable.content,
         deletedAt: messagesTable.deletedAt,
         deletedScope: messagesTable.deletedScope,
-        senderUsername: usersTable.username,
+        senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
       })
       .from(messagesTable)
       .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -1680,6 +2086,7 @@ router.get("/conversations/:id/pins", async (req, res): Promise<void> => {
       conversationId: messagesTable.conversationId,
       channelId: messagesTable.channelId,
       senderId: messagesTable.senderId,
+      title: messagesTable.title,
       content: messagesTable.content,
       imageUrl: messagesTable.imageUrl,
       attachmentDriveFileId: messagesTable.attachmentDriveFileId,
@@ -1698,10 +2105,10 @@ router.get("/conversations/:id/pins", async (req, res): Promise<void> => {
       deletedScope: messagesTable.deletedScope,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
-      senderUsername: usersTable.username,
-      senderDisplayName: usersTable.displayName,
-      senderAvatarUrl: usersTable.avatarUrl,
-      senderRole: usersTable.role,
+      senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
+      senderDisplayName: sql<string>`coalesce(${usersTable.displayName}, ${messagesTable.webhookName})`,
+      senderAvatarUrl: sql<string>`coalesce(${usersTable.avatarUrl}, ${messagesTable.webhookAvatarUrl})`,
+      senderRole: sql<string>`case when ${messagesTable.webhookName} is not null then 'webhook' else ${usersTable.role} end`,
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -1775,6 +2182,7 @@ router.post("/conversations/:id/messages/:messageId/pin", async (req, res): Prom
       conversationId: messagesTable.conversationId,
       channelId: messagesTable.channelId,
       senderId: messagesTable.senderId,
+      title: messagesTable.title,
       content: messagesTable.content,
       imageUrl: messagesTable.imageUrl,
       attachmentDriveFileId: messagesTable.attachmentDriveFileId,
@@ -1793,10 +2201,10 @@ router.post("/conversations/:id/messages/:messageId/pin", async (req, res): Prom
       deletedScope: messagesTable.deletedScope,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
-      senderUsername: usersTable.username,
-      senderDisplayName: usersTable.displayName,
-      senderAvatarUrl: usersTable.avatarUrl,
-      senderRole: usersTable.role,
+      senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
+      senderDisplayName: sql<string>`coalesce(${usersTable.displayName}, ${messagesTable.webhookName})`,
+      senderAvatarUrl: sql<string>`coalesce(${usersTable.avatarUrl}, ${messagesTable.webhookAvatarUrl})`,
+      senderRole: sql<string>`case when ${messagesTable.webhookName} is not null then 'webhook' else ${usersTable.role} end`,
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -1860,6 +2268,7 @@ router.delete("/conversations/:id/messages/:messageId/pin", async (req, res): Pr
       conversationId: messagesTable.conversationId,
       channelId: messagesTable.channelId,
       senderId: messagesTable.senderId,
+      title: messagesTable.title,
       content: messagesTable.content,
       imageUrl: messagesTable.imageUrl,
       attachmentDriveFileId: messagesTable.attachmentDriveFileId,
@@ -1878,10 +2287,10 @@ router.delete("/conversations/:id/messages/:messageId/pin", async (req, res): Pr
       deletedScope: messagesTable.deletedScope,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
-      senderUsername: usersTable.username,
-      senderDisplayName: usersTable.displayName,
-      senderAvatarUrl: usersTable.avatarUrl,
-      senderRole: usersTable.role,
+      senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
+      senderDisplayName: sql<string>`coalesce(${usersTable.displayName}, ${messagesTable.webhookName})`,
+      senderAvatarUrl: sql<string>`coalesce(${usersTable.avatarUrl}, ${messagesTable.webhookAvatarUrl})`,
+      senderRole: sql<string>`case when ${messagesTable.webhookName} is not null then 'webhook' else ${usersTable.role} end`,
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -1966,6 +2375,7 @@ router.get("/me/starred", async (req, res): Promise<void> => {
       conversationId: messagesTable.conversationId,
       channelId: messagesTable.channelId,
       senderId: messagesTable.senderId,
+      title: messagesTable.title,
       content: messagesTable.content,
       imageUrl: messagesTable.imageUrl,
       attachmentDriveFileId: messagesTable.attachmentDriveFileId,
@@ -1984,10 +2394,10 @@ router.get("/me/starred", async (req, res): Promise<void> => {
       deletedScope: messagesTable.deletedScope,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
-      senderUsername: usersTable.username,
-      senderDisplayName: usersTable.displayName,
-      senderAvatarUrl: usersTable.avatarUrl,
-      senderRole: usersTable.role,
+      senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
+      senderDisplayName: sql<string>`coalesce(${usersTable.displayName}, ${messagesTable.webhookName})`,
+      senderAvatarUrl: sql<string>`coalesce(${usersTable.avatarUrl}, ${messagesTable.webhookAvatarUrl})`,
+      senderRole: sql<string>`case when ${messagesTable.webhookName} is not null then 'webhook' else ${usersTable.role} end`,
     })
     .from(starredMessagesTable)
     .innerJoin(messagesTable, eq(starredMessagesTable.messageId, messagesTable.id))
@@ -2092,6 +2502,7 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
       conversationId: messagesTable.conversationId,
       channelId: messagesTable.channelId,
       senderId: messagesTable.senderId,
+      title: messagesTable.title,
       content: messagesTable.content,
       imageUrl: messagesTable.imageUrl,
       attachmentDriveFileId: messagesTable.attachmentDriveFileId,
@@ -2110,10 +2521,10 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
       deletedScope: messagesTable.deletedScope,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
-      senderUsername: usersTable.username,
-      senderDisplayName: usersTable.displayName,
-      senderAvatarUrl: usersTable.avatarUrl,
-      senderRole: usersTable.role,
+      senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
+      senderDisplayName: sql<string>`coalesce(${usersTable.displayName}, ${messagesTable.webhookName})`,
+      senderAvatarUrl: sql<string>`coalesce(${usersTable.avatarUrl}, ${messagesTable.webhookAvatarUrl})`,
+      senderRole: sql<string>`case when ${messagesTable.webhookName} is not null then 'webhook' else ${usersTable.role} end`,
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -2122,8 +2533,10 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
       eq(messageHiddenForUsersTable.userId, user.id),
     ))
     .where(and(eq(messagesTable.conversationId, id), eq(messagesTable.channelId, channelId), isNull(messageHiddenForUsersTable.id)))
-    .orderBy(messagesTable.createdAt)
+    .orderBy(desc(messagesTable.createdAt))
     .limit(50);
+
+  rows.reverse();
 
   const senderIds = Array.from(new Set(rows.map((r) => r.senderId).filter(Boolean))) as number[];
   const bordersMap = new Map<number, string>();
@@ -2193,6 +2606,7 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
       conversationId: id,
       channelId,
       senderId: user.id,
+      title: parsed.data.title ?? null,
       content: parsed.data.content ?? "",
       imageUrl: parsed.data.imageUrl ?? null,
       attachmentDriveFileId: parsed.data.attachmentDriveFileId ?? null,
@@ -2206,6 +2620,59 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
 
   await db.update(conversationsTable).set({ updatedAt: new Date() }).where(eq(conversationsTable.id, id));
 
+  // ── Auto-Moderation (background, non-blocking) ──────────────────────────
+  {
+    const isGroupOwner = conv.ownerId === user.id;
+    if (!isGroupOwner) {
+      runAutomod(parsed.data.content ?? "", parsed.data.imageUrl ?? null).then(async (result) => {
+        if (!result.flagged) return;
+        try {
+          // 1. Delete all messages from the offending user in this conversation
+          await db.update(messagesTable)
+            .set({
+              deletedAt: new Date(),
+              deletedByUserId: user.id,
+              deletedScope: "everyone",
+              content: "[automod: message removed]",
+              imageUrl: null,
+              attachmentDriveFileId: null,
+              attachmentUrl: null,
+              attachmentName: null,
+              attachmentMime: null,
+              attachmentSize: null,
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(messagesTable.conversationId, id),
+              eq(messagesTable.senderId, user.id),
+            ));
+
+
+          // 2. Kick user from the group
+          await db.delete(conversationMembersTable)
+            .where(and(
+              eq(conversationMembersTable.conversationId, id),
+              eq(conversationMembersTable.userId, user.id),
+            ));
+
+          // 3. Post system warning in the same channel
+          const aiUser = await ensureZaidanAiUser();
+          const warningText = buildAutomodSystemMessage(user.username, result.category, result.reason);
+          await db.insert(messagesTable).values({
+            conversationId: id,
+            channelId,
+            senderId: aiUser.id,
+            content: warningText,
+          });
+
+          console.log(`[Automod] Kicked @${user.username} from conv ${id} channel ${channelId}: ${result.reason}`);
+        } catch (err) {
+          console.error("[Automod] Error enforcing action:", err);
+        }
+      }).catch((err) => console.error("[Automod] Check failed:", err));
+    }
+  }
+
   // Webhook notify bots in this conversation
   dispatchBotWebhooks(id, channelId, parsed.data.content ?? "", parsed.data.imageUrl ?? null, {
     id: user.id,
@@ -2214,7 +2681,8 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
     role: user.role,
   }).catch((err) => console.error("[Webhook Dispatch error]:", err));
 
-  // Trigger AI Response in background if mentions AI
+  // Trigger AI Response in background if mentions AI or is a reply to the AI
+  const aiUser = await ensureZaidanAiUser();
   const mentionsAi = parsed.data.content?.toLowerCase().includes("@zaidan ai") ||
                      parsed.data.content?.toLowerCase().includes("@zaidanai") ||
                      parsed.data.content?.toLowerCase().includes("@akira") ||
@@ -2222,10 +2690,22 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
                      parsed.data.content?.toLowerCase().includes("@meta ai") ||
                      parsed.data.content?.toLowerCase().includes("@ai");
 
-  if (mentionsAi) {
+  let isReplyToAi = false;
+  if (parsed.data.replyToMessageId) {
+    const parent = await db.query.messagesTable.findFirst({
+      where: eq(messagesTable.id, parsed.data.replyToMessageId)
+    });
+    if (parent && parent.senderId === aiUser.id) {
+      isReplyToAi = true;
+    }
+  }
+
+  if (mentionsAi || isReplyToAi) {
     const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
     if (conv) {
-      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type, channelId).catch((err) => {
+      generateAiResponse(id, user.id, parsed.data.content ?? "", conv.type, channelId, {
+        replyToMessageId: msg.id
+      }).catch((err) => {
         console.error("Failed to generate AI response:", err);
       });
     }
@@ -2245,7 +2725,7 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
         content: messagesTable.content,
         deletedAt: messagesTable.deletedAt,
         deletedScope: messagesTable.deletedScope,
-        senderUsername: usersTable.username,
+        senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
       })
       .from(messagesTable)
       .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -2885,6 +3365,98 @@ router.post("/jitsi-bot/leave", async (req, res): Promise<void> => {
 /** GET /jitsi-bot/status — check if bot is in any rooms */
 router.get("/jitsi-bot/status", async (_req, res): Promise<void> => {
   res.json({ rooms: jitsiBot.getActiveRooms() });
+});
+
+import crypto from "node:crypto";
+
+/** POST /conversations/:id/invite — Generate or retrieve the group invite code */
+router.post("/conversations/:id/invite", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
+  if (!conv || conv.type !== "group") { res.status(404).json({ error: "Group not found" }); return; }
+
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  if (conv.ownerId !== user.id && !(await hasPermission(id, user.id, "inviteMembers"))) {
+    res.status(403).json({ error: "You do not have permission to invite members to this group" });
+    return;
+  }
+
+  const parsed = GenerateInviteCodeBody.safeParse(req.body);
+  const regenerate = parsed.success ? !!parsed.data.regenerate : false;
+
+  let inviteCode = conv.inviteCode;
+  if (!inviteCode || regenerate) {
+    inviteCode = crypto.randomBytes(4).toString("hex");
+    await db
+      .update(conversationsTable)
+      .set({ inviteCode })
+      .where(eq(conversationsTable.id, id));
+  }
+
+  res.json(GenerateInviteCodeResponse.parse({ inviteCode }));
+});
+
+/** GET /invites/:code — Get group details using an invite code */
+router.get("/invites/:code", async (req, res): Promise<void> => {
+  const { code } = req.params;
+  if (!code) { res.status(400).json({ error: "Code required" }); return; }
+
+  const conv = await db.query.conversationsTable.findFirst({
+    where: eq(conversationsTable.inviteCode, code),
+  });
+  if (!conv || conv.type !== "group") { res.status(404).json({ error: "Invite code invalid or expired" }); return; }
+
+  // Get member count
+  const memberRows = await db
+    .select({ id: conversationMembersTable.id })
+    .from(conversationMembersTable)
+    .where(eq(conversationMembersTable.conversationId, conv.id));
+
+  res.json(GetInviteDetailsResponse.parse({
+    id: conv.id,
+    name: conv.name ?? "Group Chat",
+    iconUrl: conv.iconUrl ?? null,
+    memberCount: memberRows.length,
+  }));
+});
+
+/** POST /invites/:code/join — Join a group chat using an invite code */
+router.post("/invites/:code/join", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const { code } = req.params;
+  if (!code) { res.status(400).json({ error: "Code required" }); return; }
+
+  const conv = await db.query.conversationsTable.findFirst({
+    where: eq(conversationsTable.inviteCode, code),
+  });
+  if (!conv || conv.type !== "group") { res.status(404).json({ error: "Invite code invalid or expired" }); return; }
+
+  const alreadyMember = await isMember(conv.id, user.id);
+  if (!alreadyMember) {
+    await db
+      .insert(conversationMembersTable)
+      .values({
+        conversationId: conv.id,
+        userId: user.id,
+      })
+      .onConflictDoNothing();
+  }
+
+  res.json(JoinGroupByInviteCodeResponse.parse({
+    conversationId: conv.id,
+  }));
 });
 
 export default router;

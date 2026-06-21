@@ -646,6 +646,14 @@ export default function Admin() {
       toast({ title: "Harga tidak valid", description: "Premium+ Plan Price minimal Rp 1.000.", variant: "destructive" });
       return;
     }
+    if ((settingsForm.giftPremiumPrice ?? 0) < 1000) {
+      toast({ title: "Harga tidak valid", description: "Gift Premium Price minimal Rp 1.000.", variant: "destructive" });
+      return;
+    }
+    if ((settingsForm.giftPremiumPlusPrice ?? 0) < 1000) {
+      toast({ title: "Harga tidak valid", description: "Gift Premium+ Price minimal Rp 1.000.", variant: "destructive" });
+      return;
+    }
     saveSettings.mutate(settingsForm);
   };
 
@@ -664,6 +672,8 @@ export default function Admin() {
     sayabayarWebhookSecret: "",
     premiumPrice: 25000,
     premiumPlusPrice: 50000,
+    giftPremiumPrice: 25000,
+    giftPremiumPlusPrice: 50000,
   });
 
   useEffect(() => {
@@ -683,6 +693,8 @@ export default function Admin() {
       sayabayarWebhookSecret: currentSettings.sayabayarWebhookSecret || "",
       premiumPrice: currentSettings.premiumPrice ?? 25000,
       premiumPlusPrice: currentSettings.premiumPlusPrice ?? 50000,
+      giftPremiumPrice: currentSettings.giftPremiumPrice ?? 25000,
+      giftPremiumPlusPrice: currentSettings.giftPremiumPlusPrice ?? 50000,
     });
   }, [currentSettings]);
 
@@ -2603,6 +2615,37 @@ export default function Admin() {
                               className={`bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800 ${(settingsForm.premiumPlusPrice ?? 0) < 1000 && (settingsForm.premiumPlusPrice ?? 0) > 0 ? 'border-red-400 ring-1 ring-red-400' : ''}`}
                             />
                             {(settingsForm.premiumPlusPrice ?? 0) > 0 && (settingsForm.premiumPlusPrice ?? 0) < 1000 && (
+                              <p className="text-red-500 text-[10px] font-semibold mt-0.5">Minimal Rp 1.000</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-600">Gift Premium Price (IDR)</Label>
+                            <Input
+                              type="number"
+                              min={1000}
+                              value={settingsForm.giftPremiumPrice}
+                              onChange={(e) => setSettingsForm({ ...settingsForm, giftPremiumPrice: parseInt(e.target.value) || 0 })}
+                              placeholder="25000"
+                              className={`bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800 ${(settingsForm.giftPremiumPrice ?? 0) < 1000 && (settingsForm.giftPremiumPrice ?? 0) > 0 ? 'border-red-400 ring-1 ring-red-400' : ''}`}
+                            />
+                            {(settingsForm.giftPremiumPrice ?? 0) > 0 && (settingsForm.giftPremiumPrice ?? 0) < 1000 && (
+                              <p className="text-red-500 text-[10px] font-semibold mt-0.5">Minimal Rp 1.000</p>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-600">Gift Premium+ Price (IDR)</Label>
+                            <Input
+                              type="number"
+                              min={1000}
+                              value={settingsForm.giftPremiumPlusPrice}
+                              onChange={(e) => setSettingsForm({ ...settingsForm, giftPremiumPlusPrice: parseInt(e.target.value) || 0 })}
+                              placeholder="50000"
+                              className={`bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800 ${(settingsForm.giftPremiumPlusPrice ?? 0) < 1000 && (settingsForm.giftPremiumPlusPrice ?? 0) > 0 ? 'border-red-400 ring-1 ring-red-400' : ''}`}
+                            />
+                            {(settingsForm.giftPremiumPlusPrice ?? 0) > 0 && (settingsForm.giftPremiumPlusPrice ?? 0) < 1000 && (
                               <p className="text-red-500 text-[10px] font-semibold mt-0.5">Minimal Rp 1.000</p>
                             )}
                           </div>

@@ -1,6 +1,7 @@
 import { pgTable, serial, integer, varchar, timestamp, text, boolean, bigint, index } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 import { conversationsTable } from "./conversations";
+import { ticketsTable } from "./tickets";
 
 export const userTierSubscriptionsTable = pgTable("user_tier_subscriptions", {
   id: serial("id").primaryKey(),
@@ -131,3 +132,17 @@ export type BoostOrder = typeof boostOrdersTable.$inferSelect;
 export type BoostSlot = typeof boostSlotsTable.$inferSelect;
 export type BoostSlotEvent = typeof boostSlotEventsTable.$inferSelect;
 export type GroupBoostAssignment = typeof groupBoostAssignmentsTable.$inferSelect;
+
+export const premiumGiftsTable = pgTable("premium_gifts", {
+  id: serial("id").primaryKey(),
+  giftCode: varchar("gift_code", { length: 100 }).notNull().unique(),
+  buyerId: integer("buyer_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  tier: varchar("tier", { length: 20 }).notNull(), // 'premium' | 'premium_plus'
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // 'pending' | 'active' | 'redeemed'
+  receiverId: integer("receiver_id").references(() => usersTable.id, { onDelete: "set null" }),
+  ticketId: integer("ticket_id").references(() => ticketsTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  redeemedAt: timestamp("redeemed_at"),
+});
+
+export type PremiumGift = typeof premiumGiftsTable.$inferSelect;

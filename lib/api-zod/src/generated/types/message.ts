@@ -12,6 +12,8 @@ export interface Message {
   conversationId: number;
   /** @nullable */
   senderId?: number | null;
+  /** @nullable */
+  title?: string | null;
   content: string;
   /** @nullable */
   imageUrl?: string | null;
