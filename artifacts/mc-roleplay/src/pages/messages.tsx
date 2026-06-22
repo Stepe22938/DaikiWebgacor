@@ -21,6 +21,7 @@ import {
   useUnreactMessage,
   getListPinnedMessagesQueryOptions,
   getListStarredMessagesQueryOptions,
+  useAdminUpdateConversation,
 } from "@workspace/api-client-react";
 import type { ConversationSummary, Message } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
@@ -36,6 +37,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -113,6 +115,10 @@ import {
   ChevronDown,
   Calendar,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  BadgeCheck,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -1100,6 +1106,14 @@ function ConvItem({
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={`font-bold text-xs truncate ${selected ? dark ? "text-white" : "text-[#6366f1]" : dark ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{name}</span>
+            {/* Verified badge for DM other user */}
+            {conv.type === "dm" && (conv as any).otherUserIsVerified && (
+              <BadgeCheck className="w-3 h-3 text-blue-400 fill-blue-400/20 shrink-0 flex-none" />
+            )}
+            {/* Verified badge for group */}
+            {conv.type === "group" && (conv as any).isVerified && (
+              <BadgeCheck className="w-3 h-3 text-blue-400 fill-blue-400/20 shrink-0 flex-none" />
+            )}
             {conv.type === "dm" && conv.otherUserRole && conv.otherUserRole !== "member" && (
               <Badge className={`text-[8px] px-1 py-0 h-3 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[conv.otherUserRole] ?? ""}`}>
                 {ROLE_LABELS[conv.otherUserRole] ?? conv.otherUserRole}
@@ -1197,6 +1211,18 @@ function MessageBubble({
                     >
                       {name}
                     </button>
+                  )}
+                  {(msg as any).senderIsVerified && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center">
+                            <BadgeCheck className="w-3.5 h-3.5 text-blue-400 fill-blue-400/20 shrink-0" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">Akun Terverifikasi</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                   {msg.senderRole && msg.senderRole !== "member" && (
                     <Badge className={`text-[8px] px-1.5 py-0 h-3.5 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[msg.senderRole] ?? ""}`}>
@@ -1492,6 +1518,11 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     queryKey: ["/api/settings"],
     queryFn: () => customFetch<any>("/api/settings"),
   });
+  const { data: activeStories = [], refetch: refetchStories } = useQuery<any[]>({
+    queryKey: ["/api/statuses"],
+    queryFn: () => customFetch<any>("/api/statuses"),
+    refetchInterval: 30000,
+  });
   const { signOut } = useClerk();
   const realmName = realmSettings.realmName || "Arcadia Guild";
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
@@ -1547,6 +1578,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [editGroupDesc, setEditGroupDesc] = useState("");
   const [editGroupIcon, setEditGroupIcon] = useState("");
   const [editGroupBanner, setEditGroupBanner] = useState("");
+  const [editGroupInviteCode, setEditGroupInviteCode] = useState("");
   const [editGroupSaving, setEditGroupSaving] = useState(false);
   const [leaveGroupModalOpen, setLeaveGroupModalOpen] = useState(false);
   const [reportGroupModalOpen, setReportGroupModalOpen] = useState(false);
@@ -1567,6 +1599,44 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     y: number;
     isOwn: boolean;
   } | null>(null);
+
+  // SW/Status feature states
+  const [showCreateStatus, setShowCreateStatus] = useState(false);
+  const [createStatusType, setCreateStatusType] = useState<"image" | "text">("image");
+  const [createStatusImage, setCreateStatusImage] = useState<string | null>(null);
+  const [createStatusCaption, setCreateStatusCaption] = useState("");
+  const [createStatusBg, setCreateStatusBg] = useState("bg-gradient-to-tr from-purple-900 to-indigo-900");
+  const [createStatusTextColor, setCreateStatusTextColor] = useState("text-white");
+  const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const [uploadingStatusMedia, setUploadingStatusMedia] = useState(false);
+
+  const [activeStoriesUserIndex, setActiveStoriesUserIndex] = useState<number | null>(null);
+  const [activeStoriesIndex, setActiveStoriesIndex] = useState(0);
+  const [viewerPlaying, setViewerPlaying] = useState(true);
+  const [viewerProgress, setViewerProgress] = useState(0);
+
+  const [readStatuses, setReadStatuses] = useState<Set<number>>(() => {
+    try {
+      const stored = localStorage.getItem("viewed-status-ids");
+      return stored ? new Set(JSON.parse(stored)) : new Set<number>();
+    } catch {
+      return new Set<number>();
+    }
+  });
+
+  const markStatusAsRead = (id: number) => {
+    setReadStatuses((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem("viewed-status-ids", JSON.stringify(Array.from(next)));
+      } catch (e) {
+        console.error("Failed to save viewed statuses:", e);
+      }
+      return next;
+    });
+  };
 
   const [uploading, setUploading] = useState(false);
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
@@ -1593,6 +1663,165 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       }
     }
   }, [showStickerPicker]);
+
+  const activeUserStories = activeStoriesUserIndex !== null ? activeStories[activeStoriesUserIndex] : null;
+  const activeStory = activeUserStories ? activeUserStories.statuses[activeStoriesIndex] : null;
+
+  const handleNextSlide = () => {
+    if (!activeUserStories) return;
+    setViewerProgress(0);
+
+    if (activeStoriesIndex < activeUserStories.statuses.length - 1) {
+      setActiveStoriesIndex(activeStoriesIndex + 1);
+    } else {
+      if (activeStoriesUserIndex !== null && activeStoriesUserIndex < activeStories.length - 1) {
+        setActiveStoriesUserIndex(activeStoriesUserIndex + 1);
+        setActiveStoriesIndex(0);
+      } else {
+        closeStatusViewer();
+      }
+    }
+  };
+
+  const handlePrevSlide = () => {
+    if (!activeUserStories) return;
+    setViewerProgress(0);
+
+    if (activeStoriesIndex > 0) {
+      setActiveStoriesIndex(activeStoriesIndex - 1);
+    } else {
+      if (activeStoriesUserIndex !== null && activeStoriesUserIndex > 0) {
+        const prevUserIndex = activeStoriesUserIndex - 1;
+        const prevUserStories = activeStories[prevUserIndex];
+        setActiveStoriesUserIndex(prevUserIndex);
+        setActiveStoriesIndex(prevUserStories.statuses.length - 1);
+      } else {
+        setViewerProgress(0);
+      }
+    }
+  };
+
+  const closeStatusViewer = () => {
+    setActiveStoriesUserIndex(null);
+    setActiveStoriesIndex(0);
+    setViewerProgress(0);
+  };
+
+  // Status auto-advancing logic
+  useEffect(() => {
+    if (!activeUserStories || !activeStory || !viewerPlaying) return;
+
+    // Mark current story as read
+    markStatusAsRead(activeStory.id);
+
+    const duration = 5000; // 5 seconds
+    const intervalTime = 50; // update progress every 50ms
+    const totalSteps = duration / intervalTime;
+    let currentStep = 0;
+
+    const timer = setInterval(() => {
+      currentStep++;
+      setViewerProgress((currentStep / totalSteps) * 100);
+
+      if (currentStep >= totalSteps) {
+        clearInterval(timer);
+        handleNextSlide();
+      }
+    }, intervalTime);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [activeStoriesUserIndex, activeStoriesIndex, viewerPlaying, activeStories.length]);
+
+  const handleDeleteStatus = async (statusId: number) => {
+    if (!confirm("Hapus status ini?")) return;
+    try {
+      const res = await fetch(`/api/statuses/${statusId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Gagal menghapus status");
+      
+      toast({ title: "Status berhasil dihapus" });
+      refetchStories();
+      
+      if (!activeUserStories) return;
+      if (activeUserStories.statuses.length > 1) {
+        if (activeStoriesIndex >= activeUserStories.statuses.length - 1) {
+          setActiveStoriesIndex(activeUserStories.statuses.length - 2);
+        }
+      } else {
+        closeStatusViewer();
+      }
+    } catch (err) {
+      toast({ title: "Gagal menghapus status", variant: "destructive" });
+    }
+  };
+
+  const handleCreateStatusSubmit = async () => {
+    if (createStatusType === "image" && !createStatusImage) {
+      toast({ title: "Silakan upload gambar terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    if (createStatusType === "text" && !createStatusCaption.trim()) {
+      toast({ title: "Teks status tidak boleh kosong", variant: "destructive" });
+      return;
+    }
+
+    setStatusSubmitting(true);
+    try {
+      const body = {
+        type: createStatusType,
+        mediaUrl: createStatusType === "image" ? createStatusImage : null,
+        caption: createStatusCaption,
+        backgroundColor: createStatusType === "text" ? createStatusBg : null,
+        textColor: createStatusType === "text" ? createStatusTextColor : null,
+      };
+
+      const res = await fetch("/api/statuses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) throw new Error("Failed to post status");
+
+      toast({ title: "Status berhasil diposting!" });
+      setShowCreateStatus(false);
+      setCreateStatusCaption("");
+      setCreateStatusImage(null);
+      refetchStories();
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Gagal memposting status", variant: "destructive" });
+    } finally {
+      setStatusSubmitting(false);
+    }
+  };
+
+  const uploadStatusMedia = async (file: File) => {
+    setUploadingStatusMedia(true);
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type,
+          "x-file-name": file.name,
+        },
+        body: await file.arrayBuffer(),
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url } = await res.json();
+      setCreateStatusImage(url);
+      toast({ title: "Media berhasil diupload" });
+    } catch {
+      toast({ title: "Gagal upload media ke server", variant: "destructive" });
+    } finally {
+      setUploadingStatusMedia(false);
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -2446,6 +2675,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const unstarMutation = useUnstarMessage();
   const reactMutation = useReactMessage();
   const unreactMutation = useUnreactMessage();
+  const useAdminUpdateConversationMutation = useAdminUpdateConversation();
 
   const { data: pinnedMessages = [], isLoading: pinnedLoading } = useListPinnedMessages(
     selectedId ?? 0,
@@ -3394,6 +3624,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     setEditGroupDesc(selectedConv.description || "");
     setEditGroupIcon(selectedConv.iconUrl || "");
     setEditGroupBanner(selectedConv.bannerUrl || "");
+    setEditGroupInviteCode((selectedConv as any).inviteCode || "");
     setShowEditGroup(true);
   }
 
@@ -3401,22 +3632,37 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     if (!selectedId) return;
     setEditGroupSaving(true);
     try {
+      const isOwner = selectedConv?.ownerId === me?.id;
+      const isVerifiedGroup = !!(selectedConv as any)?.isVerified;
+
+      const payload: Record<string, any> = {
+        name: editGroupName.trim() || undefined,
+        description: editGroupDesc.trim() || null,
+        iconUrl: editGroupIcon.trim() || null,
+        bannerUrl: editGroupBanner.trim() || null,
+      };
+
+      // Only send inviteCode if owner of a verified group
+      if (isOwner && isVerifiedGroup) {
+        payload.inviteCode = editGroupInviteCode.trim() || null;
+      }
+
       const res = await fetch(`/api/conversations/${selectedId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editGroupName.trim() || undefined,
-          description: editGroupDesc.trim() || null,
-          iconUrl: editGroupIcon.trim() || null,
-          bannerUrl: editGroupBanner.trim() || null,
-        }),
+        body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed");
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to update group");
+      }
+
       toast({ title: "Group updated!" });
       setShowEditGroup(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-    } catch {
-      toast({ title: "Failed to update group", variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: e?.message || "Failed to update group", variant: "destructive" });
     } finally {
       setEditGroupSaving(false);
     }
@@ -4265,6 +4511,120 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             {/* Scrollable list of chats */}
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-2 space-y-1">
+                {/* Stories Horizontal Row */}
+                <div className="px-2 py-3 border-b border-[#2F3136] mb-2 shrink-0">
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <span className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Status / Cerita</span>
+                    {activeStories.length > 0 && (
+                      <span className="text-[9px] font-bold text-[#5865F2] hover:underline cursor-pointer" onClick={() => {
+                        // Open first user's story that has unread statuses
+                        const firstUnreadUserIdx = activeStories.findIndex(u => u.statuses.some((s: any) => !readStatuses.has(s.id)));
+                        if (firstUnreadUserIdx !== -1) {
+                          setActiveStoriesUserIndex(firstUnreadUserIdx);
+                          setActiveStoriesIndex(0);
+                          setViewerPlaying(true);
+                        } else {
+                          // All read, open first user's story
+                          setActiveStoriesUserIndex(0);
+                          setActiveStoriesIndex(0);
+                          setViewerPlaying(true);
+                        }
+                      }}>
+                        Putar Semua
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+                    {/* Add/View Own Story Circle */}
+                    {(() => {
+                      const ownStoryEntry = activeStories.find(u => u.userId === me?.id);
+                      const hasOwnStories = ownStoryEntry && ownStoryEntry.statuses.length > 0;
+                      const hasUnreadOwn = hasOwnStories && ownStoryEntry.statuses.some((s: any) => !readStatuses.has(s.id));
+                      
+                      return (
+                        <div className="flex flex-col items-center shrink-0 w-14 group">
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (hasOwnStories) {
+                                  // Ask whether to view or add
+                                  const idx = activeStories.findIndex(u => u.userId === me?.id);
+                                  setActiveStoriesUserIndex(idx);
+                                  setActiveStoriesIndex(0);
+                                  setViewerPlaying(true);
+                                } else {
+                                  setShowCreateStatus(true);
+                                }
+                              }}
+                              className={`relative w-11 h-11 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
+                                hasOwnStories 
+                                  ? (hasUnreadOwn ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600') 
+                                  : 'border border-dashed border-[#4f545c] bg-[#2f3136]'
+                              }`}
+                            >
+                              <Avatar className="w-full h-full border border-[#1E1F22]">
+                                <AvatarImage src={me?.avatarUrl || undefined} />
+                                <AvatarFallback className="text-[10px] font-bold bg-[#35373c] text-white">
+                                  {me?.displayName?.substring(0, 2).toUpperCase() || me?.username?.substring(0, 2).toUpperCase() || "ME"}
+                                </AvatarFallback>
+                              </Avatar>
+                            </button>
+                            {/* Small plus sign badge */}
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowCreateStatus(true);
+                              }}
+                              className="absolute bottom-0 right-0 w-4 h-4 bg-[#5865F2] hover:bg-[#4752C4] rounded-full flex items-center justify-center text-white border border-[#1E1F22] shadow"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <span className="text-[9px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
+                            Cerita Anda
+                          </span>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Other Users' Stories Circles */}
+                    {activeStories
+                      .filter(u => u.userId !== me?.id)
+                      .map((u, i) => {
+                        const hasUnread = u.statuses.some((s: any) => !readStatuses.has(s.id));
+                        const actualIdxInActiveStories = activeStories.findIndex(story => story.userId === u.userId);
+                        
+                        return (
+                          <div 
+                            key={u.userId} 
+                            className="flex flex-col items-center shrink-0 w-14 cursor-pointer group"
+                            onClick={() => {
+                              setActiveStoriesUserIndex(actualIdxInActiveStories);
+                              setActiveStoriesIndex(0);
+                              setViewerPlaying(true);
+                            }}
+                          >
+                            <div className={`w-11 h-11 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
+                              hasUnread ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600'
+                            }`}>
+                              <Avatar className="w-full h-full border border-[#1E1F22]">
+                                <AvatarImage src={u.avatarUrl || undefined} />
+                                <AvatarFallback className="text-[10px] font-bold bg-[#35373c] text-white">
+                                  {u.displayName?.substring(0, 2).toUpperCase() || u.username?.substring(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            </div>
+                            <span className="text-[9px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
+                              {u.displayName || u.username}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
                 {meLoading || convsLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <div key={i} className="flex items-center gap-3 px-3 py-2.5">
@@ -4659,6 +5019,13 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       <div className="min-w-0 flex-1 text-left">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <p className="font-extrabold text-[13px] sm:text-sm leading-none truncate max-w-[34vw] sm:max-w-none">{selectedName}</p>
+                          {/* Verified badge in header */}
+                          {selectedConv.type === "dm" && (selectedConv as any).otherUserIsVerified && (
+                            <BadgeCheck className="w-4 h-4 text-blue-300 fill-blue-300/20 shrink-0" />
+                          )}
+                          {selectedConv.type === "group" && (selectedConv as any).isVerified && (
+                            <BadgeCheck className="w-4 h-4 text-blue-300 fill-blue-300/20 shrink-0" />
+                          )}
                           {selectedConv.type === "group" && groupBoosts && groupBoosts.activeBoostCount > 0 && (
                             <span
                               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-violet-600/30 border border-violet-500/50 text-[9px] font-black text-violet-300 uppercase tracking-wide cursor-help shrink-0"
@@ -5548,7 +5915,29 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       className="w-full h-full object-cover rounded-full"
                     />
                   </div>
-                  <h2 className={`text-lg font-extrabold mt-3 text-center ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>{selectedName}</h2>
+                  <div className="flex items-center justify-center gap-1.5 mt-3">
+                    <h2 className={`text-lg font-extrabold text-center ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>{selectedName}</h2>
+                    {selectedConv.type === "dm" && (selectedConv as any).otherUserIsVerified && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400/20 shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">Akun Terverifikasi</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {selectedConv.type === "group" && (selectedConv as any).isVerified && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400/20 shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">Komunitas Terverifikasi</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
                   <p className={`text-xs font-bold mt-1 mb-4 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
                     {selectedConv.type === "dm"
                       ? `@${selectedConv.otherUsername}`
@@ -6742,6 +7131,56 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Hanya pemilik grup yang dapat mengubah background.</p>
             </div>
           </div>
+
+          {/* Custom Invite Link — verified group owner only */}
+          {selectedConv?.ownerId === me?.id && !!(selectedConv as any)?.isVerified && (
+            <div className="mt-4">
+              <label className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${isGroupView ? "text-blue-400" : "text-blue-600"}`}>
+                <BadgeCheck className="w-3 h-3" />
+                Custom Invite Link
+              </label>
+              <div className={`flex items-center mt-1 rounded-xl border overflow-hidden ${isGroupView ? "bg-[#2B2D31] border-blue-500/40" : "bg-blue-50 border-blue-200"}`}>
+                <span className={`px-2 text-[10px] font-bold shrink-0 select-none ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>/join/</span>
+                <input
+                  type="text"
+                  value={editGroupInviteCode}
+                  onChange={(e) => setEditGroupInviteCode(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ""))}
+                  placeholder={(selectedConv as any)?.inviteCode || "nama-group-kamu"}
+                  maxLength={50}
+                  className={`flex-1 py-2 pr-3 text-xs bg-transparent focus:outline-none ${isGroupView ? "text-[#DCDDDE] placeholder:text-[#949BA4]" : "text-slate-700 placeholder:text-slate-300"}`}
+                />
+              </div>
+              <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                Huruf kecil, angka, <span className="font-mono">-</span>, dan <span className="font-mono">_</span> saja. Kosongkan untuk kode random.
+              </p>
+            </div>
+          )}
+
+          {/* Admin-only: Verified Community Toggle */}
+          {(me?.role === "admin" || me?.role === "dev_website") && selectedConv && (
+            <div className={`mt-4 flex items-center justify-between rounded-xl px-3 py-2.5 border ${isGroupView ? "bg-blue-950/40 border-blue-500/30" : "bg-blue-50 border-blue-100"}`}>
+              <div className="flex items-center gap-2">
+                <BadgeCheck className="w-4 h-4 text-blue-400 shrink-0" />
+                <div>
+                  <p className={`text-xs font-bold ${isGroupView ? "text-blue-300" : "text-blue-800"}`}>Komunitas Terverifikasi</p>
+                  <p className={`text-[10px] ${isGroupView ? "text-blue-400" : "text-blue-500"}`}>Admin only • Tampilkan centang biru</p>
+                </div>
+              </div>
+              <Switch
+                checked={(selectedConv as any).isVerified ?? false}
+                onCheckedChange={async (v) => {
+                  try {
+                    await useAdminUpdateConversationMutation.mutateAsync({ id: selectedConv.id, data: { isVerified: v } });
+                    queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+                    toast({ title: v ? "Group terverifikasi ✓" : "Verifikasi dicabut" });
+                  } catch {
+                    toast({ title: "Gagal", variant: "destructive" });
+                  }
+                }}
+                className="data-[state=checked]:bg-blue-500"
+              />
+            </div>
+          )}
 
           {/* Manage Roles Button */}
           {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
@@ -8865,6 +9304,319 @@ setInterval(() => {
           </div>
         );
       })()}
+
+      {/* Create Status Dialog */}
+      <Dialog open={showCreateStatus} onOpenChange={setShowCreateStatus}>
+        <DialogContent className="max-w-md bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-black uppercase tracking-wider text-white">Buat Status Baru</DialogTitle>
+            <DialogDescription className="text-xs text-slate-400">Status Anda akan terhapus otomatis setelah 24 jam.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex gap-2 mb-4 mt-2">
+            <Button
+              size="sm"
+              variant={createStatusType === "image" ? "default" : "outline"}
+              onClick={() => setCreateStatusType("image")}
+              className={`flex-1 rounded-xl text-xs font-bold ${createStatusType === "image" ? "bg-[#5865F2] hover:bg-[#4752C4]" : "border-[#3F4147] text-slate-300 hover:bg-[#2B2D31]"}`}
+            >
+              <Upload className="w-3.5 h-3.5 mr-1.5" /> Gambar
+            </Button>
+            <Button
+              size="sm"
+              variant={createStatusType === "text" ? "default" : "outline"}
+              onClick={() => setCreateStatusType("text")}
+              className={`flex-1 rounded-xl text-xs font-bold ${createStatusType === "text" ? "bg-[#5865F2] hover:bg-[#4752C4]" : "border-[#3F4147] text-slate-300 hover:bg-[#2B2D31]"}`}
+            >
+              <Edit3 className="w-3.5 h-3.5 mr-1.5" /> Teks Status
+            </Button>
+          </div>
+
+          {createStatusType === "image" ? (
+            <div className="space-y-4">
+              <div className="border border-dashed border-[#4f545c] rounded-xl p-6 bg-[#2B2D31] flex flex-col items-center justify-center min-h-[180px]">
+                {createStatusImage ? (
+                  <div className="relative w-full max-h-[160px] rounded-lg overflow-hidden flex items-center justify-center bg-black">
+                    <img src={createStatusImage} alt="Status Preview" className="max-h-[160px] object-contain" />
+                    <button
+                      type="button"
+                      onClick={() => setCreateStatusImage(null)}
+                      className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 w-6 h-6 rounded-full flex items-center justify-center text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <Upload className="w-8 h-8 text-slate-400 mb-2" />
+                    <span className="text-xs text-slate-300 font-bold mb-1">Unggah gambar status</span>
+                    <span className="text-[10px] text-slate-500 mb-3">Maksimal file 10MB</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      id="status-media-file-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadStatusMedia(file);
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => document.getElementById("status-media-file-input")?.click()}
+                      disabled={uploadingStatusMedia}
+                      className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold"
+                    >
+                      {uploadingStatusMedia ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                      Pilih File
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-300">Keterangan Gambar (Opsional)</Label>
+                <Input
+                  type="text"
+                  placeholder="Tambahkan keterangan..."
+                  value={createStatusCaption}
+                  onChange={(e) => setCreateStatusCaption(e.target.value)}
+                  className="bg-[#2B2D31] border-[#3F4147] text-xs rounded-xl mt-1.5 text-white"
+                  maxLength={100}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Text Preview with background selection */}
+              <div className={`rounded-xl p-6 min-h-[180px] flex items-center justify-center text-center select-none shadow-inner border border-white/5 transition-all ${createStatusBg}`}>
+                <textarea
+                  placeholder="Ketik sesuatu..."
+                  value={createStatusCaption}
+                  onChange={(e) => setCreateStatusCaption(e.target.value)}
+                  className={`w-full bg-transparent border-0 outline-none focus:ring-0 resize-none text-center text-sm font-bold placeholder:opacity-50 ${createStatusTextColor}`}
+                  maxLength={150}
+                  rows={4}
+                />
+              </div>
+
+              {/* Background Options */}
+              <div>
+                <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Pilih Latar Belakang</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    "bg-slate-900",
+                    "bg-gradient-to-tr from-purple-900 to-indigo-900",
+                    "bg-gradient-to-tr from-rose-700 via-pink-600 to-amber-500",
+                    "bg-gradient-to-tr from-blue-600 to-cyan-500",
+                    "bg-gradient-to-tr from-emerald-600 to-teal-500",
+                    "bg-black",
+                  ].map((bg) => (
+                    <button
+                      key={bg}
+                      type="button"
+                      onClick={() => setCreateStatusBg(bg)}
+                      className={`w-6 h-6 rounded-full border-2 transition-all ${bg} ${createStatusBg === bg ? "border-white scale-110" : "border-[#3F4147] hover:scale-105"}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Text Color Options */}
+              <div>
+                <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Pilih Warna Teks</Label>
+                <div className="flex gap-2">
+                  {[
+                    { class: "text-white", bg: "bg-white" },
+                    { class: "text-amber-300", bg: "bg-amber-300" },
+                    { class: "text-cyan-200", bg: "bg-cyan-200" },
+                    { class: "text-fuchsia-200", bg: "bg-fuchsia-200" },
+                  ].map((color) => (
+                    <button
+                      key={color.class}
+                      type="button"
+                      onClick={() => setCreateStatusTextColor(color.class)}
+                      className={`w-6 h-6 rounded-full border-2 transition-all ${color.bg} ${createStatusTextColor === color.class ? "border-white scale-110" : "border-[#3F4147] hover:scale-105"}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-[#3F4147] mt-5">
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateStatus(false)}
+              className="rounded-xl border-[#3F4147] text-slate-300 hover:bg-[#2B2D31] text-xs font-bold"
+              disabled={statusSubmitting}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleCreateStatusSubmit}
+              disabled={statusSubmitting || uploadingStatusMedia || (createStatusType === "image" ? !createStatusImage : !createStatusCaption.trim())}
+              className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl text-xs font-bold px-4 cursor-pointer"
+            >
+              {statusSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+              Posting Status
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Immersive Status Viewer Overlay Dialog */}
+      {activeUserStories && activeStory && (
+        <Dialog open={activeStoriesUserIndex !== null} onOpenChange={(open) => { if (!open) closeStatusViewer(); }}>
+          <DialogContent className="max-w-md h-[90vh] md:h-[750px] bg-black border-0 p-0 text-white flex flex-col justify-between overflow-hidden outline-none rounded-none md:rounded-3xl shadow-2xl select-none animate-in fade-in duration-200">
+            {/* Top Navigation Progress Indicators */}
+            <div className="absolute top-3 left-0 right-0 z-30 px-3 flex gap-1">
+              {activeUserStories.statuses.map((s: any, idx: number) => {
+                let fillWidth = "0%";
+                if (idx < activeStoriesIndex) fillWidth = "100%";
+                else if (idx === activeStoriesIndex) fillWidth = `${viewerProgress}%`;
+
+                return (
+                  <div key={s.id} className="h-1 flex-1 bg-white/30 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-white transition-all duration-50 ease-linear rounded-full" 
+                      style={{ width: fillWidth }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Viewer Header Information */}
+            <div className="absolute top-7 left-0 right-0 z-30 px-3 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pt-1 pb-4">
+              <div className="flex items-center gap-2">
+                <Avatar className="w-8 h-8 border border-white/20">
+                  <AvatarImage src={activeUserStories.avatarUrl || undefined} />
+                  <AvatarFallback className="text-[10px] font-bold bg-[#35373c] text-white">
+                    {activeUserStories.displayName?.substring(0, 2).toUpperCase() || activeUserStories.username?.substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-white shadow-sm leading-tight">
+                    {activeUserStories.displayName || activeUserStories.username}
+                  </span>
+                  <span className="text-[9px] text-white/70 leading-none">
+                    {formatDistanceToNowHelper(new Date(activeStory.createdAt))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {activeUserStories.userId === me?.id && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteStatus(activeStory.id)}
+                    className="p-1.5 hover:bg-white/15 rounded-full text-rose-400 transition-colors cursor-pointer"
+                    title="Hapus status ini"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+                
+                {viewerPlaying ? (
+                  <button 
+                    type="button"
+                    onClick={() => setViewerPlaying(false)}
+                    className="p-1.5 hover:bg-white/15 rounded-full text-white transition-colors cursor-pointer"
+                  >
+                    <Pause className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button 
+                    type="button"
+                    onClick={() => setViewerPlaying(true)}
+                    className="p-1.5 hover:bg-white/15 rounded-full text-white transition-colors cursor-pointer"
+                  >
+                    <Play className="w-4 h-4" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={closeStatusViewer}
+                  className="p-1.5 hover:bg-white/15 rounded-full text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Immersive Left/Right Navigation Areas (Invisible overlay triggers) */}
+            <div className="absolute inset-0 z-20 flex">
+              <button 
+                type="button"
+                className="w-1/3 h-full cursor-pointer outline-none focus:outline-none" 
+                onClick={handlePrevSlide}
+                aria-label="Previous story"
+              />
+              <button 
+                type="button"
+                className="w-1/3 h-full cursor-pointer outline-none focus:outline-none" 
+                onMouseDown={() => setViewerPlaying(false)}
+                onMouseUp={() => setViewerPlaying(true)}
+                onTouchStart={() => setViewerPlaying(false)}
+                onTouchEnd={() => setViewerPlaying(true)}
+                aria-label="Hold to pause"
+              />
+              <button 
+                type="button"
+                className="w-1/3 h-full cursor-pointer outline-none focus:outline-none" 
+                onClick={handleNextSlide}
+                aria-label="Next story"
+              />
+            </div>
+
+            {/* Left and Right Chevron Arrows (Desktop Only) */}
+            <div className="absolute inset-y-0 left-2 z-30 flex items-center pointer-events-none opacity-0 hover:opacity-100 transition-opacity">
+              <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handlePrevSlide(); }}
+                className="p-2 bg-black/40 hover:bg-black/60 rounded-full text-white pointer-events-auto cursor-pointer"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="absolute inset-y-0 right-2 z-30 flex items-center pointer-events-none opacity-0 hover:opacity-100 transition-opacity">
+              <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleNextSlide(); }}
+                className="p-2 bg-black/40 hover:bg-black/60 rounded-full text-white pointer-events-auto cursor-pointer"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Main Immersive Slide Viewport */}
+            <div className="flex-1 w-full h-full flex items-center justify-center relative bg-black">
+              {activeStory.type === "image" ? (
+                <div className="w-full h-full flex flex-col justify-center items-center relative">
+                  <img 
+                    src={activeStory.mediaUrl} 
+                    alt="Status media" 
+                    className="w-full h-full object-contain max-h-[90%]" 
+                  />
+                  {activeStory.caption && (
+                    <div className="absolute bottom-6 left-4 right-4 bg-black/65 backdrop-blur px-4 py-3 rounded-2xl text-center z-10 border border-white/5 shadow-lg max-h-[120px] overflow-y-auto">
+                      <p className="text-sm font-semibold text-white leading-relaxed">{activeStory.caption}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className={`w-full h-full flex items-center justify-center px-8 text-center select-text ${activeStory.backgroundColor || "bg-slate-900"}`}>
+                  <p className={`text-lg md:text-xl font-extrabold leading-relaxed drop-shadow-md break-words max-w-[90%] whitespace-pre-wrap ${activeStory.textColor || "text-white"}`}>
+                    {activeStory.caption}
+                  </p>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

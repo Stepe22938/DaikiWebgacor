@@ -25,6 +25,7 @@ export interface PublicUser {
   isFollowing: boolean;
   followerCount: number;
   followingCount: number;
+  isVerified?: boolean;
   /** @nullable */
   equippedBorder?: string | null;
   /** @nullable */

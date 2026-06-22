@@ -57,6 +57,7 @@ import {
   Ticket,
   ShieldAlert,
   Settings,
+  BadgeCheck,
 } from "lucide-react";
 
 function getInitials(name: string | null | undefined) {
@@ -624,6 +625,9 @@ export default function Profile() {
                     <div className="min-w-0 pb-1 text-[#101828]">
                       <div className="flex flex-wrap items-center gap-2">
                         <h1 className="max-w-full break-words text-3xl font-black leading-tight sm:text-4xl">{user.displayName || user.username}</h1>
+                        {(user as any).isVerified && (
+                          <BadgeCheck className="w-7 h-7 text-blue-400 fill-blue-400/20 shrink-0" />
+                        )}
                         <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-black uppercase text-[#6d5dfc]">
                           {ROLE_LABELS[user.role]}
                         </span>

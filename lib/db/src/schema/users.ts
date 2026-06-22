@@ -1,4 +1,4 @@
-import { pgTable, serial, text, varchar, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, varchar, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -18,6 +18,7 @@ export const usersTable = pgTable("users", {
   connectedVoiceChannelId: integer("connected_voice_channel_id"),
   voiceJoinedAt: timestamp("voice_joined_at"),
   lastSeenAt: timestamp("last_seen_at"),
+  isVerified: boolean("is_verified").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

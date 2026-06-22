@@ -59,6 +59,7 @@ export interface Message {
   senderAvatarUrl?: string | null;
   /** @nullable */
   senderRole?: string | null;
+  senderIsVerified?: boolean;
   /** @nullable */
   senderEquippedBorder?: string | null;
   starred?: boolean;

@@ -570,6 +570,7 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
   if (body.data.youtubeLiveUrl !== undefined) updateData.youtubeLiveUrl = body.data.youtubeLiveUrl;
   if (body.data.role !== undefined) updateData.role = body.data.role;
   if (body.data.mcUsername !== undefined) updateData.mcUsername = body.data.mcUsername;
+  if (body.data.isVerified !== undefined) updateData.isVerified = body.data.isVerified;
 
   const [updated] = await db.update(usersTable)
     .set(updateData)

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, inArray, desc, asc, isNull, sql } from "drizzle-orm";
+import { eq, and, inArray, desc, asc, isNull, sql, ne } from "drizzle-orm";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import {
   db,
@@ -49,6 +49,8 @@ import {
   GenerateInviteCodeResponse,
   GetInviteDetailsResponse,
   JoinGroupByInviteCodeResponse,
+  AdminUpdateConversationBody,
+  AdminUpdateConversationParams,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -1188,6 +1190,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
       displayName: usersTable.displayName,
       avatarUrl: usersTable.avatarUrl,
       role: usersTable.role,
+      isVerified: usersTable.isVerified,
     })
     .from(conversationMembersTable)
     .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
@@ -1207,6 +1210,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
   let otherDisplayName: string | null = null;
   let otherAvatarUrl: string | null = null;
   let otherUserRole: string | null = null;
+  let otherUserIsVerified = false;
   let otherUserEquippedBorder: string | null = null;
 
   if (conv.type === "dm") {
@@ -1217,6 +1221,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
       otherDisplayName = other.displayName ?? null;
       otherAvatarUrl = other.avatarUrl ?? null;
       otherUserRole = other.role ?? null;
+      otherUserIsVerified = other.isVerified ?? false;
       name = other.displayName ?? other.username;
       iconUrl = other.avatarUrl ?? null;
 
@@ -1248,11 +1253,13 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     description: conv.description ?? null,
     ownerId: conv.ownerId ?? null,
     memberCount: memberRows.length,
+    isVerified: conv.isVerified ?? false,
     otherUserId,
     otherUsername,
     otherDisplayName,
     otherAvatarUrl,
     otherUserRole,
+    otherUserIsVerified,
     otherUserEquippedBorder,
     lastMessageContent: lastMsg ? (lastMsg.content || (lastMsg.imageUrl ? "📷 Image" : "")) : null,
     lastMessageAt: lastMsg ? serializeDates(lastMsg).createdAt : null,
@@ -1503,13 +1510,100 @@ router.patch("/conversations/:id", async (req, res): Promise<void> => {
   const parsed = UpdateGroupBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
+  const updatePayload: Record<string, any> = { ...parsed.data, updatedAt: new Date() };
+
+  if (parsed.data.inviteCode !== undefined) {
+    if (!conv.isVerified) {
+      res.status(403).json({ error: "Hanya group yang terverifikasi yang bisa mengubah custom invite link" });
+      return;
+    }
+    if (conv.ownerId !== user.id) {
+      res.status(403).json({ error: "Hanya pemilik group terverifikasi yang bisa mengubah custom invite link" });
+      return;
+    }
+
+    if (parsed.data.inviteCode !== null && parsed.data.inviteCode.trim() !== "") {
+      const trimmedCode = parsed.data.inviteCode.trim();
+      
+      // Enforce alphanumeric/hyphen/underscore to keep links clean and URL-safe
+      if (!/^[a-zA-Z0-9-_]+$/.test(trimmedCode)) {
+        res.status(400).json({ error: "Invite link hanya boleh berisi huruf, angka, strip (-), dan underscore (_)" });
+        return;
+      }
+
+      const existing = await db.query.conversationsTable.findFirst({
+        where: and(
+          eq(conversationsTable.inviteCode, trimmedCode),
+          ne(conversationsTable.id, id)
+        )
+      });
+      if (existing) {
+        res.status(400).json({ error: "Invite link sudah digunakan oleh group lain" });
+        return;
+      }
+      updatePayload.inviteCode = trimmedCode;
+    } else {
+      updatePayload.inviteCode = null;
+    }
+  }
+
   const [updated] = await db
     .update(conversationsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set(updatePayload)
     .where(eq(conversationsTable.id, id))
     .returning();
 
   res.json(await buildSummary(updated, user.id));
+});
+
+router.get("/admin/conversations", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const adminUser = await getDbUser(auth.userId);
+  if (!adminUser || (adminUser.role !== "admin" && adminUser.role !== "dev_website")) {
+    res.status(403).json({ error: "Forbidden: admin only" }); return;
+  }
+
+  const groups = await db
+    .select()
+    .from(conversationsTable)
+    .where(eq(conversationsTable.type, "group"))
+    .orderBy(desc(conversationsTable.updatedAt));
+
+  const summaries = await Promise.all(groups.map((c) => buildSummary(c, adminUser.id)));
+  res.json(summaries);
+});
+
+router.patch("/admin/conversations/:id", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const adminUser = await getDbUser(auth.userId);
+  if (!adminUser || (adminUser.role !== "admin" && adminUser.role !== "dev_website")) {
+    res.status(403).json({ error: "Forbidden: admin only" }); return;
+  }
+
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const params = AdminUpdateConversationParams.safeParse({ id: parseInt(rawId, 10) });
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
+  const body = AdminUpdateConversationBody.safeParse(req.body);
+  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, params.data.id) });
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.data.isVerified !== undefined) updateData.isVerified = body.data.isVerified;
+
+  const [updated] = await db
+    .update(conversationsTable)
+    .set(updateData)
+    .where(eq(conversationsTable.id, params.data.id))
+    .returning();
+
+  res.json(await buildSummary(updated, adminUser.id));
 });
 
 router.delete("/conversations/:id", async (req, res): Promise<void> => {
@@ -1666,6 +1760,7 @@ async function populateMessageDetails(userId: number, rows: any[], bordersMap: M
       attachmentName: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentName,
       attachmentMime: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentMime,
       attachmentSize: r.deletedAt && r.deletedScope === "everyone" ? null : r.attachmentSize,
+      senderIsVerified: r.senderIsVerified ?? false,
       senderEquippedBorder: (r.senderUsername === "zaidanai" || r.senderUsername === "akira" || r.senderUsername === "metaai")
         ? "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]"
         : r.senderId ? (bordersMap.get(r.senderId) ?? null) : null,
@@ -1717,6 +1812,7 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       senderDisplayName: sql<string>`coalesce(${usersTable.displayName}, ${messagesTable.webhookName})`,
       senderAvatarUrl: sql<string>`coalesce(${usersTable.avatarUrl}, ${messagesTable.webhookAvatarUrl})`,
       senderRole: sql<string>`case when ${messagesTable.webhookName} is not null then 'webhook' else ${usersTable.role} end`,
+      senderIsVerified: usersTable.isVerified,
     })
     .from(messagesTable)
     .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
@@ -1937,6 +2033,7 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     senderDisplayName: user.displayName ?? null,
     senderAvatarUrl: user.avatarUrl ?? null,
     senderRole: user.role ?? null,
+    senderIsVerified: user.isVerified ?? false,
     senderEquippedBorder: userBorder[0]?.value ?? null,
     replyToMessageContent: replyToContent,
     replyToMessageSenderUsername: replyToSenderUsername,

@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, integer, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, integer, timestamp, unique, boolean } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 export const conversationsTable = pgTable("conversations", {
@@ -10,6 +10,7 @@ export const conversationsTable = pgTable("conversations", {
   description: text("description"),
   ownerId: integer("owner_id").references(() => usersTable.id, { onDelete: "set null" }),
   inviteCode: varchar("invite_code", { length: 50 }).unique(),
+  isVerified: boolean("is_verified").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -21,4 +21,6 @@ export interface UpdateGroupInput {
   iconUrl?: string | null;
   /** @nullable */
   bannerUrl?: string | null;
+  /** @nullable */
+  inviteCode?: string | null;
 }

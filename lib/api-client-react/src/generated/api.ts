@@ -25,6 +25,7 @@ import type {
   AdminAdjustWalletResult,
   AdminBulkFollowInput,
   AdminBulkFollowResult,
+  AdminConversationUpdate,
   AdminCreateCosmeticInput,
   AdminFollowInput,
   AdminUpdateCosmeticInput,
@@ -2475,6 +2476,155 @@ export const useAdminBulkCreateFollowers = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAdminBulkCreateFollowersMutationOptions(options));
+    }
+
+export const getAdminListConversationsUrl = () => {
+
+
+
+
+  return `/api/admin/conversations`
+}
+
+/**
+ * @summary List all group conversations (admin only)
+ */
+export const adminListConversations = async ( options?: RequestInit): Promise<ConversationSummary[]> => {
+
+  return customFetch<ConversationSummary[]>(getAdminListConversationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminListConversationsQueryKey = () => {
+    return [
+    `/api/admin/conversations`
+    ] as const;
+    }
+
+
+export const getAdminListConversationsQueryOptions = <TData = Awaited<ReturnType<typeof adminListConversations>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminListConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminListConversationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminListConversations>>> = ({ signal }) => adminListConversations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminListConversations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminListConversationsQueryResult = NonNullable<Awaited<ReturnType<typeof adminListConversations>>>
+export type AdminListConversationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all group conversations (admin only)
+ */
+
+export function useAdminListConversations<TData = Awaited<ReturnType<typeof adminListConversations>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminListConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminListConversationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminUpdateConversationUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/conversations/${id}`
+}
+
+/**
+ * @summary Update conversation verification (admin only)
+ */
+export const adminUpdateConversation = async (id: number,
+    adminConversationUpdate: AdminConversationUpdate, options?: RequestInit): Promise<ConversationSummary> => {
+
+  return customFetch<ConversationSummary>(getAdminUpdateConversationUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminConversationUpdate,)
+  }
+);}
+
+
+
+
+export const getAdminUpdateConversationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateConversation>>, TError,{id: number;data: BodyType<AdminConversationUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdateConversation>>, TError,{id: number;data: BodyType<AdminConversationUpdate>}, TContext> => {
+
+const mutationKey = ['adminUpdateConversation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdateConversation>>, {id: number;data: BodyType<AdminConversationUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adminUpdateConversation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdateConversationMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdateConversation>>>
+    export type AdminUpdateConversationMutationBody = BodyType<AdminConversationUpdate>
+    export type AdminUpdateConversationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update conversation verification (admin only)
+ */
+export const useAdminUpdateConversation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateConversation>>, TError,{id: number;data: BodyType<AdminConversationUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdateConversation>>,
+        TError,
+        {id: number;data: BodyType<AdminConversationUpdate>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdateConversationMutationOptions(options));
     }
 
 export const getAdminUpdateUserUrl = (id: number,) => {

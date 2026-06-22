@@ -14,4 +14,5 @@ export interface AdminUserUpdate {
   youtubeLiveUrl?: string;
   role?: AdminUserUpdateRole;
   mcUsername?: string;
+  isVerified?: boolean;
 }

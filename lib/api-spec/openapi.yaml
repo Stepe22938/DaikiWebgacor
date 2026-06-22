@@ -588,6 +588,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdminBulkFollowResult"
 
+  /admin/conversations:
+    get:
+      operationId: adminListConversations
+      tags: [messaging]
+      summary: List all group conversations (admin only)
+      responses:
+        "200":
+          description: List of group conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConversationSummary"
+
+  /admin/conversations/{id}:
+    patch:
+      operationId: adminUpdateConversation
+      tags: [messaging]
+      summary: Update conversation verification (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminConversationUpdate"
+      responses:
+        "200":
+          description: Updated conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+
   /admin/users/{id}:
     patch:
       operationId: adminUpdateUser
@@ -1807,6 +1847,8 @@ components:
           type: ["string", "null"]
         diamonds:
           type: integer
+        isVerified:
+          type: boolean
         equippedBorder:
           type: ["string", "null"]
         equippedBadge:
@@ -1868,6 +1910,8 @@ components:
           type: integer
         followingCount:
           type: integer
+        isVerified:
+          type: boolean
         equippedBorder:
           type: ["string", "null"]
         equippedBadge:
@@ -1918,6 +1962,14 @@ components:
           enum: [member, premium, premium_plus, admin, staff, dev, dev_website, bot, ai]
         mcUsername:
           type: string
+        isVerified:
+          type: boolean
+
+    AdminConversationUpdate:
+      type: object
+      properties:
+        isVerified:
+          type: boolean
 
     AdminFollowInput:
       type: object
@@ -2114,6 +2166,8 @@ components:
           type: ["integer", "null"]
         memberCount:
           type: integer
+        isVerified:
+          type: boolean
         otherUserId:
           type: ["integer", "null"]
         otherUsername:
@@ -2124,6 +2178,8 @@ components:
           type: ["string", "null"]
         otherUserRole:
           type: ["string", "null"]
+        otherUserIsVerified:
+          type: boolean
         otherUserEquippedBorder:
           type: ["string", "null"]
         lastMessageContent:
@@ -2200,6 +2256,8 @@ components:
           type: ["string", "null"]
         senderRole:
           type: ["string", "null"]
+        senderIsVerified:
+          type: boolean
         senderEquippedBorder:
           type: ["string", "null"]
         starred:
@@ -2325,6 +2383,8 @@ components:
         iconUrl:
           type: ["string", "null"]
         bannerUrl:
+          type: ["string", "null"]
+        inviteCode:
           type: ["string", "null"]
 
     SendMessageInput:

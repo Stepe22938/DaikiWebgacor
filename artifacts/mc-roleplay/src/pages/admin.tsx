@@ -43,6 +43,8 @@ import {
   useAdminDeleteCosmetic,
   useAdminAdjustWallet,
   useGetGachaBoard,
+  useAdminListConversations,
+  useAdminUpdateConversation,
 } from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -83,7 +85,9 @@ import {
   Wallet,
   Dices,
   Zap,
+  BadgeCheck,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import {
   ResponsiveContainer,
   BarChart,
@@ -127,7 +131,7 @@ type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 
 interface DevForm { title: string; description: string; category: string; status: DevStatus; progress: string; order: string; }
 interface AnnForm { title: string; content: string; type: AnnType; pinned: boolean; imageUrl: string; }
-interface UserEditForm { username: string; displayName: string; bio: string; role: UserRole; }
+interface UserEditForm { username: string; displayName: string; bio: string; role: UserRole; isVerified: boolean; }
 interface CreditForm {
   name: string;
   avatarUrl: string;
@@ -296,7 +300,7 @@ export default function Admin() {
   const [deletingAnnId, setDeletingAnnId] = useState<number | null>(null);
 
   // User edit state
-  const [userEditForm, setUserEditForm] = useState<UserEditForm>({ username: "", displayName: "", bio: "", role: "member" });
+  const [userEditForm, setUserEditForm] = useState<UserEditForm>({ username: "", displayName: "", bio: "", role: "member", isVerified: false });
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [userEditDialogOpen, setUserEditDialogOpen] = useState(false);
   
@@ -341,6 +345,13 @@ export default function Admin() {
 
   // User directory
   const [userDirSearch, setUserDirSearch] = useState("");
+
+  // Groups admin
+  const [groupSearch, setGroupSearch] = useState("");
+  const { data: adminGroups, isLoading: adminGroupsLoading } = useAdminListConversations({
+    query: { enabled: canQueryAdmin } as any,
+  });
+  const adminUpdateConv = useAdminUpdateConversation();
 
   // Gacha & Wallet Sub-tab State
   const [gachaSubTab, setGachaSubTab] = useState<"settings" | "registry" | "wallets">("settings");
@@ -765,7 +776,7 @@ export default function Admin() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "developments", "announcements", "tickets", "payments", "forms", "users", "credits", "settings", "gacha"].includes(tab)) {
+    if (tab && ["dashboard", "developments", "announcements", "tickets", "payments", "forms", "users", "credits", "settings", "gacha", "groups"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [window.location.search]);
@@ -832,18 +843,19 @@ export default function Admin() {
 
   // ── User Edit ─────────────────────────────────────────────────────────────────
   const openEditUser = (u: NonNullable<typeof users>[number]) => {
-    setUserEditForm({ username: u.username, displayName: u.displayName ?? "", bio: u.bio ?? "", role: u.role as UserRole });
+    setUserEditForm({ username: u.username, displayName: u.displayName ?? "", bio: u.bio ?? "", role: u.role as UserRole, isVerified: (u as any).isVerified ?? false });
     setEditingUserId(u.id); setUserEditDialogOpen(true);
   };
   const handleSaveUser = async () => {
     if (!editingUserId) return;
     setSavingUser(true);
     try {
-      const body: Record<string, string> = {};
+      const body: Record<string, any> = {};
       if (userEditForm.username.trim()) body.username = userEditForm.username.trim();
       if (userEditForm.displayName !== undefined) body.displayName = userEditForm.displayName;
       if (userEditForm.bio !== undefined) body.bio = userEditForm.bio;
       body.role = userEditForm.role;
+      body.isVerified = userEditForm.isVerified;
       await adminUpdateUser.mutateAsync({ id: editingUserId, data: body });
       toast({ title: "User updated" });
       setUserEditDialogOpen(false);
@@ -1323,6 +1335,16 @@ export default function Admin() {
                     <Coins className="w-4.5 h-4.5" /> Gacha & Wallet
                   </button>
                   <button
+                    onClick={() => handleTabChange("groups")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "groups"
+                        ? "bg-violet-50 text-[#6366f1]"
+                        : "text-slate-500 hover:bg-slate-55 hover:text-slate-900"
+                    }`}
+                  >
+                    <Users className="w-4.5 h-4.5" /> Groups
+                  </button>
+                  <button
                     onClick={() => handleTabChange("settings")}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
                       activeTab === "settings"
@@ -1501,6 +1523,14 @@ export default function Admin() {
                       }`}
                     >
                       <Coins className="w-4.5 h-4.5" /> Gacha & Wallet
+                    </button>
+                    <button
+                      onClick={() => handleTabChangeMobile("groups")}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        activeTab === "groups" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-55"
+                      }`}
+                    >
+                      <Users className="w-4.5 h-4.5" /> Groups
                     </button>
                     <button
                       onClick={() => handleTabChangeMobile("settings")}
@@ -2103,8 +2133,11 @@ export default function Admin() {
                                   {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="w-full h-full object-cover animate-fade-in" /> : (u.displayName || u.username).charAt(0).toUpperCase()}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="font-extrabold text-xs text-[#110e3d] truncate">
+                                  <div className="font-extrabold text-xs text-[#110e3d] truncate flex items-center gap-1">
                                     {u.displayName || u.username}
+                                    {(u as any).isVerified && (
+                                      <BadgeCheck className="w-3 h-3 text-blue-500 fill-blue-100 shrink-0" />
+                                    )}
                                   </div>
                                   <div className="text-[10px] text-slate-400 font-bold truncate">@{u.username}</div>
                                 </div>
@@ -3229,6 +3262,122 @@ export default function Admin() {
               )}
             </div>
           )}
+
+          {/* TAB: GROUPS & COMMUNITIES */}
+          {activeTab === "groups" && canManageAdmin && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-[#110e3d]">Groups & Communities</h2>
+                    <p className="text-xs text-slate-400 font-bold mt-1">Audit and verify server group conversations.</p>
+                  </div>
+                  <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    <Input
+                      value={groupSearch}
+                      onChange={(e) => setGroupSearch(e.target.value)}
+                      placeholder="Search group name or invite code…"
+                      className="pl-9 bg-white border-[#eae8f5] rounded-xl text-xs h-9 focus-visible:ring-1 focus-visible:ring-[#6366f1]"
+                    />
+                  </div>
+                </div>
+
+                {adminGroupsLoading ? (
+                  <Skeleton className="h-48 w-full rounded-2xl" />
+                ) : (
+                  <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-[#f8f7fa]">
+                        <TableRow className="border-[#eae8f5]">
+                          <TableHead className="text-xs font-black text-[#110e3d]">Group</TableHead>
+                          <TableHead className="text-xs font-black text-[#110e3d]">Invite Code</TableHead>
+                          <TableHead className="w-24 text-xs font-black text-[#110e3d]">UID</TableHead>
+                          <TableHead className="w-20 text-xs font-black text-[#110e3d]">Members</TableHead>
+                          <TableHead className="text-right text-xs font-black text-[#110e3d] w-36">Verified</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {adminGroups
+                          ?.filter((g) => {
+                            const q = groupSearch.toLowerCase();
+                            return (
+                              !q ||
+                              (g.name && g.name.toLowerCase().includes(q)) ||
+                              (g.inviteCode && g.inviteCode.toLowerCase().includes(q)) ||
+                              String(g.id).includes(q)
+                            );
+                          })
+                          .map((g) => (
+                            <TableRow key={g.id} className="border-[#eae8f5] hover:bg-slate-50/50">
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center font-black text-[#6366f1] text-xs shrink-0 overflow-hidden border border-[#eae8f5]">
+                                    {g.iconUrl ? (
+                                      <img src={g.iconUrl} alt="" className="w-full h-full object-cover" />
+                                    ) : (
+                                      (g.name || "G").charAt(0).toUpperCase()
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="font-extrabold text-xs text-[#110e3d] truncate flex items-center gap-1">
+                                      {g.name || <span className="text-slate-400 italic">Unnamed Group</span>}
+                                      {g.isVerified && (
+                                        <BadgeCheck className="w-3 h-3 text-blue-500 fill-blue-100 shrink-0" />
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 font-bold">{g.memberCount} anggota</div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs text-slate-500 font-mono">
+                                {g.inviteCode ? (
+                                  <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold">/join/{g.inviteCode}</span>
+                                ) : (
+                                  <span className="text-slate-300 text-[10px]">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-xs text-slate-400 font-bold">#{g.id}</TableCell>
+                              <TableCell className="text-xs text-slate-600 font-bold">{g.memberCount}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {g.isVerified && (
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-600">Verified</span>
+                                  )}
+                                  <Switch
+                                    id={`group-verified-${g.id}`}
+                                    checked={!!g.isVerified}
+                                    onCheckedChange={async (checked) => {
+                                      try {
+                                        await adminUpdateConv.mutateAsync({ id: g.id, data: { isVerified: checked } });
+                                        toast({
+                                          title: checked ? "Grup diverifikasi" : "Verifikasi dicabut",
+                                          description: `${g.name || "Grup"} telah ${checked ? "mendapatkan" : "kehilangan"} centang biru.`,
+                                        });
+                                        queryClient.invalidateQueries({ queryKey: ["/api/admin/conversations"] });
+                                      } catch {
+                                        toast({ title: "Gagal", description: "Terjadi kesalahan. Coba lagi.", variant: "destructive" });
+                                      }
+                                    }}
+                                    className="data-[state=checked]:bg-blue-500"
+                                    disabled={adminUpdateConv.isPending}
+                                  />
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        {adminGroups?.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-xs text-slate-400 py-8">Belum ada grup yang ditemukan.</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </Card>
+                )}
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
@@ -3388,6 +3537,20 @@ export default function Admin() {
                   {canManageDevWebsiteRole && <SelectItem value="dev_website">Dev Website</SelectItem>}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-blue-50 border border-blue-100 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <BadgeCheck className="w-4 h-4 text-blue-500" />
+                <div>
+                  <p className="text-xs font-bold text-blue-800">Verified Account</p>
+                  <p className="text-[10px] text-blue-500">Tampilkan centang biru pada profil user</p>
+                </div>
+              </div>
+              <Switch
+                checked={userEditForm.isVerified}
+                onCheckedChange={(v) => setUserEditForm({ ...userEditForm, isVerified: v })}
+                className="data-[state=checked]:bg-blue-500"
+              />
             </div>
           </div>
           <DialogFooter className="gap-2 pt-4 border-t border-slate-50">

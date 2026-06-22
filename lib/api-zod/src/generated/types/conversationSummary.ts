@@ -21,6 +21,7 @@ export interface ConversationSummary {
   /** @nullable */
   ownerId?: number | null;
   memberCount: number;
+  isVerified?: boolean;
   /** @nullable */
   otherUserId?: number | null;
   /** @nullable */
@@ -31,6 +32,7 @@ export interface ConversationSummary {
   otherAvatarUrl?: string | null;
   /** @nullable */
   otherUserRole?: string | null;
+  otherUserIsVerified?: boolean;
   /** @nullable */
   otherUserEquippedBorder?: string | null;
   /** @nullable */

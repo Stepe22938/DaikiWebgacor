@@ -11,6 +11,7 @@ export * from './adminAdjustWalletInput';
 export * from './adminAdjustWalletResult';
 export * from './adminBulkFollowInput';
 export * from './adminBulkFollowResult';
+export * from './adminConversationUpdate';
 export * from './adminCreateCosmeticInput';
 export * from './adminCreateCosmeticInputRarity';
 export * from './adminCreateCosmeticInputType';

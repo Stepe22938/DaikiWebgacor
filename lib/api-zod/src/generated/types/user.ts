@@ -25,6 +25,7 @@ export interface User {
   /** @nullable */
   mcUsername?: string | null;
   diamonds: number;
+  isVerified?: boolean;
   /** @nullable */
   equippedBorder?: string | null;
   /** @nullable */

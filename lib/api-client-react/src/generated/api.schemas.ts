@@ -42,6 +42,7 @@ export interface User {
   /** @nullable */
   mcUsername?: string | null;
   diamonds: number;
+  isVerified?: boolean;
   /** @nullable */
   equippedBorder?: string | null;
   /** @nullable */
@@ -111,6 +112,7 @@ export interface PublicUser {
   isFollowing: boolean;
   followerCount: number;
   followingCount: number;
+  isVerified?: boolean;
   /** @nullable */
   equippedBorder?: string | null;
   /** @nullable */
@@ -159,6 +161,11 @@ export interface AdminUserUpdate {
   youtubeLiveUrl?: string;
   role?: AdminUserUpdateRole;
   mcUsername?: string;
+  isVerified?: boolean;
+}
+
+export interface AdminConversationUpdate {
+  isVerified?: boolean;
 }
 
 export interface AdminFollowInput {
@@ -360,6 +367,7 @@ export interface ConversationSummary {
   /** @nullable */
   ownerId?: number | null;
   memberCount: number;
+  isVerified?: boolean;
   /** @nullable */
   otherUserId?: number | null;
   /** @nullable */
@@ -370,6 +378,7 @@ export interface ConversationSummary {
   otherAvatarUrl?: string | null;
   /** @nullable */
   otherUserRole?: string | null;
+  otherUserIsVerified?: boolean;
   /** @nullable */
   otherUserEquippedBorder?: string | null;
   /** @nullable */
@@ -442,6 +451,7 @@ export interface Message {
   senderAvatarUrl?: string | null;
   /** @nullable */
   senderRole?: string | null;
+  senderIsVerified?: boolean;
   /** @nullable */
   senderEquippedBorder?: string | null;
   starred?: boolean;
@@ -519,6 +529,8 @@ export interface UpdateGroupInput {
   iconUrl?: string | null;
   /** @nullable */
   bannerUrl?: string | null;
+  /** @nullable */
+  inviteCode?: string | null;
 }
 
 export interface SendMessageInput {

@@ -24,6 +24,7 @@ import stickersRouter from "./stickers";
 import emojisRouter from "./emojis";
 import boostPackagesRouter from "./boostPackages";
 import webhooksRouter from "./webhooks";
+import statusesRouter from "./statuses";
 
 const router: IRouter = Router();
 
@@ -52,6 +53,7 @@ router.use(paymentsRouter);
 router.use(stickersRouter);
 router.use(emojisRouter);
 router.use(boostPackagesRouter);
+router.use(statusesRouter);
 
 
 export default router;
