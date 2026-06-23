@@ -48,6 +48,19 @@ async function getGachaSettings() {
   return { ...DEFAULT_GACHA_SETTINGS, ...(row.value as any) };
 }
 
+const RARITY_RANK: Record<string, number> = { D: 1, C: 2, B: 3, A: 4, S: 5 };
+
+function isAtLeastRarity(rarity: string | null | undefined, minimum: string) {
+  return (RARITY_RANK[rarity || "D"] || 1) >= (RARITY_RANK[minimum] || 1);
+}
+
+function getRushGuarantee(count: number) {
+  if (count >= 50) return "S";
+  if (count >= 25) return "A";
+  if (count >= 10) return "B";
+  return null;
+}
+
 // --- GET GACHA BOARD ---
 router.get("/gacha/board", async (req, res): Promise<void> => {
   const auth = getAuth(req);
@@ -137,6 +150,7 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
   // Cap refund per duplicate so it can NEVER exceed the per-spin cost (prevents diamond farming)
   const maxRefundPerSpin = Math.floor(cost / count);
   const effectiveRefund = Math.min(settings.duplicateRefund, maxRefundPerSpin);
+  const rushGuarantee = getRushGuarantee(count);
 
   for (let i = 0; i < count; i++) {
     const roll = Math.random() * 100;
@@ -145,6 +159,14 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
     else if (roll < settings.rateA) selectedRarity = "A";
     else if (roll < settings.rateB) selectedRarity = "B";
     else if (roll < settings.rateC) selectedRarity = "C";
+
+    if (
+      rushGuarantee &&
+      i === count - 1 &&
+      !results.some((result) => isAtLeastRarity(result.cosmetic?.rarity, rushGuarantee))
+    ) {
+      selectedRarity = rushGuarantee;
+    }
 
     let pool = byRarity[selectedRarity as keyof typeof byRarity];
     if (!pool || pool.length === 0) pool = byRarity["D"]; // fallback to common
@@ -159,12 +181,14 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
         cosmetic: chosen,
         isDuplicate: true,
         refundAmount: effectiveRefund,
+        rushGuaranteed: selectedRarity === rushGuarantee && isAtLeastRarity(chosen.rarity, rushGuarantee),
       });
     } else {
       ownedIds.add(chosen.id);
       results.push({
         cosmetic: chosen,
         isDuplicate: false,
+        rushGuaranteed: selectedRarity === rushGuarantee && isAtLeastRarity(chosen.rarity, rushGuarantee),
       });
 
       await db.insert(userCosmeticsTable).values({
@@ -203,6 +227,7 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
     diamonds: finalDiamonds,
     cost,
     refunded: diamondsRefunded,
+    rushGuarantee,
   });
 });
 

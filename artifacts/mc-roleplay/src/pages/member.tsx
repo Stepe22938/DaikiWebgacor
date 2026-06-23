@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers, useGetGachaBoard, useClaimDiamonds, useSpinGacha, useListOwnedCosmetics, useEquipCosmetic, useListWalletTransactions } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers, useGetGachaBoard, useSpinGacha, useListOwnedCosmetics, useEquipCosmetic, useListWalletTransactions } from "@workspace/api-client-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -61,6 +61,14 @@ import {
   Crown,
   Zap,
   Plus,
+  BadgeCheck,
+  CheckCircle2,
+  ChevronDown,
+  Gem,
+  Gift,
+  ImageIcon,
+  Lock,
+  Shield,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -2515,7 +2523,6 @@ function ProfileCosmeticsInventory() {
 function GachaTab() {
   const { data: board, isLoading, refetch } = useGetGachaBoard();
   const { data: user, refetch: refetchMe } = useGetMe();
-  const claimDiamonds = useClaimDiamonds();
   const spinGacha = useSpinGacha();
   const equipCosmetic = useEquipCosmetic();
   const { toast } = useToast();
@@ -2677,36 +2684,6 @@ function GachaTab() {
     );
   }
 
-  const handleClaimDiamonds = async () => {
-    playSound("click");
-    try {
-      const res = await claimDiamonds.mutateAsync();
-      if (res && res.diamonds !== undefined) {
-        queryClient.setQueryData(["/api/gacha/board"], (old: any) => {
-          if (!old) return old;
-          return { ...old, diamonds: res.diamonds };
-        });
-        queryClient.setQueryData(["/api/me"], (old: any) => {
-          if (!old) return old;
-          return { ...old, diamonds: res.diamonds };
-        });
-      }
-      toast({
-        title: "Diamonds claimed! ðŸ’Ž",
-        description: "You've received +1,000 Diamonds for testing."
-      });
-      await refetch();
-      await refetchMe();
-      await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
-    } catch (err: any) {
-      toast({
-        title: "Claim failed",
-        description: err.message || "Failed to claim test diamonds.",
-        variant: "destructive"
-      });
-    }
-  };
-
   const handleSpin = async (count: 1 | 10 | 25 | 50) => {
     playSound("click");
     let cost = 9;
@@ -2717,7 +2694,7 @@ function GachaTab() {
     if ((board.diamonds ?? 0) < cost) {
       toast({
         title: "Insufficient Diamonds",
-        description: `Spinning ${count}x costs ${cost} ðŸ’Ž, but you only have ${board.diamonds} ðŸ’Ž. Claim free diamonds first!`,
+        description: `Spinning ${count}x costs ${cost} Diamonds, but you only have ${board.diamonds}. Top up wallet or convert saldo to diamonds first.`,
         variant: "destructive"
       });
       return;
@@ -2843,6 +2820,34 @@ function GachaTab() {
   };
 
   const ownedIds = new Set(board.ownedCosmeticIds || []);
+  const fallbackBackgrounds = ["/lobby.png", "/village.png", "/dungeon.png"];
+
+  const getFallbackBackground = (seed: string | number = 0) => {
+    const numericSeed = String(seed)
+      .split("")
+      .reduce((total, char) => total + char.charCodeAt(0), 0);
+    return fallbackBackgrounds[numericSeed % fallbackBackgrounds.length];
+  };
+
+  const handleBackgroundError = (event: any, seed: string | number = 0) => {
+    const img = event.currentTarget;
+    const fallback = getFallbackBackground(seed);
+    if (img.src.endsWith(fallback)) return;
+    img.src = fallback;
+  };
+
+  const getBulkGuaranteeLabel = (count: 10 | 25 | 50) => {
+    if (count === 50) return "Guaranteed S-Tier";
+    if (count === 25) return "Guaranteed A-Tier+";
+    return "Guaranteed B-Tier+";
+  };
+
+  const renderCosmeticTypeIcon = (type: string, className = "w-4 h-4") => {
+    if (type === "badge") return <Shield className={className} />;
+    if (type === "border") return <BadgeCheck className={className} />;
+    if (type === "background") return <ImageIcon className={className} />;
+    return <Gift className={className} />;
+  };
 
   const getTierBadgeStyle = (tier: string) => {
     switch (tier) {
@@ -2891,7 +2896,12 @@ function GachaTab() {
     if (item.type === "background") {
       return (
         <div className={`relative overflow-hidden rounded-xl border border-purple-500/20 bg-slate-950 shadow-inner flex flex-col justify-end items-center ${isLg ? "w-36 h-20" : "w-20 h-11"}`}>
-          <img src={item.value} alt="" className="absolute inset-0 w-full h-full object-cover opacity-65" />
+          <img
+            src={item.value || getFallbackBackground(item.id)}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover opacity-65"
+            onError={(event) => handleBackgroundError(event, item.id || item.name)}
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent animate-pulse" />
           <span className={`relative z-10 font-black text-slate-350 uppercase tracking-widest select-none ${isLg ? "text-[9px] mb-2" : "text-[5px] mb-1"}`}>
             BG CARD
@@ -2983,6 +2993,52 @@ function GachaTab() {
         hover: "hover:border-slate-400 hover:bg-slate-800/30"
       };
     }
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          playSound("click");
+          setSelectedTier(tierKey);
+          if (previewItem) setSelectedItem(previewItem);
+        }}
+        className={`relative w-full min-h-[92px] rounded-lg border p-3 text-left transition-all overflow-hidden select-none cursor-pointer group ${theme.border} ${theme.bg} ${theme.hover} ${theme.glow}`}
+      >
+        <div className="absolute inset-x-0 top-0 h-0.5 bg-current opacity-30" />
+        <div className="relative z-10 flex h-full items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className={`px-2.5 py-1 rounded-md text-[10px] font-black border uppercase tracking-wider ${theme.badge}`}>
+                {tierKey} Tier
+              </span>
+              {isOwned && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-emerald-300">
+                  <CheckCircle2 className="h-3 w-3" /> Complete
+                </span>
+              )}
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40">
+              <div
+                className={`h-full rounded-full ${tierKey === "S" ? "bg-amber-400" : tierKey === "A" ? "bg-pink-400" : tierKey === "B" ? "bg-purple-400" : tierKey === "C" ? "bg-cyan-400" : "bg-slate-400"}`}
+                style={{ width: `${totalCount > 0 ? (ownedCount / totalCount) * 100 : 0}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                Owned
+              </span>
+              <span className={`text-xs font-black ${theme.text}`}>
+                {ownedCount} / {totalCount}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/35 text-purple-200 shadow-inner">
+            {previewItem ? renderCosmeticTypeIcon(previewItem.type, "h-6 w-6") : <Gift className="h-6 w-6" />}
+          </div>
+        </div>
+      </button>
+    );
 
     return (
       <button
@@ -3142,8 +3198,52 @@ function GachaTab() {
         </div>
       )}
 
+      <div className="relative overflow-hidden rounded-xl border border-[#2a1744] bg-[#0d0915] p-5 text-white shadow-[0_18px_45px_rgba(13,9,21,0.28)]">
+        <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(245,158,11,0.12),transparent_34%),linear-gradient(90deg,transparent,rgba(6,182,212,0.08))]" />
+        <div className="relative z-10 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-300">
+                <Zap className="h-3 w-3" /> Rush Board Event
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-rose-300">
+                <Clock className="h-3 w-3" /> Ends in 7d 6h
+              </span>
+              <span className="inline-flex items-center rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-cyan-300">
+                Board Selanjutnya
+              </span>
+            </div>
+
+            <div>
+              <h1 className="text-3xl font-black italic uppercase tracking-normal text-white md:text-4xl">
+                RUSH BOARD
+              </h1>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <div className="min-w-[240px] rounded-md bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-2 text-[11px] font-black uppercase tracking-wider text-white shadow-[0_0_18px_rgba(217,70,239,0.26)]">
+                  {remainingRewards} / {totalRewards} Hadiah Tersisa
+                </div>
+                <Button
+                  onClick={() => setPreviewHadiahOpen(true)}
+                  className="h-9 rounded-lg border border-purple-400/30 bg-purple-500/15 px-4 text-xs font-black uppercase tracking-wide text-purple-100 hover:bg-purple-500/25"
+                >
+                  Preview Pool
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full rounded-lg border border-purple-400/30 bg-purple-950/45 p-4 shadow-[inset_0_0_22px_rgba(126,34,206,0.18)] lg:w-[280px]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-purple-200">Your Diamonds</p>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-black text-amber-300">
+              {Number(board.diamonds ?? 0).toLocaleString("id-ID")} <Gem className="h-6 w-6" />
+            </div>
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-purple-200/60">Top up lewat Wallet</p>
+          </div>
+        </div>
+      </div>
+
       {/* HEADER BANNER */}
-      <div className="relative rounded-2xl bg-gradient-to-br from-[#1b1528] via-[#100b1a] to-[#07040d] p-6 md:p-8 text-white overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-purple-500/20">
+      <div className="hidden relative rounded-2xl bg-gradient-to-br from-[#1b1528] via-[#100b1a] to-[#07040d] p-6 md:p-8 text-white overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-purple-500/20">
         <div className="absolute right-0 top-0 w-1/3 h-full opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-purple-500 to-transparent pointer-events-none" />
         
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative z-10">
@@ -3186,15 +3286,10 @@ function GachaTab() {
               <span className="text-2xl font-black text-amber-300 mt-1 flex items-center gap-1.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
                 {board.diamonds ?? 0} <span className="text-xl">ðŸ’Ž</span>
               </span>
+              <span className="text-[9px] font-bold text-purple-200/60 uppercase tracking-wider mt-1">
+                Top up lewat Wallet
+              </span>
             </div>
-
-            <Button
-              onClick={handleClaimDiamonds}
-              disabled={claimDiamonds.isPending}
-              className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-black text-xs px-4 py-2.5 rounded-xl h-auto shadow-lg shadow-amber-500/35 border-t border-white/20 active:scale-95 transition-transform"
-            >
-              {claimDiamonds.isPending ? "..." : "+ 1,000 ðŸ’Ž"}
-            </Button>
           </div>
         </div>
       </div>
@@ -3268,7 +3363,15 @@ function GachaTab() {
                         }}
                         className={`relative rounded-xl p-3 border flex flex-col justify-between items-center text-center cursor-pointer transition-all aspect-square select-none ${rarityBorder}`}
                       >
-                        <div className="w-10 h-10 rounded-lg bg-black/40 flex items-center justify-center border border-purple-500/5 text-lg relative">
+                        <div className={`w-11 h-11 rounded-lg border flex items-center justify-center relative ${isOwned ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-purple-400/20 bg-black/35 text-purple-200"}`}>
+                          {renderCosmeticTypeIcon(item.type, "h-5 w-5")}
+                          {isOwned && (
+                            <span className="absolute -bottom-1 -right-1 rounded-full border border-[#0b0713] bg-emerald-400 p-0.5 text-slate-950">
+                              <CheckCircle2 className="h-3 w-3" />
+                            </span>
+                          )}
+                        </div>
+                        <div className="hidden w-10 h-10 rounded-lg bg-black/40 flex items-center justify-center border border-purple-500/5 text-lg relative">
                           {item.type === "badge" ? "ðŸ›¡ï¸" : item.type === "border" ? "ðŸ–¼ï¸" : "ðŸ–¼ï¸"}
                           {isOwned && (
                             <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black border border-[#0b0713]">
@@ -3287,7 +3390,7 @@ function GachaTab() {
                         </div>
 
                         {!isOwned && (
-                          <span className="absolute top-1 right-1 text-[8px] opacity-40">ðŸ”’</span>
+                          <span className="hidden absolute top-1 right-1 text-[8px] opacity-40">ðŸ”’</span>
                         )}
                       </div>
                     );
@@ -3302,7 +3405,7 @@ function GachaTab() {
             <div className="flex justify-between items-center mb-4">
               <div className="flex flex-col">
                 <span className="text-xs font-black text-purple-300 uppercase tracking-widest">SUMMON CONTROLS</span>
-                <span className="text-[10px] text-slate-400 font-semibold mt-0.5">Discounts increase with bulk tiers</span>
+                <span className="text-[10px] text-slate-400 font-semibold mt-0.5">Bulk spin activates Rush Guarantee mechanics</span>
               </div>
               
               <div className="flex items-center gap-2 text-[10px] text-purple-300 font-black">
@@ -3331,7 +3434,7 @@ function GachaTab() {
                     1 SPIN
                   </span>
                   <span className="text-xs font-black text-cyan-300 mt-1.5 flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] skew-x-12">
-                    9 <span className="text-[10px]">ðŸ’Ž</span>
+                    9 <Gem className="h-3.5 w-3.5" />
                   </span>
                 </button>
               </div>
@@ -3347,7 +3450,10 @@ function GachaTab() {
                     {bulkOption} SPIN
                   </span>
                   <span className="text-xs font-black text-slate-950 mt-1.5 flex items-center gap-1 skew-x-12">
-                    {bulkOption === 10 ? 79 : bulkOption === 25 ? 195 : 390} <span className="text-[10px]">ðŸ’Ž</span>
+                    {bulkOption === 10 ? 79 : bulkOption === 25 ? 195 : 390} <Gem className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="text-[8px] font-black text-slate-900/70 uppercase tracking-wider mt-1 skew-x-12">
+                    {getBulkGuaranteeLabel(bulkOption)}
                   </span>
                 </button>
 
@@ -3360,7 +3466,7 @@ function GachaTab() {
                   disabled={isSpinning}
                   className="px-3 rounded-r-xl bg-amber-500 hover:bg-amber-400 border-l border-amber-955/20 border-t border-b border-r border-amber-400/20 text-slate-950 flex items-center justify-center cursor-pointer disabled:opacity-50 select-none -skew-x-12"
                 >
-                  <span className={`text-[10px] skew-x-12 transition-transform duration-200 ${bulkDropdownOpen ? "rotate-180" : ""}`}>â–¼</span>
+                  <ChevronDown className={`h-4 w-4 skew-x-12 transition-transform duration-200 ${bulkDropdownOpen ? "rotate-180" : ""}`} />
                 </button>
 
                 {bulkDropdownOpen && (
@@ -3383,14 +3489,30 @@ function GachaTab() {
                             bulkOption === option ? "text-amber-400" : "text-purple-200"
                           }`}
                         >
-                          <span>{option} SPINS Option</span>
-                          <span className="text-amber-400 font-extrabold">{cost} ðŸ’Ž</span>
+                          <span className="flex flex-col">
+                            <span>{option} SPINS Option</span>
+                            <span className="text-[9px] text-purple-300/60 mt-0.5">{getBulkGuaranteeLabel(option)}</span>
+                          </span>
+                          <span className="flex items-center gap-1 text-amber-400 font-extrabold">{cost} <Gem className="h-3.5 w-3.5" /></span>
                         </button>
                       );
                     })}
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {[
+                ["10x", "B+ Lock"],
+                ["25x", "A+ Lock"],
+                ["50x", "S Lock"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-purple-500/20 bg-black/25 px-3 py-2 text-center">
+                  <p className="text-[9px] font-black text-purple-300 uppercase tracking-widest">{label}</p>
+                  <p className="text-[10px] font-black text-amber-300 uppercase tracking-wide mt-0.5">{value}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -3404,6 +3526,16 @@ function GachaTab() {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(168,85,247,0.15)_0%,_transparent_70%)] pointer-events-none z-0" />
 
             <div className="p-4 border-b border-purple-500/10 bg-black/40 flex items-center justify-between relative z-10">
+              <span className="inline-flex items-center gap-2 text-[10px] font-black text-purple-200 uppercase tracking-widest">
+                <Sparkles className="h-3.5 w-3.5 text-cyan-300" /> Cosmetic Preview Showcase
+              </span>
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+              </span>
+            </div>
+
+            <div className="hidden p-4 border-b border-purple-500/10 bg-black/40 flex items-center justify-between relative z-10">
               <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest">
                 â– COSMETIC PREVIEW SHOWCASE
               </span>
@@ -3419,9 +3551,10 @@ function GachaTab() {
               {selectedItem && selectedItem.type === "background" ? (
                 <div className="absolute inset-0 z-0">
                   <img
-                    src={selectedItem.value}
+                    src={selectedItem.value || getFallbackBackground(selectedItem.id)}
                     alt=""
                     className="w-full h-full object-cover opacity-50"
+                    onError={(event) => handleBackgroundError(event, selectedItem.id || selectedItem.name)}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#07040d] via-transparent to-[#07040d]/40" />
                 </div>
@@ -3431,6 +3564,7 @@ function GachaTab() {
                     src={user.equippedBackground}
                     alt=""
                     className="w-full h-full object-cover opacity-35"
+                    onError={(event) => handleBackgroundError(event, user.equippedBackground || "equipped-background")}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#07040d] via-transparent to-[#07040d]/40" />
                 </div>
@@ -3529,7 +3663,10 @@ function GachaTab() {
                         );
                       })()
                     ) : (
-                      <div className="w-full text-center py-2 px-4 bg-slate-950/60 border border-purple-500/10 rounded-xl text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                      <div className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 bg-slate-950/60 border border-purple-500/10 rounded-xl text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                        <Lock className="h-3.5 w-3.5" /> Spin gacha untuk membuka item ini
+                      </div>
+                      <div className="hidden w-full text-center py-2 px-4 bg-slate-950/60 border border-purple-500/10 rounded-xl text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                         ðŸ”’ SPIN GACHA UNTUK MEMBUKA ITEM INI
                       </div>
                     )}
@@ -3698,6 +3835,11 @@ function GachaTab() {
                       <span className={`text-[9px] font-black px-2.5 py-0.5 rounded border ${getTierBadgeStyle(item.rarity)}`}>
                         Tier {item.rarity}
                       </span>
+                      {res.rushGuaranteed && (
+                        <span className="mt-2 text-[8px] font-black px-2 py-0.5 rounded-full border border-cyan-400/40 bg-cyan-400/10 text-cyan-200 uppercase tracking-wider">
+                          Rush Guarantee
+                        </span>
+                      )}
 
                       <div className="mt-4 flex items-center justify-center">
                         {renderCosmeticPreview(item, "lg")}
@@ -3720,7 +3862,7 @@ function GachaTab() {
                           <div className="py-1.5 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex flex-col items-center">
                             <span className="text-[8px] font-black text-amber-400 uppercase tracking-wider leading-none">Duplicate</span>
                             <span className="text-xs font-black text-amber-300 mt-1 flex items-center gap-0.5">
-                              +100 ðŸ’Ž Refunded
+                              +{res.refundAmount ?? 0} ðŸ’Ž Refunded
                             </span>
                           </div>
                         ) : (
@@ -3765,6 +3907,11 @@ function GachaTab() {
                           <span className={`text-[8px] font-black px-1.5 py-0.2 rounded border leading-none ${rarityColor}`}>
                             Tier {item.rarity}
                           </span>
+                          {res.rushGuaranteed && (
+                            <span className="text-[7px] font-black text-cyan-200 bg-cyan-400/10 border border-cyan-400/30 rounded-full px-1.5 py-0.5 uppercase leading-none">
+                              Rush
+                            </span>
+                          )}
                           
                           <div className="mt-2 flex items-center justify-center min-h-[56px]">
                             {renderCosmeticPreview(item, "sm")}
@@ -3782,7 +3929,7 @@ function GachaTab() {
                           {isDup ? (
                             <div className="py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg text-center">
                               <span className="text-[7px] font-black text-amber-300 mt-1 flex items-center gap-0.5 justify-center leading-none">
-                                +100 ðŸ’Ž
+                                +{res.refundAmount ?? 0} ðŸ’Ž
                               </span>
                             </div>
                           ) : (
