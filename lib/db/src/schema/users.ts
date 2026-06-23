@@ -15,6 +15,7 @@ export const usersTable = pgTable("users", {
   messagePrivacy: varchar("message_privacy", { length: 20 }).notNull().default("friends_only"),
   mcUsername: varchar("mc_username", { length: 100 }),
   diamonds: integer("diamonds").notNull().default(1000),
+  balanceRp: integer("balance_rp").notNull().default(0),
   connectedVoiceChannelId: integer("connected_voice_channel_id"),
   voiceJoinedAt: timestamp("voice_joined_at"),
   lastSeenAt: timestamp("last_seen_at"),

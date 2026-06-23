@@ -627,9 +627,11 @@ export default function Admin() {
   };
 
   // System Settings State & Query
+  // Read from the admin-only endpoint so SayaBayar credentials are available
+  // to the form (the public /api/settings strips them).
   const { data: currentSettings, isLoading: settingsLoading } = useQuery({
-    queryKey: ["/api/settings"],
-    queryFn: () => customFetch<any>("/api/settings"),
+    queryKey: ["/api/admin/settings"],
+    queryFn: () => customFetch<any>("/api/admin/settings"),
   });
 
   const saveSettings = useMutation({
@@ -640,6 +642,7 @@ export default function Admin() {
       }),
     onSuccess: () => {
       toast({ title: "Settings saved", description: "Homepage configurations updated." });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
     },
     onError: (err: any) => {
@@ -665,6 +668,14 @@ export default function Admin() {
       toast({ title: "Harga tidak valid", description: "Gift Premium+ Price minimal Rp 1.000.", variant: "destructive" });
       return;
     }
+    if ((settingsForm.diamondPackRupiah ?? 0) < 1) {
+      toast({ title: "Rate tidak valid", description: "Rupiah untuk tukar diamond minimal Rp 1.", variant: "destructive" });
+      return;
+    }
+    if ((settingsForm.diamondPackDiamonds ?? 0) < 1) {
+      toast({ title: "Rate tidak valid", description: "Jumlah diamond hasil tukar minimal 1.", variant: "destructive" });
+      return;
+    }
     saveSettings.mutate(settingsForm);
   };
 
@@ -685,6 +696,8 @@ export default function Admin() {
     premiumPlusPrice: 50000,
     giftPremiumPrice: 25000,
     giftPremiumPlusPrice: 50000,
+    diamondPackRupiah: 17000,
+    diamondPackDiamonds: 100,
   });
 
   useEffect(() => {
@@ -706,6 +719,8 @@ export default function Admin() {
       premiumPlusPrice: currentSettings.premiumPlusPrice ?? 50000,
       giftPremiumPrice: currentSettings.giftPremiumPrice ?? 25000,
       giftPremiumPlusPrice: currentSettings.giftPremiumPlusPrice ?? 50000,
+      diamondPackRupiah: currentSettings.diamondPackRupiah ?? 17000,
+      diamondPackDiamonds: currentSettings.diamondPackDiamonds ?? 100,
     });
   }, [currentSettings]);
 
@@ -2682,6 +2697,46 @@ export default function Admin() {
                               <p className="text-red-500 text-[10px] font-semibold mt-0.5">Minimal Rp 1.000</p>
                             )}
                           </div>
+                        </div>
+
+                        {/* Diamond Conversion Rate */}
+                        <div className="pt-2 mt-2 border-t border-[#eae8f5]">
+                          <Label className="text-xs font-bold text-slate-600 flex items-center gap-1.5 mb-1">
+                            💎 Rate Tukar Saldo → Diamond
+                          </Label>
+                          <p className="text-[11px] text-slate-400 mb-2">
+                            Tentukan: berapa Rupiah ditukar jadi berapa diamond. Contoh: Rp 17.000 → 100 diamond.
+                          </p>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-bold text-slate-600">Rupiah (IDR)</Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={settingsForm.diamondPackRupiah}
+                                onChange={(e) => setSettingsForm({ ...settingsForm, diamondPackRupiah: parseInt(e.target.value) || 0 })}
+                                placeholder="17000"
+                                className={`bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800 ${(settingsForm.diamondPackRupiah ?? 0) < 1 ? 'border-red-400 ring-1 ring-red-400' : ''}`}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-bold text-slate-600">Diamond yang didapat</Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={settingsForm.diamondPackDiamonds}
+                                onChange={(e) => setSettingsForm({ ...settingsForm, diamondPackDiamonds: parseInt(e.target.value) || 0 })}
+                                placeholder="100"
+                                className={`bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800 ${(settingsForm.diamondPackDiamonds ?? 0) < 1 ? 'border-red-400 ring-1 ring-red-400' : ''}`}
+                              />
+                            </div>
+                          </div>
+                          {(settingsForm.diamondPackRupiah ?? 0) >= 1 && (settingsForm.diamondPackDiamonds ?? 0) >= 1 && (
+                            <p className="text-[11px] text-emerald-600 font-semibold mt-1.5">
+                              Preview: Rp {Number(settingsForm.diamondPackRupiah).toLocaleString("id-ID")} = {Number(settingsForm.diamondPackDiamonds).toLocaleString("id-ID")} 💎
+                              {" "}(≈ Rp {Math.round((settingsForm.diamondPackRupiah || 0) / (settingsForm.diamondPackDiamonds || 1)).toLocaleString("id-ID")} / diamond)
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

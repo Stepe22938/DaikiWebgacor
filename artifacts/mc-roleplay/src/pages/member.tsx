@@ -60,6 +60,7 @@ import {
   Clock,
   Crown,
   Zap,
+  Plus,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -3835,38 +3836,61 @@ function GachaTab() {
 function WalletTab() {
   const { data: me } = useGetMe();
   const { data: transactions = [], isLoading } = useListWalletTransactions();
-  const claimDiamonds = useClaimDiamonds();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const handleClaim = async () => {
-    try {
-      const res = await claimDiamonds.mutateAsync();
-      if (res && res.diamonds !== undefined) {
-        queryClient.setQueryData(["/api/gacha/board"], (old: any) => {
-          if (!old) return old;
-          return { ...old, diamonds: res.diamonds };
-        });
-        queryClient.setQueryData(["/api/me"], (old: any) => {
-          if (!old) return old;
-          return { ...old, diamonds: res.diamonds };
-        });
-      }
-      toast({
-        title: "Diamonds claimed! ðŸ’Ž",
-        description: "You've received +1,000 Diamonds for testing.",
-      });
+  const { data: wallet, refetch: refetchWallet } = useQuery({
+    queryKey: ["/api/me/wallet"],
+    queryFn: () => customFetch<any>("/api/me/wallet"),
+  });
+  const balanceRp = wallet?.balanceRp ?? 0;
+  const diamonds = wallet?.diamonds ?? me?.diamonds ?? 0;
+  const packRupiah = wallet?.diamondPackRupiah ?? 17000;
+  const packDiamonds = wallet?.diamondPackDiamonds ?? 100;
+
+  const [showTopup, setShowTopup] = useState(false);
+  const [topupAmount, setTopupAmount] = useState<number>(0);
+  const [showConvert, setShowConvert] = useState(false);
+  const [convertRupiah, setConvertRupiah] = useState<string>("");
+
+  const TOPUP_PRESETS = [10000, 25000, 50000, 100000];
+  const convertRupiahNum = parseInt(convertRupiah) || 0;
+  const previewDiamonds = packRupiah > 0 ? Math.floor((convertRupiahNum * packDiamonds) / packRupiah) : 0;
+
+  const topupMutation = useMutation({
+    mutationFn: (amount: number) => customFetch<any>("/api/me/wallet/topup", {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: (res: any) => {
+      toast({ title: "Mengarahkan ke pembayaran...", description: "Mohon tunggu sebentar ya~" });
+      if (res?.checkoutUrl) window.location.href = res.checkoutUrl;
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal top up", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
+    },
+  });
+
+  const convertMutation = useMutation({
+    mutationFn: (rupiah: number) => customFetch<any>("/api/me/wallet/convert", {
+      method: "POST",
+      body: JSON.stringify({ rupiah }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: async (res: any) => {
+      toast({ title: "Tukar berhasil! 💎", description: `+${res.diamondsAdded} diamond (−${formatIdr(res.spentRp)})` });
+      setShowConvert(false);
+      setConvertRupiah("");
+      await refetchWallet();
       queryClient.invalidateQueries({ queryKey: ["/api/me"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/wallet/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/gacha/board"] });
-    } catch (err: any) {
-      toast({
-        title: "Claim Failed",
-        description: err.message || "Failed to claim test diamonds.",
-        variant: "destructive",
-      });
-    }
-  };
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/transactions"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal menukar", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -3878,38 +3902,58 @@ function WalletTab() {
 
   return (
     <div className="space-y-6">
-      {/* WALLET NEON CARD */}
-      <div className="bg-gradient-to-br from-[#120726] to-[#080214] border border-purple-500/30 rounded-3xl p-6 md:p-8 relative overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-        <div className="absolute -right-10 -top-10 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-2xl">
-                <Wallet className="w-8 h-8 text-purple-400" />
+      {/* DANA-STYLE BALANCE CARD */}
+      <div className="rounded-3xl p-6 md:p-7 relative overflow-hidden shadow-lg bg-gradient-to-br from-[#1178d4] via-[#1aa0ed] to-[#2bc4f3] text-white">
+        <div className="absolute -right-12 -top-12 w-44 h-44 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute -left-10 -bottom-16 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-white/20 rounded-xl">
+                <Wallet className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="text-xs font-black text-purple-300 uppercase tracking-widest">Arcadia Wallet</h3>
-                <p className="text-lg font-bold text-white leading-none mt-0.5">{me?.displayName || me?.username}</p>
+                <p className="text-[12px] font-bold text-white leading-none">Saldo {me?.displayName || me?.username}</p>
+                <p className="text-[10px] font-semibold text-white/70 mt-1">Arcadia Wallet</p>
               </div>
             </div>
-
-            <div className="space-y-1">
-              <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest block">Available Balance</span>
-              <div className="text-4xl md:text-5xl font-black text-amber-300 flex items-center gap-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
-                {me?.diamonds ?? 0} <span className="text-3xl">ðŸ’Ž</span>
-              </div>
-            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest bg-white/15 px-2.5 py-1 rounded-full">Rp</span>
           </div>
 
-          <Button
-            onClick={handleClaim}
-            disabled={claimDiamonds.isPending}
-            className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-black text-xs px-6 py-3.5 rounded-xl h-auto shadow-lg shadow-amber-500/25 border-t border-white/20 active:scale-95 transition-transform shrink-0 self-start md:self-auto"
-          >
-            {claimDiamonds.isPending ? "Claiming..." : "CLAIM FREE 1,000 ðŸ’Ž"}
-          </Button>
+          <div className="mt-5">
+            <span className="text-[11px] font-semibold text-white/70 block">Total Saldo</span>
+            <div className="text-3xl md:text-4xl font-black mt-1 drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]">{formatIdr(balanceRp)}</div>
+          </div>
+
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={() => { setTopupAmount(0); setShowTopup(true); }}
+              className="flex-1 flex items-center justify-center gap-2 bg-white text-[#1178d4] font-extrabold text-sm rounded-2xl py-3 shadow-md active:scale-95 transition-transform"
+            >
+              <Plus className="w-4 h-4" /> Top Up
+            </button>
+            <button
+              onClick={() => { setConvertRupiah(""); setShowConvert(true); }}
+              className="flex-1 flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white font-extrabold text-sm rounded-2xl py-3 active:scale-95 transition-transform border border-white/30"
+            >
+              <Repeat className="w-4 h-4" /> Tukar Diamond
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* DIAMOND CARD */}
+      <div className="rounded-2xl p-5 bg-white border border-[#eae8f5] shadow-sm flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-11 h-11 shrink-0 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-xl">💎</div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Diamond</p>
+            <p className="text-xl font-black text-[#110e3d] leading-none mt-0.5">{Number(diamonds).toLocaleString("id-ID")} 💎</p>
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-[10px] font-semibold text-slate-400">Rate tukar</p>
+          <p className="text-xs font-bold text-[#6366f1]">Rp {Number(packRupiah).toLocaleString("id-ID")} = {Number(packDiamonds).toLocaleString("id-ID")} 💎</p>
         </div>
       </div>
 
@@ -3921,7 +3965,7 @@ function WalletTab() {
 
         {transactions.length === 0 ? (
           <div className="text-center py-12 text-slate-400 font-bold border border-dashed border-[#eae8f5] rounded-xl bg-slate-50">
-            <p className="text-xs">No transactions logged yet. Spin Gacha or claim free diamonds to start!</p>
+            <p className="text-xs">Belum ada transaksi. Top up saldo atau tukar diamond untuk mulai!</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -3945,14 +3989,19 @@ function WalletTab() {
                           t.type === "claim_free" ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
                           t.type === "spin_cost" ? "bg-red-50 text-red-600 border border-red-100" :
                           t.type === "duplicate_refund" ? "bg-amber-50 text-amber-600 border border-amber-100" :
+                          t.type === "topup" ? "bg-sky-50 text-sky-600 border border-sky-100" :
+                          t.type === "convert_receive" ? "bg-violet-50 text-violet-600 border border-violet-100" :
+                          t.type === "convert_spend" ? "bg-orange-50 text-orange-600 border border-orange-100" :
                           "bg-purple-50 text-purple-600 border border-purple-100"
                         }`}>
-                          {t.type.replace("_", " ")}
+                          {t.type.replace(/_/g, " ")}
                         </span>
                       </td>
                       <td className="py-3 text-[#110e3d]">{t.description}</td>
                       <td className={`py-3 text-right font-black ${isCredit ? "text-emerald-500" : "text-red-500"}`}>
-                        {isCredit ? "+" : ""}{t.amount} 💎
+                        {t.currency === "rp"
+                          ? `${isCredit ? "+" : "−"}${formatIdr(Math.abs(t.amount))}`
+                          : `${isCredit ? "+" : ""}${t.amount} 💎`}
                       </td>
                     </tr>
                   );
@@ -3962,6 +4011,93 @@ function WalletTab() {
           </div>
         )}
       </div>
+
+      {/* TOP UP DIALOG */}
+      <Dialog open={showTopup} onOpenChange={setShowTopup}>
+        <DialogContent className="bg-white border-[#eae8f5] max-w-sm rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-[#110e3d] flex items-center gap-2">
+              <Plus className="w-5 h-5 text-[#1178d4]" /> Top Up Saldo
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-1">
+            <div className="grid grid-cols-2 gap-2">
+              {TOPUP_PRESETS.map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => setTopupAmount(amt)}
+                  className={`rounded-xl py-3 text-sm font-extrabold border transition-all ${topupAmount === amt ? "border-[#1178d4] bg-sky-50 text-[#1178d4] ring-1 ring-[#1178d4]" : "border-[#eae8f5] text-slate-600 hover:bg-slate-50"}`}
+                >
+                  {formatIdr(amt)}
+                </button>
+              ))}
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-slate-600">Atau nominal lain</Label>
+              <Input
+                type="number"
+                min={1000}
+                placeholder="cth: 75000"
+                value={topupAmount || ""}
+                onChange={(e) => setTopupAmount(parseInt(e.target.value) || 0)}
+                className="mt-1 bg-slate-50 border-[#eae8f5] rounded-xl text-sm text-slate-900 font-bold placeholder:text-slate-400 placeholder:font-normal"
+              />
+            </div>
+            <p className="text-[11px] text-slate-400">Minimal Rp 1.000. Pembayaran via SayaBayar. Saldo otomatis masuk setelah pembayaran berhasil.</p>
+          </div>
+          <DialogFooter className="mt-2">
+            <Button
+              onClick={() => topupMutation.mutate(topupAmount)}
+              disabled={topupAmount < 1000 || topupMutation.isPending}
+              className="w-full bg-[#1178d4] hover:bg-[#0d63b0] text-white font-bold rounded-xl"
+            >
+              {topupMutation.isPending ? "Mengarahkan..." : `Top Up${topupAmount >= 1000 ? ` ${formatIdr(topupAmount)}` : ""}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CONVERT DIALOG */}
+      <Dialog open={showConvert} onOpenChange={setShowConvert}>
+        <DialogContent className="bg-white border-[#eae8f5] max-w-sm rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-[#110e3d] flex items-center gap-2">
+              <Repeat className="w-5 h-5 text-[#6366f1]" /> Tukar Saldo ke Diamond
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-1">
+            <div className="rounded-xl bg-violet-50 border border-violet-100 px-3 py-2 text-xs font-bold text-violet-700">
+              Rate: Rp {Number(packRupiah).toLocaleString("id-ID")} = {Number(packDiamonds).toLocaleString("id-ID")} 💎
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-slate-600">Jumlah saldo yang ditukar (Rp)</Label>
+              <Input
+                type="number"
+                min={0}
+                placeholder="cth: 17000"
+                value={convertRupiah}
+                onChange={(e) => setConvertRupiah(e.target.value)}
+                className="mt-1 bg-slate-50 border-[#eae8f5] rounded-xl text-sm text-slate-900 font-bold placeholder:text-slate-400 placeholder:font-normal"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">Saldo kamu: {formatIdr(balanceRp)}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 border border-[#eae8f5] px-3 py-2.5 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Kamu akan dapat</span>
+              <span className="text-lg font-black text-[#110e3d]">{previewDiamonds.toLocaleString("id-ID")} 💎</span>
+            </div>
+          </div>
+          <DialogFooter className="mt-2">
+            <Button
+              onClick={() => convertMutation.mutate(convertRupiahNum)}
+              disabled={previewDiamonds < 1 || convertRupiahNum > balanceRp || convertMutation.isPending}
+              className="w-full bg-[#6366f1] hover:bg-violet-700 text-white font-bold rounded-xl"
+            >
+              {convertMutation.isPending ? "Menukar..." : convertRupiahNum > balanceRp ? "Saldo tidak cukup" : "Tukar Sekarang"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

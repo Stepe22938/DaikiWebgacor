@@ -30,7 +30,14 @@ const HomepageSettingsSchema = z.object({
   sayabayarWebhookSecret: z.string().optional(),
   premiumPrice: z.number().int().min(1000, "Harga minimal Rp 1.000").optional(),
   premiumPlusPrice: z.number().int().min(1000, "Harga minimal Rp 1.000").optional(),
+  giftPremiumPrice: z.number().int().min(1000, "Harga minimal Rp 1.000").optional(),
+  giftPremiumPlusPrice: z.number().int().min(1000, "Harga minimal Rp 1.000").optional(),
+  diamondPackRupiah: z.number().int().min(1, "Minimal Rp 1").optional(),
+  diamondPackDiamonds: z.number().int().min(1, "Minimal 1 diamond").optional(),
 });
+
+// Keys that must never be exposed through the public GET /settings endpoint.
+const SENSITIVE_SETTING_KEYS = ["sayabayarApiKey", "sayabayarWebhookSecret"] as const;
 
 const DEFAULT_SETTINGS = {
   realmName: "Arcadia Studio",
@@ -49,6 +56,10 @@ const DEFAULT_SETTINGS = {
   sayabayarWebhookSecret: "",
   premiumPrice: 25000,
   premiumPlusPrice: 50000,
+  giftPremiumPrice: 25000,
+  giftPremiumPlusPrice: 50000,
+  diamondPackRupiah: 17000,
+  diamondPackDiamonds: 100,
   gallery: [
     {
       src: "/lobby.png",
@@ -77,11 +88,28 @@ router.get("/settings", async (req, res): Promise<void> => {
     const row = await db.query.systemSettingsTable.findFirst({
       where: eq(systemSettingsTable.key, "homepage_settings"),
     });
-    if (!row) {
-      res.json(DEFAULT_SETTINGS);
-      return;
-    }
-    res.json({ ...DEFAULT_SETTINGS, ...(row.value as any) });
+    const full = { ...DEFAULT_SETTINGS, ...((row?.value as any) || {}) };
+    // Never leak SayaBayar credentials through the public endpoint.
+    for (const key of SENSITIVE_SETTING_KEYS) delete (full as any)[key];
+    res.json(full);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to get settings" });
+  }
+});
+
+// Admin-only: returns the full settings object including sensitive keys so the
+// admin panel can read/edit the SayaBayar credentials.
+router.get("/admin/settings", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user || (user.role !== "admin" && user.role !== "dev_website")) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  try {
+    const row = await db.query.systemSettingsTable.findFirst({
+      where: eq(systemSettingsTable.key, "homepage_settings"),
+    });
+    res.json({ ...DEFAULT_SETTINGS, ...((row?.value as any) || {}) });
   } catch (err) {
     res.status(500).json({ error: "Failed to get settings" });
   }

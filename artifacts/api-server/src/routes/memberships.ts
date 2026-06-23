@@ -12,6 +12,7 @@ import {
   userTierSubscriptionsTable,
   systemSettingsTable,
   premiumGiftsTable,
+  walletTransactionsTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
@@ -90,8 +91,24 @@ router.get("/me/membership", async (req, res): Promise<void> => {
               const targetConversationId = ticket.requestedConversationId;
 
               const giftCodeMatch = ticket.adminNotes?.match(/\[Gift Code:\s*([^\]\s]+)\]/);
+              const topupMatch = ticket.adminNotes?.match(/\[Wallet Topup:\s*(\d+)\]/);
 
-              if (giftCodeMatch && giftCodeMatch[1]) {
+              if (topupMatch && topupMatch[1]) {
+                const amount = parseInt(topupMatch[1], 10);
+                const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, ticket.creatorId) });
+                if (targetUser && amount > 0) {
+                  await db.update(usersTable)
+                    .set({ balanceRp: (targetUser.balanceRp ?? 0) + amount, updatedAt: new Date() })
+                    .where(eq(usersTable.id, ticket.creatorId));
+                  await db.insert(walletTransactionsTable).values({
+                    userId: ticket.creatorId,
+                    amount,
+                    currency: "rp",
+                    type: "topup",
+                    description: `Top up saldo via SayaBayar Status Sync (ticket #${ticket.id})`,
+                  });
+                }
+              } else if (giftCodeMatch && giftCodeMatch[1]) {
                 const code = giftCodeMatch[1].trim();
                 await db
                   .update(premiumGiftsTable)

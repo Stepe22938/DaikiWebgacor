@@ -25,7 +25,7 @@ import {
 } from "@workspace/api-client-react";
 import type { ConversationSummary, Message } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -119,6 +119,8 @@ import {
   ChevronRight,
   Loader2,
   BadgeCheck,
+  Gift,
+  Crown,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -1139,6 +1141,59 @@ function ConvItem({
   );
 }
 
+// Extract a premium gift code from message content that contains a redeem link
+// like ".../premium?gift=gft_abc123". Returns the code or null.
+function extractGiftCodeFromContent(content: string | null | undefined): string | null {
+  if (!content) return null;
+  const m = content.match(/[?&]gift=([a-zA-Z0-9_]+)/);
+  return m ? m[1] : null;
+}
+
+// Nitro-style gift card rendered inside a chat message; the recipient can
+// redeem the membership directly with one click. The buyer can't redeem
+// their own gift (enforced server-side).
+function GiftCardMessage({ code, isGroup }: { code: string; isGroup?: boolean }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [redeemed, setRedeemed] = useState(false);
+  const redeem = useMutation({
+    mutationFn: async () => customFetch<any>("/api/payments/gifts/redeem", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: async (res: any) => {
+      setRedeemed(true);
+      toast({ title: "Hadiah diterima! 🎉", description: `Membership ${res?.tier === "premium_plus" ? "Premium+" : "Premium"} sudah aktif di akunmu.` });
+      await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/me/membership"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal redeem", description: err?.message || "Gift code tidak valid atau sudah dipakai.", variant: "destructive" });
+    },
+  });
+  return (
+    <div className={`my-1 w-[230px] max-w-full rounded-2xl overflow-hidden border ${isGroup ? "border-[#3F4147]" : "border-[#eae8f5]"}`}>
+      <div className="bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500 px-4 py-3 flex items-center gap-2">
+        <Gift className="w-6 h-6 text-white" />
+        <div className="leading-tight">
+          <p className="text-white font-black text-sm">Hadiah Membership</p>
+          <p className="text-white/80 text-[10px] font-bold">Premium Gift untukmu</p>
+        </div>
+      </div>
+      <div className={`p-3 ${isGroup ? "bg-[#2B2D31]" : "bg-white"}`}>
+        <Button
+          onClick={() => redeem.mutate()}
+          disabled={redeem.isPending || redeemed}
+          className="w-full bg-[#6366f1] hover:bg-violet-700 text-white font-bold rounded-xl text-xs h-9 disabled:opacity-60"
+        >
+          {redeemed ? "✓ Sudah Diredeem" : redeem.isPending ? "Memproses..." : "Redeem Sekarang"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function MessageBubble({
   msg,
   isOwn,
@@ -1172,7 +1227,9 @@ function MessageBubble({
   currentConversationId?: number | null;
   onPlayMusic?: (title: string, artist: string) => void;
 }) {
-  const name = msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
+  const isWebhook = !!(msg as any).webhookName;
+  const name = (msg as any).webhookName ?? msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
+  const avatarUrl = (msg as any).webhookAvatarUrl ?? msg.senderAvatarUrl ?? undefined;
   const [isZoomed, setIsZoomed] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const isMusicCommandMsg = !!msg.imageUrl && typeof msg.imageUrl === "string" && msg.imageUrl.startsWith("music:");
@@ -1192,7 +1249,7 @@ function MessageBubble({
               className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible mt-0.5 cursor-pointer ${(msg as any).senderEquippedBorder ? (msg as any).senderEquippedBorder : isGroup ? "border border-[#3F4147]" : "border border-[#d7e4de]"}`}
             >
               <Avatar className="w-8 h-8 shrink-0">
-                <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
+                <AvatarImage src={avatarUrl} />
                 <AvatarFallback className={`text-[10px] font-bold ${isGroup ? "bg-[#2B2D31] text-[#DCDDDE]" : "bg-[#edf5f1] text-[#0b6b58]"}`}>{getInitials(name)}</AvatarFallback>
               </Avatar>
             </button>
@@ -1211,6 +1268,11 @@ function MessageBubble({
                     >
                       {name}
                     </button>
+                  )}
+                  {isWebhook && (
+                    <Badge className="text-[8px] px-1.5 py-0 h-3.5 leading-none shrink-0 font-bold rounded bg-[#5865F2] text-white hover:bg-[#5865F2]">
+                      WEBHOOK
+                    </Badge>
                   )}
                   {(msg as any).senderIsVerified && (
                     <TooltipProvider>
@@ -1362,10 +1424,14 @@ function MessageBubble({
               )}
               {msg.content && (() => {
                 const musicCmd = parseMusicCommandFromMsg(msg);
-                const displayContent = musicCmd ? stripMusicCommand(msg.content) : msg.content;
+                const giftCode = extractGiftCodeFromContent(msg.content);
+                let displayContent = musicCmd ? stripMusicCommand(msg.content) : msg.content;
+                // Hide the raw redeem URL — the gift card replaces it.
+                if (giftCode) displayContent = displayContent.replace(/\S*[?&]gift=[a-zA-Z0-9_]+\S*/g, "").trim();
                 return (
                   <>
                     {displayContent && <span className="block min-w-0 pb-3 pr-10 [overflow-wrap:anywhere]">{renderMessageTextWithEmojis(displayContent, customEmojis, currentConversationId)}</span>}
+                    {giftCode && <GiftCardMessage code={giftCode} isGroup={isGroup} />}
                     {musicCmd && (
                       <button
                         type="button"
@@ -1527,6 +1593,115 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const realmName = realmSettings.realmName || "Arcadia Guild";
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
 
+  // ── Gift Membership (Premium / Premium+) ────────────────────────────────────
+  const [showGiftDialog, setShowGiftDialog] = useState(false);
+  const giftPremiumPrice = realmSettings.giftPremiumPrice ?? realmSettings.premiumPrice ?? 25000;
+  const giftPremiumPlusPrice = realmSettings.giftPremiumPlusPrice ?? realmSettings.premiumPlusPrice ?? 50000;
+  const giftMutation = useMutation({
+    mutationFn: async (tier: "premium" | "premium_plus") => customFetch<any>("/api/payments/gifts", {
+      method: "POST",
+      body: JSON.stringify({ tier }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: (res: any) => {
+      toast({ title: "Mengarahkan ke pembayaran...", description: "Mohon tunggu sebentar ya~" });
+      if (res && res.checkoutUrl) {
+        window.location.href = res.checkoutUrl;
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal membeli gift", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
+    },
+  });
+  // Gifts I bought — "active" = sudah dibayar & siap dibagikan ke orang lain.
+  const { data: myGifts = [] } = useQuery<any[]>({
+    queryKey: ["/api/me/gifts"],
+    queryFn: () => customFetch<any[]>("/api/me/gifts"),
+    enabled: showGiftDialog,
+  });
+
+  // ── Join Group via Invite Link ──────────────────────────────────────────────
+  const [newGroupMode, setNewGroupMode] = useState<"create" | "join">("create");
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  // Accept a full invite URL or a raw code and extract the code part.
+  function extractInviteCode(raw: string): string {
+    const v = raw.trim();
+    if (!v) return "";
+    const byPath = v.match(/(?:\/invite\/|\/join\/|inviteCode=)([a-zA-Z0-9-_]+)/);
+    if (byPath) return byPath[1];
+    return v.replace(/[^a-zA-Z0-9-_]/g, "");
+  }
+  const joinGroupMutation = useMutation({
+    mutationFn: async (code: string) => customFetch<any>(`/api/invites/${encodeURIComponent(code)}/join`, {
+      method: "POST",
+    }),
+    onSuccess: async (res: any) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      setShowNewGroup(false);
+      setJoinCodeInput("");
+      setNewGroupMode("create");
+      if (res?.conversationId) setSelectedId(res.conversationId);
+      toast({ title: "Berhasil gabung!", description: "Kamu sekarang anggota grup ini." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal gabung grup", description: err?.message || "Invite link tidak valid atau sudah kedaluwarsa.", variant: "destructive" });
+    },
+  });
+
+  function giftRedeemUrl(code: string) {
+    return `${window.location.origin}/premium?gift=${code}`;
+  }
+
+  // Generate / regenerate a random invite code for the selected group.
+  // Custom (chosen) codes stay exclusive to verified groups.
+  const generateInviteMutation = useMutation({
+    mutationFn: async (regenerate: boolean) => customFetch<any>(`/api/conversations/${selectedId}/invite`, {
+      method: "POST",
+      body: JSON.stringify({ regenerate }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: async (res: any) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      if (res?.inviteCode) {
+        const link = `${window.location.origin}/join/${res.inviteCode}`;
+        navigator.clipboard.writeText(link);
+        toast({ title: "Kode invite siap & disalin!", description: link });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal membuat kode invite", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
+    },
+  });
+
+  // Send a paid gift's redeem link as a message into the currently open chat
+  // (works for both a group and a DM with another person).
+  async function shareGiftToCurrentChat(gift: any) {
+    if (!selectedId) {
+      toast({ title: "Buka chat dulu", description: "Pilih group atau orang dulu untuk mengirim hadiah.", variant: "destructive" });
+      return;
+    }
+    const tierLabel = gift.tier === "premium_plus" ? "Premium+" : "Premium";
+    const content = `🎁 Aku ngirim hadiah membership ${tierLabel} buat kamu! Klik buat redeem: ${giftRedeemUrl(gift.giftCode)}`;
+    try {
+      if (isGroup && selectedChannelId) {
+        const res = await fetch(`/api/conversations/${selectedId}/channels/${selectedChannelId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        });
+        if (!res.ok) throw new Error("Failed to send");
+        await queryClient.invalidateQueries({ queryKey: ["channel-messages", selectedId, selectedChannelId] });
+      } else {
+        await sendMessage.mutateAsync({ id: selectedId, data: { content } });
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
+      }
+      toast({ title: "Hadiah terkirim!", description: "Link redeem sudah dikirim ke chat ini." });
+      setShowGiftDialog(false);
+    } catch {
+      toast({ title: "Gagal mengirim", description: "Tidak bisa mengirim hadiah ke chat ini.", variant: "destructive" });
+    }
+  }
+
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
@@ -1569,6 +1744,42 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
   const [editChannelName, setEditChannelName] = useState("");
   const [editChannelCategoryId, setEditChannelCategoryId] = useState<number | null>(null);
+
+  // ── Channel Webhooks (Discord-style) ────────────────────────────────────────
+  const [newWebhookName, setNewWebhookName] = useState("");
+  const { data: channelWebhooks = [], refetch: refetchWebhooks } = useQuery<any[]>({
+    queryKey: ["/api/channels", editingChannel?.id, "webhooks"],
+    queryFn: () => customFetch<any[]>(`/api/channels/${editingChannel!.id}/webhooks`),
+    enabled: showEditChannelModal && !!editingChannel?.id,
+  });
+  const createWebhookMutation = useMutation({
+    mutationFn: async () => customFetch<any>(`/api/channels/${editingChannel!.id}/webhooks`, {
+      method: "POST",
+      body: JSON.stringify({ name: newWebhookName.trim() }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: async () => {
+      setNewWebhookName("");
+      await refetchWebhooks();
+      toast({ title: "Webhook dibuat", description: "Salin URL-nya untuk dipakai dari layanan luar." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal membuat webhook", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
+    },
+  });
+  const deleteWebhookMutation = useMutation({
+    mutationFn: async (id: number) => customFetch<any>(`/api/webhooks/${id}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      await refetchWebhooks();
+      toast({ title: "Webhook dihapus" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal menghapus", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
+    },
+  });
+  function webhookUrl(wh: any) {
+    return `${window.location.origin}/api/webhooks/${wh.id}/${wh.token}`;
+  }
   const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ChannelCategory | null>(null);
   const [editCategoryName, setEditCategoryName] = useState("");
@@ -2190,6 +2401,21 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
     setSelectedId((current) => current === targetGroup.id ? current : targetGroup.id);
   }, [conversations]);
+
+  // Auto-open the Join dialog when arriving from an invite link (/invite/:code → ?inviteCode=).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("inviteCode");
+    if (!code) return;
+    setNewGroupMode("join");
+    setJoinCodeInput(code);
+    setShowNewGroup(true);
+    // Clean the param so refreshes don't re-trigger it.
+    params.delete("inviteCode");
+    const rest = params.toString();
+    window.history.replaceState({}, document.title, `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -4501,9 +4727,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   size="sm"
                   variant="outline"
                   className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
-                  onClick={() => setShowNewGroup(true)}
+                  onClick={() => { setNewGroupMode("create"); setShowNewGroup(true); }}
                 >
                   + Group
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+                  onClick={() => { setNewGroupMode("join"); setJoinCodeInput(""); setShowNewGroup(true); }}
+                >
+                  + Join Link
                 </Button>
               </div>
             </div>
@@ -5786,6 +6020,16 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             </div>
                           )}
                         </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setShowGiftDialog(true)}
+                          className={`hover:bg-opacity-70 transition-all shrink-0 rounded-full h-11 w-11 ${isGroupView ? "text-[#949BA4]" : "text-[#54656f]"}`}
+                          title="Gift Premium / Premium+"
+                        >
+                          <Gift className="h-5 w-5" />
+                        </Button>
                         <div className="relative flex-1">
                           {/* Mention Autocomplete Popup */}
                           {showMention && mentionMembers.length > 0 && (
@@ -6143,6 +6387,102 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         </div>
       </main>
 
+      {/* Gift Membership Modal */}
+      <Dialog open={showGiftDialog} onOpenChange={setShowGiftDialog}>
+        <DialogContent className={`max-w-md max-h-[85vh] overflow-y-auto p-6 rounded-2xl ${isGroupView ? "bg-[#313338] text-white border-[#3F4147]" : "bg-white border-[#eae8f5]"}`}>
+          <DialogHeader className="mb-1">
+            <DialogTitle className="text-base font-black flex items-center gap-2">
+              <Gift className="w-5 h-5 text-purple-500" /> Gift Membership
+            </DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-[#B5BAC1]" : "text-slate-500"}`}>
+              Beli Premium atau Premium+ sebagai hadiah. Setelah pembayaran sukses, kamu akan dapat <span className="font-bold">gift code</span> yang bisa kamu bagikan (lihat di halaman Premium). Pembeli tidak bisa redeem gift-nya sendiri.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+            {/* Gift Premium */}
+            <div className={`rounded-2xl border p-4 flex flex-col ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#eae8f5] bg-slate-50"}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <Crown className="w-4 h-4 text-amber-500" />
+                <h4 className="font-extrabold text-sm">Premium</h4>
+              </div>
+              <p className={`text-[11px] mb-3 ${isGroupView ? "text-[#B5BAC1]" : "text-slate-500"}`}>
+                Rp {Number(giftPremiumPrice).toLocaleString("id-ID")}
+              </p>
+              <Button
+                onClick={() => giftMutation.mutate("premium")}
+                disabled={giftMutation.isPending}
+                className="mt-auto bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs h-9"
+              >
+                {giftMutation.isPending ? "Mengarahkan..." : "Beli Gift"}
+              </Button>
+            </div>
+
+            {/* Gift Premium+ */}
+            <div className={`rounded-2xl border p-4 flex flex-col ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#eae8f5] bg-slate-50"}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <Crown className="w-4 h-4 text-purple-500" />
+                <h4 className="font-extrabold text-sm">Premium+</h4>
+              </div>
+              <p className={`text-[11px] mb-3 ${isGroupView ? "text-[#B5BAC1]" : "text-slate-500"}`}>
+                Rp {Number(giftPremiumPlusPrice).toLocaleString("id-ID")}
+              </p>
+              <Button
+                onClick={() => giftMutation.mutate("premium_plus")}
+                disabled={giftMutation.isPending}
+                className="mt-auto bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs h-9"
+              >
+                {giftMutation.isPending ? "Mengarahkan..." : "Beli Gift"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Gifts I've paid for and can give away */}
+          {(() => {
+            const activeGifts = (myGifts || []).filter((g: any) => g.status === "active");
+            if (activeGifts.length === 0) return null;
+            return (
+              <div className={`mt-5 pt-4 border-t ${isGroupView ? "border-[#3F4147]" : "border-[#eae8f5]"}`}>
+                <h4 className="text-xs font-black uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-500" /> Hadiah Siap Dibagikan
+                </h4>
+                <p className={`text-[11px] mb-3 ${isGroupView ? "text-[#B5BAC1]" : "text-slate-500"}`}>
+                  Sudah dibayar — kasih ke group atau orang lain. Kamu sendiri tidak bisa pakai gift yang kamu beli.
+                </p>
+                <div className="space-y-2">
+                  {activeGifts.map((g: any) => (
+                    <div key={g.id} className={`rounded-xl border p-3 ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#eae8f5] bg-slate-50"}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Crown className={`w-4 h-4 ${g.tier === "premium_plus" ? "text-purple-500" : "text-amber-500"}`} />
+                        <span className="text-xs font-extrabold">{g.tier === "premium_plus" ? "Premium+" : "Premium"}</span>
+                        <code className={`ml-auto text-[10px] px-2 py-0.5 rounded ${isGroupView ? "bg-[#1E1F22] text-[#B5BAC1]" : "bg-white text-slate-500"}`}>{g.giftCode}</code>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => shareGiftToCurrentChat(g)}
+                          disabled={!selectedId}
+                          className="flex-1 bg-[#6366f1] hover:bg-violet-700 text-white font-bold rounded-lg text-[11px] h-8"
+                          title={selectedId ? "Kirim ke chat yang sedang dibuka" : "Buka chat dulu"}
+                        >
+                          <SendHorizontal className="w-3.5 h-3.5 mr-1" /> Kirim ke chat ini
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => { navigator.clipboard.writeText(giftRedeemUrl(g.giftCode)); toast({ title: "Link disalin!", description: "Bagikan link ini ke orang yang mau dikasih hadiah." }); }}
+                          className={`rounded-lg text-[11px] h-8 font-bold ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : ""}`}
+                        >
+                          <Copy className="w-3.5 h-3.5 mr-1" /> Salin link
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {/* Starred Messages Modal */}
       <Dialog open={starredOpen} onOpenChange={setStarredOpen}>
         <DialogContent className={`max-w-md max-h-[80vh] flex flex-col p-6 rounded-2xl ${isGroupView ? "bg-[#313338] text-white border-[#3F4147]" : "bg-white border-[#eae8f5]"}`}>
@@ -6385,11 +6725,50 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showNewGroup} onOpenChange={setShowNewGroup}>
-        <DialogContent className="max-w-sm bg-white border border-[#eae8f5] rounded-2xl p-5">
+      <Dialog open={showNewGroup} onOpenChange={(open) => { setShowNewGroup(open); if (!open) { setNewGroupMode("create"); setJoinCodeInput(""); } }}>
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto bg-white border border-[#eae8f5] rounded-2xl p-5">
           <DialogHeader>
-            <DialogTitle className="text-sm font-extrabold text-[#110e3d]">New Group Chat</DialogTitle>
+            <DialogTitle className="text-sm font-extrabold text-[#110e3d]">{newGroupMode === "join" ? "Join Group" : "New Group Chat"}</DialogTitle>
           </DialogHeader>
+
+          {/* Mode toggle */}
+          <div className="grid grid-cols-2 gap-1 p-1 mb-4 rounded-xl bg-slate-100">
+            <button
+              type="button"
+              onClick={() => setNewGroupMode("create")}
+              className={`text-xs font-bold rounded-lg py-2 transition-all ${newGroupMode === "create" ? "bg-white text-[#6366f1] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              Buat Baru
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewGroupMode("join")}
+              className={`text-xs font-bold rounded-lg py-2 transition-all ${newGroupMode === "join" ? "bg-white text-[#6366f1] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              Gabung via Link
+            </button>
+          </div>
+
+          {newGroupMode === "join" ? (
+            <>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-2">Tempel invite link atau kode grup:</p>
+              <Input
+                placeholder="contoh: https://.../invite/ab12cd34  atau  ab12cd34"
+                value={joinCodeInput}
+                onChange={(e) => setJoinCodeInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { const c = extractInviteCode(joinCodeInput); if (c) joinGroupMutation.mutate(c); } }}
+                className="mb-4 bg-white border-[#eae8f5] focus-visible:ring-violet-500 rounded-xl text-slate-700 font-semibold"
+              />
+              <Button
+                onClick={() => { const c = extractInviteCode(joinCodeInput); if (c) joinGroupMutation.mutate(c); }}
+                disabled={!extractInviteCode(joinCodeInput) || joinGroupMutation.isPending}
+                className="w-full bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl font-bold shadow-md shadow-violet-500/10"
+              >
+                {joinGroupMutation.isPending ? "Bergabung..." : "Gabung Grup"}
+              </Button>
+            </>
+          ) : (
+          <>
           <Input
             placeholder="Group name"
             value={groupName}
@@ -6435,6 +6814,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           >
             Create Group
           </Button>
+          </>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -6556,7 +6937,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
       {/* Roles Management Dialog */}
       <Dialog open={showRoles} onOpenChange={(open) => { setShowRoles(open); if (!open) setEditingRole(null); }}>
-        <DialogContent className={`${editingRole ? "max-w-2xl" : "max-w-md"} bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5`}>
+        <DialogContent className={`${editingRole ? "max-w-2xl" : "max-w-md"} max-h-[85vh] overflow-y-auto bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5`}>
           <DialogHeader>
             <DialogTitle className="text-sm font-extrabold text-white flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-[#5865F2]" /> Manage Roles
@@ -7005,7 +7386,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
       {/* Edit Group Dialog */}
       <Dialog open={showEditGroup} onOpenChange={setShowEditGroup}>
-        <DialogContent className={`max-w-sm rounded-2xl p-5 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147]" : "bg-white border border-[#eae8f5]"}`}>
+        <DialogContent className={`max-w-sm max-h-[85vh] overflow-y-auto rounded-2xl p-5 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147]" : "bg-white border border-[#eae8f5]"}`}>
           <DialogHeader>
             <DialogTitle className={`text-sm font-extrabold flex items-center gap-2 ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>
               <Edit3 className={`h-4 w-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} /> Edit Group
@@ -7150,8 +7531,71 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   className={`flex-1 py-2 pr-3 text-xs bg-transparent focus:outline-none ${isGroupView ? "text-[#DCDDDE] placeholder:text-[#949BA4]" : "text-slate-700 placeholder:text-slate-300"}`}
                 />
               </div>
+              {(() => {
+                const code = (editGroupInviteCode || (selectedConv as any)?.inviteCode || "").trim();
+                if (!code) return null;
+                const fullLink = `${window.location.origin}/join/${code}`;
+                const isSaved = code === ((selectedConv as any)?.inviteCode || "");
+                return (
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(fullLink); toast({ title: "Invite link disalin!", description: isSaved ? fullLink : "Ingat Save dulu biar link-nya aktif ya." }); }}
+                    className={`mt-1.5 w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold transition-colors ${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Salin Invite Link
+                  </button>
+                );
+              })()}
               <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
                 Huruf kecil, angka, <span className="font-mono">-</span>, dan <span className="font-mono">_</span> saja. Kosongkan untuk kode random.
+              </p>
+            </div>
+          )}
+
+          {/* Invite Link (non-verified groups) — generate a random code only */}
+          {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.inviteMembers) && !((selectedConv as any)?.isVerified) && (
+            <div className="mt-4">
+              <label className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+                <Forward className="w-3 h-3" /> Invite Link
+              </label>
+              {(selectedConv as any)?.inviteCode ? (
+                <>
+                  <div className={`flex items-center mt-1 rounded-xl border overflow-hidden ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50 border-slate-200"}`}>
+                    <code className={`flex-1 px-3 py-2 text-[11px] truncate ${isGroupView ? "text-[#DCDDDE]" : "text-slate-700"}`}>
+                      {`${window.location.origin}/join/${(selectedConv as any).inviteCode}`}
+                    </code>
+                  </div>
+                  <div className="flex gap-2 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/join/${(selectedConv as any).inviteCode}`); toast({ title: "Invite link disalin!" }); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold transition-colors ${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
+                    >
+                      <Copy className="w-3.5 h-3.5" /> Salin Link
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => generateInviteMutation.mutate(true)}
+                      disabled={generateInviteMutation.isPending}
+                      className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold transition-colors ${isGroupView ? "border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "border border-slate-200 text-slate-600 hover:bg-slate-100"}`}
+                      title="Buat kode baru (link lama tidak berlaku)"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Buat Ulang
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => generateInviteMutation.mutate(false)}
+                  disabled={generateInviteMutation.isPending}
+                  className={`mt-1 w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold transition-colors ${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
+                >
+                  <Plus className="w-3.5 h-3.5" /> {generateInviteMutation.isPending ? "Membuat..." : "Buat Kode Invite"}
+                </button>
+              )}
+              <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                Kode random otomatis. Custom invite link hanya untuk grup terverifikasi.
               </p>
             </div>
           )}
@@ -7750,7 +8194,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
       {/* Channel Editor Dialog */}
       <Dialog open={showChannelEditor} onOpenChange={setShowChannelEditor}>
-        <DialogContent className="max-w-lg bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
           <DialogHeader>
             <DialogTitle className="text-sm font-extrabold text-white flex items-center gap-2">
               <ListOrdered className="w-4 h-4 text-[#5865F2]" /> Channel Editor
@@ -7833,8 +8277,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       </Dialog>
 
       {/* Edit Channel Dialog */}
-      <Dialog open={showEditChannelModal} onOpenChange={setShowEditChannelModal}>
-        <DialogContent className="max-w-sm bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
+      <Dialog open={showEditChannelModal} onOpenChange={(open) => { setShowEditChannelModal(open); if (!open) setNewWebhookName(""); }}>
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
           <DialogHeader>
             <DialogTitle className="text-sm font-extrabold text-white flex items-center gap-2">
               <Settings className="w-4 h-4 text-[#5865F2]" /> Edit Channel
@@ -7886,6 +8330,60 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
             >
               Save Changes
             </Button>
+          </div>
+
+          {/* Webhooks */}
+          <div className="border-t border-[#3F4147] mt-4 pt-4">
+            <label className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider flex items-center gap-1.5 mb-2">
+              <Activity className="w-3.5 h-3.5 text-[#5865F2]" /> Webhooks
+            </label>
+            <p className="text-[10px] text-[#949BA4] mb-3 leading-relaxed">
+              Kirim pesan ke channel ini dari layanan luar. POST ke URL webhook dengan body JSON <code className="text-[#DCDDDE]">{`{ "content": "...", "username": "...", "avatar_url": "..." }`}</code>.
+            </p>
+
+            {channelWebhooks.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {channelWebhooks.map((wh: any) => (
+                  <div key={wh.id} className="rounded-xl border border-[#3F4147] bg-[#2B2D31] p-2.5">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-xs font-bold text-[#DCDDDE] truncate flex-1">{wh.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard.writeText(webhookUrl(wh)); toast({ title: "URL webhook disalin!" }); }}
+                        className="text-[10px] font-bold text-[#5865F2] hover:underline flex items-center gap-1 shrink-0"
+                      >
+                        <Copy className="w-3 h-3" /> Salin URL
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { if (confirm(`Hapus webhook "${wh.name}"?`)) deleteWebhookMutation.mutate(wh.id); }}
+                        className="text-[10px] font-bold text-[#da373c] hover:underline flex items-center gap-1 shrink-0"
+                      >
+                        <Trash2 className="w-3 h-3" /> Hapus
+                      </button>
+                    </div>
+                    <code className="block text-[9px] text-[#949BA4] bg-[#1E1F22] rounded px-2 py-1 truncate">{webhookUrl(wh)}</code>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Input
+                placeholder="Nama webhook (cth: GitHub Bot)"
+                value={newWebhookName}
+                onChange={(e) => setNewWebhookName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && newWebhookName.trim()) createWebhookMutation.mutate(); }}
+                className="bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4] focus-visible:ring-[#5865F2] rounded-xl font-semibold text-xs animate-none"
+              />
+              <Button
+                onClick={() => createWebhookMutation.mutate()}
+                disabled={!newWebhookName.trim() || createWebhookMutation.isPending}
+                className="bg-[#5865F2] text-white hover:bg-[#4752C4] rounded-xl font-bold text-xs shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" /> Buat
+              </Button>
+            </div>
           </div>
 
           <div className="border-t border-[#3F4147] mt-4 pt-4">

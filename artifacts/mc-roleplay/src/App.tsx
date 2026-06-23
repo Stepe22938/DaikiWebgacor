@@ -738,6 +738,9 @@ function ClerkProviderWithRoutes() {
             <Route path="/invite/:code">
               {(params) => <Redirect to={`/member?tab=messages&inviteCode=${params.code}`} />}
             </Route>
+            <Route path="/join/:code">
+              {(params) => <Redirect to={`/member?tab=messages&inviteCode=${params.code}`} />}
+            </Route>
             <Route path="/add-friend/:target" component={AddFriendProtected} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />

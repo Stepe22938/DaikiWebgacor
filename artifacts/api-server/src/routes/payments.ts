@@ -11,6 +11,7 @@ import {
   systemSettingsTable,
   boostPackagesTable,
   premiumGiftsTable,
+  walletTransactionsTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
@@ -285,8 +286,24 @@ router.post("/payments/sayabayar/webhook", async (req, res): Promise<void> => {
     const targetConversationId = ticket.requestedConversationId;
 
     const giftCodeMatch = ticket.adminNotes?.match(/\[Gift Code:\s*([^\]\s]+)\]/);
+    const topupMatch = ticket.adminNotes?.match(/\[Wallet Topup:\s*(\d+)\]/);
 
-    if (giftCodeMatch && giftCodeMatch[1]) {
+    if (topupMatch && topupMatch[1]) {
+      const amount = parseInt(topupMatch[1], 10);
+      const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, ticket.creatorId) });
+      if (targetUser && amount > 0) {
+        await db.update(usersTable)
+          .set({ balanceRp: (targetUser.balanceRp ?? 0) + amount, updatedAt: new Date() })
+          .where(eq(usersTable.id, ticket.creatorId));
+        await db.insert(walletTransactionsTable).values({
+          userId: ticket.creatorId,
+          amount,
+          currency: "rp",
+          type: "topup",
+          description: `Top up saldo via SayaBayar (ticket #${ticket.id})`,
+        });
+      }
+    } else if (giftCodeMatch && giftCodeMatch[1]) {
       const code = giftCodeMatch[1].trim();
       await db
         .update(premiumGiftsTable)
@@ -440,8 +457,24 @@ router.patch("/admin/payments/:id", async (req, res): Promise<void> => {
     }
 
     const giftCodeMatch = ticket.adminNotes?.match(/\[Gift Code:\s*([^\]\s]+)\]/);
+    const topupMatch = ticket.adminNotes?.match(/\[Wallet Topup:\s*(\d+)\]/);
 
-    if (giftCodeMatch && giftCodeMatch[1]) {
+    if (topupMatch && topupMatch[1]) {
+      const amount = parseInt(topupMatch[1], 10);
+      const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, ticket.creatorId) });
+      if (targetUser && amount > 0) {
+        await db.update(usersTable)
+          .set({ balanceRp: (targetUser.balanceRp ?? 0) + amount, updatedAt: new Date() })
+          .where(eq(usersTable.id, ticket.creatorId));
+        await db.insert(walletTransactionsTable).values({
+          userId: ticket.creatorId,
+          amount,
+          currency: "rp",
+          type: "topup",
+          description: `Top up saldo (disetujui admin, ticket #${ticket.id})`,
+        });
+      }
+    } else if (giftCodeMatch && giftCodeMatch[1]) {
       const code = giftCodeMatch[1].trim();
       await db
         .update(premiumGiftsTable)
@@ -870,6 +903,254 @@ router.post("/payments/gifts/redeem", async (req, res): Promise<void> => {
   });
 
   res.status(200).json({ success: true, tier: gift.tier });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rupiah Wallet (saldo) + Diamond conversion
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getWalletSettings() {
+  const settingsRow = await db.query.systemSettingsTable.findFirst({
+    where: eq(systemSettingsTable.key, "homepage_settings"),
+  });
+  const settings = {
+    sayabayarApiKey: "",
+    diamondPackRupiah: 17000,
+    diamondPackDiamonds: 100,
+    ...(settingsRow?.value || {} as any),
+  };
+  return settings;
+}
+
+// Pull-based fallback for top ups: if the SayaBayar webhook never reached us
+// (e.g. local dev / webhook not configured), check pending top-up invoices
+// directly and credit the balance when they are already paid.
+async function syncPendingTopups(userId: number, apiKey: string): Promise<boolean> {
+  if (!apiKey) return false;
+  let creditedAny = false;
+  const pending = await db
+    .select()
+    .from(ticketsTable)
+    .where(and(
+      eq(ticketsTable.creatorId, userId),
+      eq(ticketsTable.ticketType, "payment"),
+      eq(ticketsTable.paymentStatus, "pending_review"),
+    ));
+
+  for (const ticket of pending) {
+    const topupMatch = ticket.adminNotes?.match(/\[Wallet Topup:\s*(\d+)\]/);
+    const idMatch = ticket.adminNotes?.match(/\[SayaBayar ID:\s*([^\]\s]+)\]/);
+    if (!topupMatch || !idMatch) continue;
+    const invoiceId = idMatch[1];
+    try {
+      const apiResponse = await fetch(`https://api.sayabayar.com/v1/invoices/${invoiceId}`, {
+        method: "GET",
+        headers: { "X-API-Key": apiKey },
+      });
+      if (!apiResponse.ok) continue;
+      const resJson = await apiResponse.json() as any;
+      const status = resJson?.data?.status;
+      if (status !== "paid" && status !== "success") continue;
+
+      const amount = parseInt(topupMatch[1], 10);
+      const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userId) });
+      if (targetUser && amount > 0) {
+        await db.update(usersTable)
+          .set({ balanceRp: (targetUser.balanceRp ?? 0) + amount, updatedAt: new Date() })
+          .where(eq(usersTable.id, userId));
+        await db.insert(walletTransactionsTable).values({
+          userId,
+          amount,
+          currency: "rp",
+          type: "topup",
+          description: `Top up saldo via SayaBayar (sync, ticket #${ticket.id})`,
+        });
+        creditedAny = true;
+      }
+
+      const currentNotes = ticket.adminNotes || "";
+      await db.update(ticketsTable)
+        .set({
+          paymentStatus: "paid",
+          status: "resolved",
+          grantedAt: new Date(),
+          updatedAt: new Date(),
+          adminNotes: currentNotes ? `${currentNotes} | Auto-Approved via Wallet Sync` : "Auto-Approved via Wallet Sync",
+        })
+        .where(eq(ticketsTable.id, ticket.id));
+    } catch (err) {
+      console.error(`Error syncing top-up invoice ${invoiceId}:`, err);
+    }
+  }
+  return creditedAny;
+}
+
+// GET /api/me/wallet — current Rp balance, diamonds, and conversion rate.
+router.get("/me/wallet", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  let user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const settings = await getWalletSettings();
+
+  // Credit any top-ups that were already paid but not yet reflected (webhook fallback).
+  const credited = await syncPendingTopups(user.id, settings.sayabayarApiKey);
+  if (credited) {
+    user = (await getDbUser(auth.userId)) ?? user;
+  }
+
+  res.json({
+    balanceRp: user.balanceRp ?? 0,
+    diamonds: user.diamonds ?? 0,
+    diamondPackRupiah: settings.diamondPackRupiah ?? 17000,
+    diamondPackDiamonds: settings.diamondPackDiamonds ?? 100,
+  });
+});
+
+// POST /api/me/wallet/topup — start a SayaBayar payment to top up Rp balance.
+router.post("/me/wallet/topup", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const amount = typeof req.body?.amount === "number" ? Math.floor(req.body.amount) : 0;
+  if (!amount || amount < 1000) {
+    res.status(400).json({ error: "Nominal top up minimal Rp 1.000." });
+    return;
+  }
+  if (amount > 10000000) {
+    res.status(400).json({ error: "Nominal top up maksimal Rp 10.000.000." });
+    return;
+  }
+
+  const settings = await getWalletSettings();
+  const apiKey = settings.sayabayarApiKey;
+  if (!apiKey) {
+    res.status(400).json({ error: "SayaBayar API Key belum dikonfigurasi di pengaturan admin." });
+    return;
+  }
+
+  let invoiceData: any;
+  try {
+    const email = `${user.username || "user"}_${user.id}_topup@arcadiamc.net`;
+    const customerName = user.displayName || user.username || `Player #${user.id}`;
+    const origin = req.headers.origin || "http://localhost:5173";
+    const redirectUrl = `${origin}/member?tab=wallet`;
+
+    const apiResponse = await fetch("https://api.sayabayar.com/v1/invoices", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify({
+        customer_name: customerName,
+        customer_email: email,
+        amount: amount,
+        description: `Top up saldo Rp ${amount.toLocaleString("id-ID")}`,
+        channel_preference: "platform",
+        redirect_url: redirectUrl,
+      }),
+    });
+
+    const resJson = await apiResponse.json() as any;
+    if (!apiResponse.ok) {
+      console.error("SayaBayar API Error response (Topup):", JSON.stringify(resJson, null, 2));
+      res.status(apiResponse.status).json({
+        error: resJson?.error?.message || resJson?.message || resJson?.error || "Gagal membuat invoice di SayaBayar.",
+      });
+      return;
+    }
+
+    invoiceData = resJson.data;
+    if (!invoiceData || !invoiceData.payment_url) {
+      throw new Error("Missing invoice data or payment_url from SayaBayar.");
+    }
+  } catch (error: any) {
+    console.error("Error creating SayaBayar invoice for Topup:", error);
+    res.status(500).json({ error: error.message || "Terjadi kesalahan koneksi saat membuat invoice." });
+    return;
+  }
+
+  await db.insert(ticketsTable).values({
+    creatorId: user.id,
+    ticketType: "payment",
+    reason: "Wallet Topup",
+    description: `Top up saldo Rp ${amount.toLocaleString("id-ID")} oleh @${user.username}`,
+    status: "open",
+    paymentStatus: "pending_review",
+    requestedTier: null,
+    grantedAt: null,
+    adminNotes: `[SayaBayar ID: ${invoiceData.id}] [Wallet Topup: ${amount}]`,
+  });
+
+  res.status(201).json(serializeDates({ checkoutUrl: invoiceData.payment_url, amount }));
+});
+
+// POST /api/me/wallet/convert — convert Rp balance into diamonds at the admin rate.
+router.post("/me/wallet/convert", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const rupiah = typeof req.body?.rupiah === "number" ? Math.floor(req.body.rupiah) : 0;
+  if (!rupiah || rupiah <= 0) {
+    res.status(400).json({ error: "Jumlah rupiah yang ditukar tidak valid." });
+    return;
+  }
+
+  const settings = await getWalletSettings();
+  const packRupiah = Number(settings.diamondPackRupiah) || 17000;
+  const packDiamonds = Number(settings.diamondPackDiamonds) || 100;
+
+  const diamonds = Math.floor((rupiah * packDiamonds) / packRupiah);
+  if (diamonds < 1) {
+    res.status(400).json({ error: `Minimal tukar Rp ${Math.ceil(packRupiah / packDiamonds).toLocaleString("id-ID")} untuk dapat 1 diamond.` });
+    return;
+  }
+  // Charge only the exact rupiah needed for the diamonds granted (never more than requested).
+  const cost = Math.ceil((diamonds * packRupiah) / packDiamonds);
+
+  if ((user.balanceRp ?? 0) < cost) {
+    res.status(400).json({ error: "Saldo Rupiah kamu tidak cukup." });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.update(usersTable)
+      .set({
+        balanceRp: (user.balanceRp ?? 0) - cost,
+        diamonds: (user.diamonds ?? 0) + diamonds,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, user.id));
+
+    await tx.insert(walletTransactionsTable).values({
+      userId: user.id,
+      amount: -cost,
+      currency: "rp",
+      type: "convert_spend",
+      description: `Tukar Rp ${cost.toLocaleString("id-ID")} ke ${diamonds} diamond`,
+    });
+    await tx.insert(walletTransactionsTable).values({
+      userId: user.id,
+      amount: diamonds,
+      currency: "diamond",
+      type: "convert_receive",
+      description: `Hasil tukar dari Rp ${cost.toLocaleString("id-ID")}`,
+    });
+  });
+
+  res.json({
+    success: true,
+    spentRp: cost,
+    diamondsAdded: diamonds,
+    balanceRp: (user.balanceRp ?? 0) - cost,
+    diamonds: (user.diamonds ?? 0) + diamonds,
+  });
 });
 
 export default router;
