@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -121,6 +122,8 @@ import {
   BadgeCheck,
   Gift,
   Crown,
+  Archive,
+  ArchiveX,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -155,6 +158,11 @@ type UploadedAttachment = {
   size: number;
   imageUrl?: string | null;
 };
+
+function extractYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([\w-]{11})/);
+  return m ? m[1] : null;
+}
 
 function formatFileSize(bytes?: number | null) {
   if (!bytes || bytes <= 0) return "";
@@ -1075,11 +1083,19 @@ function ConvItem({
   conv,
   selected,
   onClick,
+  onPin,
+  onUnpin,
+  onArchive,
+  onUnarchive,
   dark = false,
 }: {
   conv: ConversationSummary;
   selected: boolean;
   onClick: () => void;
+  onPin?: (id: number) => void;
+  onUnpin?: (id: number) => void;
+  onArchive?: (id: number) => void;
+  onUnarchive?: (id: number) => void;
   dark?: boolean;
 }) {
   const { data: me } = useGetMe();
@@ -1088,56 +1104,139 @@ function ConvItem({
       ? (conv.otherDisplayName ?? conv.otherUsername ?? "Unknown")
       : (conv.name ?? "Group");
   const avatar = conv.type === "dm" ? conv.otherAvatarUrl : conv.iconUrl;
+  const isPinned = !!(conv as any).pinnedAt;
+  const isArchived = !!(conv as any).archivedAt;
+
+  const menuContent = (
+    <>
+      {isPinned ? (
+        <ContextMenuItem
+          className={`gap-2 cursor-pointer text-xs ${dark ? "focus:bg-[#35373C]" : ""}`}
+          onSelect={() => onUnpin?.(conv.id)}
+        >
+          <Pin className="w-3.5 h-3.5" />
+          Lepas Pin
+        </ContextMenuItem>
+      ) : (
+        <ContextMenuItem
+          className={`gap-2 cursor-pointer text-xs ${dark ? "focus:bg-[#35373C]" : ""}`}
+          onSelect={() => onPin?.(conv.id)}
+        >
+          <Pin className="w-3.5 h-3.5" />
+          Pin Chat
+        </ContextMenuItem>
+      )}
+      {isArchived ? (
+        <ContextMenuItem
+          className={`gap-2 cursor-pointer text-xs ${dark ? "focus:bg-[#35373C]" : ""}`}
+          onSelect={() => onUnarchive?.(conv.id)}
+        >
+          <ArchiveX className="w-3.5 h-3.5" />
+          Batal Arsip
+        </ContextMenuItem>
+      ) : (
+        <ContextMenuItem
+          className={`gap-2 cursor-pointer text-xs ${dark ? "focus:bg-[#35373C]" : ""}`}
+          onSelect={() => onArchive?.(conv.id)}
+        >
+          <Archive className="w-3.5 h-3.5" />
+          Arsipkan Chat
+        </ContextMenuItem>
+      )}
+    </>
+  );
 
   return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-3 sm:py-2.5 rounded-xl text-left transition-all ${
-        selected
-          ? dark ? "bg-[#404249] text-white" : "bg-violet-50 text-[#6366f1]"
-          : dark ? "hover:bg-[#35373C] text-[#949BA4] hover:text-[#DCDDDE]" : "hover:bg-slate-50 text-slate-600 hover:text-slate-900"
-      }`}
-    >
-      <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${conv.type === "dm" && (conv as any).otherUserEquippedBorder ? (conv as any).otherUserEquippedBorder : "border border-[#eae8f5]"}`}>
-        <Avatar className="w-9 h-9 shrink-0">
-          <AvatarImage src={avatar ?? undefined} />
-          <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(name)}</AvatarFallback>
-        </Avatar>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className={`font-bold text-xs truncate ${selected ? dark ? "text-white" : "text-[#6366f1]" : dark ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{name}</span>
-            {/* Verified badge for DM other user */}
-            {conv.type === "dm" && (conv as any).otherUserIsVerified && (
-              <BadgeCheck className="w-3 h-3 text-blue-400 fill-blue-400/20 shrink-0 flex-none" />
-            )}
-            {/* Verified badge for group */}
-            {conv.type === "group" && (conv as any).isVerified && (
-              <BadgeCheck className="w-3 h-3 text-blue-400 fill-blue-400/20 shrink-0 flex-none" />
-            )}
-            {conv.type === "dm" && conv.otherUserRole && conv.otherUserRole !== "member" && (
-              <Badge className={`text-[8px] px-1 py-0 h-3 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[conv.otherUserRole] ?? ""}`}>
-                {ROLE_LABELS[conv.otherUserRole] ?? conv.otherUserRole}
-              </Badge>
-            )}
-          </div>
-          {conv.type === "group" && (
-            <Badge variant="secondary" className={`text-[9px] shrink-0 hover:bg-opacity-80 ${dark ? "bg-[#35373C] text-[#949BA4] border border-[#3F4147]" : "bg-violet-50 text-[#6366f1] hover:bg-violet-50 border border-violet-100"}`}>
-              Group
-            </Badge>
-          )}
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div className="relative group/convitem">
+          <button
+            onClick={onClick}
+            className={`w-full flex items-center gap-3 px-3 py-3 sm:py-2.5 rounded-xl text-left transition-all ${
+              selected
+                ? dark ? "bg-[#404249] text-white" : "bg-violet-50 text-[#6366f1]"
+                : dark ? "hover:bg-[#35373C] text-[#949BA4] hover:text-[#DCDDDE]" : "hover:bg-slate-50 text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${conv.type === "dm" && (conv as any).otherUserEquippedBorder ? (conv as any).otherUserEquippedBorder : "border border-[#eae8f5]"}`}>
+              <Avatar className="w-9 h-9 shrink-0">
+                <AvatarImage src={avatar ?? undefined} />
+                <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(name)}</AvatarFallback>
+              </Avatar>
+            </div>
+            <div className="min-w-0 flex-1 pr-5">
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {isPinned && <Pin className={`w-2.5 h-2.5 shrink-0 flex-none ${dark ? "text-[#5865F2]" : "text-[#6366f1]"}`} />}
+                  <span className={`font-bold text-xs truncate ${selected ? dark ? "text-white" : "text-[#6366f1]" : dark ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{name}</span>
+                  {conv.type === "dm" && (conv as any).otherUserIsVerified && (
+                    <BadgeCheck className="w-3 h-3 text-blue-400 fill-blue-400/20 shrink-0 flex-none" />
+                  )}
+                  {conv.type === "group" && (conv as any).isVerified && (
+                    <BadgeCheck className="w-3 h-3 text-blue-400 fill-blue-400/20 shrink-0 flex-none" />
+                  )}
+                  {conv.type === "dm" && conv.otherUserRole && conv.otherUserRole !== "member" && (
+                    <Badge className={`text-[8px] px-1 py-0 h-3 leading-none shrink-0 font-medium rounded ${ROLE_BADGE_CLASSES[conv.otherUserRole] ?? ""}`}>
+                      {ROLE_LABELS[conv.otherUserRole] ?? conv.otherUserRole}
+                    </Badge>
+                  )}
+                </div>
+                {conv.type === "group" && (
+                  <Badge variant="secondary" className={`text-[9px] shrink-0 hover:bg-opacity-80 ${dark ? "bg-[#35373C] text-[#949BA4] border border-[#3F4147]" : "bg-violet-50 text-[#6366f1] hover:bg-violet-50 border border-violet-100"}`}>
+                    Group
+                  </Badge>
+                )}
+              </div>
+              {conv.lastMessageContent && (
+                <p className={`text-[10px] font-bold truncate mt-0.5 ${dark ? "text-[#949BA4]" : "text-slate-400"} flex items-center gap-1`}>
+                  {conv.lastMessageSenderId === me?.id && (
+                    <span className={`text-[11px] font-black select-none leading-none shrink-0 ${dark ? "text-[#5865F2]" : "text-[#34b7f1]"}`}>✓✓</span>
+                  )}
+                  <span className="truncate">{conv.lastMessageContent}</span>
+                </p>
+              )}
+            </div>
+          </button>
+          {/* Chevron button — visible on hover, triggers dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={`absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/convitem:opacity-100 transition-opacity rounded-md p-0.5 z-10 ${dark ? "hover:bg-[#404249] text-[#949BA4] hover:text-white" : "hover:bg-slate-200 text-slate-400"}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className={dark ? "bg-[#18191c] border-[#3F4147] text-[#DCDDDE] min-w-[160px]" : "bg-white border-slate-200 min-w-[160px]"}
+            >
+              {isPinned ? (
+                <DropdownMenuItem className="gap-2 cursor-pointer text-xs" onSelect={() => onUnpin?.(conv.id)}>
+                  <Pin className="w-3.5 h-3.5" /> Lepas Pin
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem className="gap-2 cursor-pointer text-xs" onSelect={() => onPin?.(conv.id)}>
+                  <Pin className="w-3.5 h-3.5" /> Pin Chat
+                </DropdownMenuItem>
+              )}
+              {isArchived ? (
+                <DropdownMenuItem className="gap-2 cursor-pointer text-xs" onSelect={() => onUnarchive?.(conv.id)}>
+                  <ArchiveX className="w-3.5 h-3.5" /> Batal Arsip
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem className="gap-2 cursor-pointer text-xs" onSelect={() => onArchive?.(conv.id)}>
+                  <Archive className="w-3.5 h-3.5" /> Arsipkan Chat
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        {conv.lastMessageContent && (
-          <p className={`text-[10px] font-bold truncate mt-0.5 ${dark ? "text-[#949BA4]" : "text-slate-400"} flex items-center gap-1`}>
-            {conv.lastMessageSenderId === me?.id && (
-              <span className={`text-[11px] font-black select-none leading-none shrink-0 ${dark ? "text-[#5865F2]" : "text-[#34b7f1]"}`}>✓✓</span>
-            )}
-            <span className="truncate">{conv.lastMessageContent}</span>
-          </p>
-        )}
-      </div>
-    </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent className={dark ? "bg-[#18191c] border-[#3F4147] text-[#DCDDDE] min-w-[160px]" : "bg-white border-slate-200 min-w-[160px]"}>
+        {menuContent}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -1237,6 +1336,18 @@ function MessageBubble({
   const isStickerMessage = !!realImageUrl && realImageUrl.includes("/api/stickers/");
   const isForwarded = !!(msg as any).forwardedFromMessageId;
   const isDeleted = !!(msg as any).deletedAt;
+  const msgType = (msg as any).messageType ?? "text";
+
+  if (msgType === "system_join" || msgType === "system_added") {
+    return (
+      <div className="flex items-center justify-center py-1.5 px-4 my-0.5">
+        <div className={`flex items-center gap-2 border rounded-full px-4 py-1 text-xs italic select-none ${isGroup ? "bg-white/5 border-white/10 text-[#949BA4]" : "bg-slate-50 border-slate-200 text-slate-400"}`}>
+          <span>{msgType === "system_join" ? "🔗" : "➕"}</span>
+          <span>{msg.content}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1328,7 +1439,7 @@ function MessageBubble({
               }}
             >
               {!isDeleted && msg.replyToMessageId && (
-                <div 
+                <div
                   onClick={(e) => {
                     e.stopPropagation();
                     const el = document.getElementById(`message-${msg.replyToMessageId}`);
@@ -1338,7 +1449,7 @@ function MessageBubble({
                       setTimeout(() => el.classList.remove("bg-yellow-500/20"), 2000);
                     }
                   }}
-                  className={`mb-2 rounded-lg border-l-[4px] p-2 text-xs flex flex-col gap-0.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors select-none ${
+                  className={`mb-2 rounded-lg border-l-[4px] p-2 text-xs flex flex-col gap-0.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors select-none min-w-0 overflow-hidden ${
                     isGroup
                       ? isOwn
                         ? "bg-black/20 border-violet-400 text-slate-200"
@@ -1348,16 +1459,16 @@ function MessageBubble({
                         : "bg-[#f0f5f2] border-[#075e54] text-[#4a5e55]"
                   }`}
                 >
-                  <span className={`font-black text-[10.5px] uppercase tracking-wide ${
-                    isGroup 
-                      ? isOwn 
-                        ? "text-violet-300" 
-                        : "text-violet-400" 
+                  <span className={`font-black text-[10.5px] uppercase tracking-wide truncate ${
+                    isGroup
+                      ? isOwn
+                        ? "text-violet-300"
+                        : "text-violet-400"
                       : "text-[#075e54]"
                   }`}>
                     @{msg.replyToMessageSenderUsername || "someone"}
                   </span>
-                  <span className="opacity-90 line-clamp-2 truncate max-w-full text-[11px]">
+                  <span className="opacity-90 line-clamp-2 text-[11px]">
                     {msg.replyToMessageContent || "Media/Lampiran"}
                   </span>
                 </div>
@@ -1580,6 +1691,31 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const queryClient = useQueryClient();
   const { data: me, isLoading: meLoading } = useGetMe();
   const [, setLocation] = useLocation();
+  const { data: blockedUsers = [] } = useQuery<Array<{ userId: number }>>({
+    queryKey: ["/api/me/blocks"],
+    queryFn: () => customFetch<any>("/api/me/blocks"),
+    staleTime: 60_000,
+  });
+  const blockedIdsSet = useMemo(() => new Set(blockedUsers.map(b => b.userId)), [blockedUsers]);
+
+  const pinConvMutation = useMutation({
+    mutationFn: (convId: number) => customFetch<any>(`/api/conversations/${convId}/pin`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/conversations", "messages-page"] }),
+  });
+  const unpinConvMutation = useMutation({
+    mutationFn: (convId: number) => customFetch<any>(`/api/conversations/${convId}/pin`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/conversations", "messages-page"] }),
+  });
+  const archiveConvMutation = useMutation({
+    mutationFn: (convId: number) => customFetch<any>(`/api/conversations/${convId}/archive`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/conversations", "messages-page"] }),
+  });
+  const unarchiveConvMutation = useMutation({
+    mutationFn: (convId: number) => customFetch<any>(`/api/conversations/${convId}/archive`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/conversations", "messages-page"] }),
+  });
+  const [showArchived, setShowArchived] = useState(false);
+
   const { data: realmSettings = {} } = useQuery({
     queryKey: ["/api/settings"],
     queryFn: () => customFetch<any>("/api/settings"),
@@ -1789,6 +1925,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [editGroupDesc, setEditGroupDesc] = useState("");
   const [editGroupIcon, setEditGroupIcon] = useState("");
   const [editGroupBanner, setEditGroupBanner] = useState("");
+  const [editGroupBgVideo, setEditGroupBgVideo] = useState("");
   const [editGroupInviteCode, setEditGroupInviteCode] = useState("");
   const [editGroupSaving, setEditGroupSaving] = useState(false);
   const [leaveGroupModalOpen, setLeaveGroupModalOpen] = useState(false);
@@ -1813,8 +1950,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   // SW/Status feature states
   const [showCreateStatus, setShowCreateStatus] = useState(false);
-  const [createStatusType, setCreateStatusType] = useState<"image" | "text">("image");
+  const [createStatusType, setCreateStatusType] = useState<"image" | "text" | "video">("image");
   const [createStatusImage, setCreateStatusImage] = useState<string | null>(null);
+  const [createStatusVideo, setCreateStatusVideo] = useState<string | null>(null);
   const [createStatusCaption, setCreateStatusCaption] = useState("");
   const [createStatusBg, setCreateStatusBg] = useState("bg-gradient-to-tr from-purple-900 to-indigo-900");
   const [createStatusTextColor, setCreateStatusTextColor] = useState("text-white");
@@ -1825,6 +1963,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [activeStoriesIndex, setActiveStoriesIndex] = useState(0);
   const [viewerPlaying, setViewerPlaying] = useState(true);
   const [viewerProgress, setViewerProgress] = useState(0);
+
+  const storyVideoRef = useRef<HTMLVideoElement>(null);
 
   const [readStatuses, setReadStatuses] = useState<Set<number>>(() => {
     try {
@@ -1922,11 +2062,13 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   useEffect(() => {
     if (!activeUserStories || !activeStory || !viewerPlaying) return;
 
-    // Mark current story as read
     markStatusAsRead(activeStory.id);
 
-    const duration = 5000; // 5 seconds
-    const intervalTime = 50; // update progress every 50ms
+    // Video stories: no timer — progress driven by onTimeUpdate, advance on onEnded
+    if (activeStory.type === "video") return;
+
+    const duration = 5000; // 5 seconds for image/text
+    const intervalTime = 50;
     const totalSteps = duration / intervalTime;
     let currentStep = 0;
 
@@ -1944,6 +2086,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       clearInterval(timer);
     };
   }, [activeStoriesUserIndex, activeStoriesIndex, viewerPlaying, activeStories.length]);
+
+  // Sync play/pause button with the video element
+  useEffect(() => {
+    const vid = storyVideoRef.current;
+    if (!vid) return;
+    if (viewerPlaying) {
+      vid.play().catch(() => {});
+    } else {
+      vid.pause();
+    }
+  }, [viewerPlaying]);
 
   const handleDeleteStatus = async (statusId: number) => {
     if (!confirm("Hapus status ini?")) return;
@@ -1974,6 +2127,10 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       toast({ title: "Silakan upload gambar terlebih dahulu", variant: "destructive" });
       return;
     }
+    if (createStatusType === "video" && !createStatusVideo) {
+      toast({ title: "Silakan upload video terlebih dahulu", variant: "destructive" });
+      return;
+    }
     if (createStatusType === "text" && !createStatusCaption.trim()) {
       toast({ title: "Teks status tidak boleh kosong", variant: "destructive" });
       return;
@@ -1981,9 +2138,13 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
     setStatusSubmitting(true);
     try {
+      const mediaUrl = createStatusType === "image" ? createStatusImage
+        : createStatusType === "video" ? createStatusVideo
+        : null;
+
       const body = {
         type: createStatusType,
-        mediaUrl: createStatusType === "image" ? createStatusImage : null,
+        mediaUrl,
         caption: createStatusCaption,
         backgroundColor: createStatusType === "text" ? createStatusBg : null,
         textColor: createStatusType === "text" ? createStatusTextColor : null,
@@ -1991,28 +2152,30 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
       const res = await fetch("/api/statuses", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) throw new Error("Failed to post status");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to post status");
+      }
 
       toast({ title: "Status berhasil diposting!" });
       setShowCreateStatus(false);
       setCreateStatusCaption("");
       setCreateStatusImage(null);
+      setCreateStatusVideo(null);
       refetchStories();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast({ title: "Gagal memposting status", variant: "destructive" });
+      toast({ title: err?.message || "Gagal memposting status", variant: "destructive" });
     } finally {
       setStatusSubmitting(false);
     }
   };
 
-  const uploadStatusMedia = async (file: File) => {
+  const uploadStatusMedia = async (file: File, forType: "image" | "video" = "image") => {
     setUploadingStatusMedia(true);
     try {
       const res = await fetch("/api/upload", {
@@ -2025,7 +2188,11 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       });
       if (!res.ok) throw new Error("Upload failed");
       const { url } = await res.json();
-      setCreateStatusImage(url);
+      if (forType === "video") {
+        setCreateStatusVideo(url);
+      } else {
+        setCreateStatusImage(url);
+      }
       toast({ title: "Media berhasil diupload" });
     } catch {
       toast({ title: "Gagal upload media ke server", variant: "destructive" });
@@ -3850,6 +4017,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     setEditGroupDesc(selectedConv.description || "");
     setEditGroupIcon(selectedConv.iconUrl || "");
     setEditGroupBanner(selectedConv.bannerUrl || "");
+    setEditGroupBgVideo((selectedConv as any).bgVideoUrl || "");
     setEditGroupInviteCode((selectedConv as any).inviteCode || "");
     setShowEditGroup(true);
   }
@@ -3866,6 +4034,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         description: editGroupDesc.trim() || null,
         iconUrl: editGroupIcon.trim() || null,
         bannerUrl: editGroupBanner.trim() || null,
+        bgVideoUrl: editGroupBgVideo.trim() || null,
       };
 
       // Only send inviteCode if owner of a verified group
@@ -4888,17 +5057,52 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     No conversations yet.<br />
                     Start a DM with a friend!
                   </div>
-                ) : (
-                  conversations.map((c) => (
-                    <ConvItem
-                      key={c.id}
-                      conv={c}
-                      selected={selectedId === c.id}
-                      dark
-                      onClick={() => setSelectedId(c.id)}
-                    />
-                  ))
-                )}
+                ) : (() => {
+                  const activeConvs = conversations.filter((c) => !(c as any).archivedAt);
+                  const archivedConvs = conversations.filter((c) => !!(c as any).archivedAt);
+                  return (
+                    <>
+                      {activeConvs.map((c) => (
+                        <ConvItem
+                          key={c.id}
+                          conv={c}
+                          selected={selectedId === c.id}
+                          dark
+                          onClick={() => setSelectedId(c.id)}
+                          onPin={(id) => pinConvMutation.mutate(id)}
+                          onUnpin={(id) => unpinConvMutation.mutate(id)}
+                          onArchive={(id) => archiveConvMutation.mutate(id)}
+                          onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
+                        />
+                      ))}
+                      {archivedConvs.length > 0 && (
+                        <>
+                          <button
+                            onClick={() => setShowArchived((v) => !v)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-[#949BA4] hover:text-[#DCDDDE] transition-colors"
+                          >
+                            <Archive className="w-3.5 h-3.5" />
+                            Diarsipkan ({archivedConvs.length})
+                            <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${showArchived ? "rotate-180" : ""}`} />
+                          </button>
+                          {showArchived && archivedConvs.map((c) => (
+                            <ConvItem
+                              key={c.id}
+                              conv={c}
+                              selected={selectedId === c.id}
+                              dark
+                              onClick={() => setSelectedId(c.id)}
+                              onPin={(id) => pinConvMutation.mutate(id)}
+                              onUnpin={(id) => unpinConvMutation.mutate(id)}
+                              onArchive={(id) => archiveConvMutation.mutate(id)}
+                              onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </ScrollArea>
 
@@ -5409,9 +5613,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 )}
 
                 {/* Messages Bubbles Feed */}
-                <ScrollArea className={`flex-1 px-2.5 sm:px-4 md:px-6 py-3 sm:py-4 min-h-0 relative ${isGroupView ? "bg-[#0b141a]" : "bg-[#efe7dd]"}`}>
-                  <div 
-                    className="absolute inset-0 pointer-events-none bg-repeat" 
+                <ScrollArea className={`flex-1 px-2.5 sm:px-4 md:px-6 py-3 sm:py-4 min-h-0 relative overflow-x-hidden ${isGroupView ? "bg-[#0b141a]" : "bg-[#efe7dd]"}`}>
+                  <div
+                    className="absolute inset-0 pointer-events-none bg-repeat"
                     style={{
                       backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
                       backgroundSize: "400px",
@@ -5458,6 +5662,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     (() => {
                       let lastDateStr = "";
                       return activeMessages.map((msg) => {
+                        // Hide messages from blocked users (skip system messages — they have no senderId)
+                        if (msg.senderId && blockedIdsSet.has(msg.senderId)) return null;
+
                         const msgDate = new Date(msg.createdAt);
                         const dateKey = `${msgDate.getFullYear()}-${msgDate.getMonth()}-${msgDate.getDate()}`;
                         const showDivider = dateKey !== lastDateStr;
@@ -6134,9 +6341,25 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
               <ScrollArea className="flex-1">
                 {/* Banner + Avatar / Icon */}
-                <div className={`flex flex-col items-center border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"} ${selectedConv.type === "group" && selectedConv.bannerUrl ? "" : "py-6 px-4"}`}>
-                  {/* Banner */}
-                  {selectedConv.type === "group" && selectedConv.bannerUrl && (
+                {(() => {
+                  const bgVid = (selectedConv as any).bgVideoUrl as string | null | undefined;
+                  const ytId = bgVid ? extractYouTubeId(bgVid) : null;
+                  const hasBanner = selectedConv.type === "group" && (selectedConv.bannerUrl || ytId);
+                  return (
+                <div className={`flex flex-col items-center border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"} ${hasBanner ? "" : "py-6 px-4"}`}>
+                  {/* Banner — video or image */}
+                  {selectedConv.type === "group" && ytId ? (
+                    <div className="w-full h-36 relative overflow-hidden bg-black">
+                      <iframe
+                        src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&loop=1&playlist=${ytId}&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&rel=0`}
+                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                        style={{ width: "177.78%", height: "177.78%", minWidth: "100%", minHeight: "100%" }}
+                        allow="autoplay; encrypted-media"
+                        title="group-banner-video"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50 pointer-events-none" />
+                    </div>
+                  ) : selectedConv.type === "group" && selectedConv.bannerUrl ? (
                     <div className="w-full h-28 relative overflow-hidden">
                       <img
                         src={selectedConv.bannerUrl}
@@ -6146,9 +6369,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       />
                       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/40" />
                     </div>
-                  )}
+                  ) : null}
                   {/* Avatar */}
-                  <div className={`rounded-full overflow-hidden ${selectedConv.type === "group" ? "w-24 h-24" : "w-24 h-24"} ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder + " p-1" : isGroupView ? "border-2 border-[#3F4147]" : "border-2 border-slate-100"} ${selectedConv.type === "group" && selectedConv.bannerUrl ? "-mt-12 relative z-10 ring-4 ring-[#1E1F22]" : ""}`}>
+                  <div className={`rounded-full overflow-hidden ${selectedConv.type === "group" ? "w-24 h-24" : "w-24 h-24"} ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder + " p-1" : isGroupView ? "border-2 border-[#3F4147]" : "border-2 border-slate-100"} ${hasBanner ? "-mt-12 relative z-10 ring-4 ring-[#1E1F22]" : ""}`}>
                     <img
                       src={
                         selectedConv.type === "dm"
@@ -6200,6 +6423,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     </span>
                   )}
                 </div>
+                  );
+                })()}
 
                 {/* Description (Group only) */}
                 {selectedConv.type === "group" && (
@@ -7510,6 +7735,45 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 </button>
               )}
               <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Hanya pemilik grup yang dapat mengubah background.</p>
+            </div>
+
+            {/* YouTube Video Background — Level 2+ only */}
+            <div>
+              <label className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                <Play className="w-3 h-3" />
+                Video Background YouTube
+                <span className={`ml-auto px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wide ${groupBoosts && groupBoosts.level >= 2 ? "bg-violet-600/30 border border-violet-500/50 text-violet-300" : "bg-slate-700/50 border border-slate-600/50 text-slate-400"}`}>
+                  Lvl 2 Boost
+                </span>
+              </label>
+              {groupBoosts && groupBoosts.level >= 2 ? (
+                <>
+                  <input
+                    type="url"
+                    value={editGroupBgVideo}
+                    onChange={(e) => setEditGroupBgVideo(e.target.value)}
+                    placeholder="https://youtube.com/watch?v=..."
+                    disabled={selectedConv?.ownerId !== me?.id}
+                    className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"} ${selectedConv?.ownerId !== me?.id ? "opacity-60 cursor-not-allowed" : ""}`}
+                  />
+                  {editGroupBgVideo.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setEditGroupBgVideo("")}
+                      className="mt-1 text-[10px] text-rose-400 hover:text-rose-300 font-bold"
+                    >
+                      Hapus video background
+                    </button>
+                  )}
+                  <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                    Video akan autoplay muted di background chat. Hanya pemilik yang dapat mengubah.
+                  </p>
+                </>
+              ) : (
+                <div className={`mt-1.5 rounded-xl border px-3 py-2.5 text-[11px] font-semibold ${isGroupView ? "border-[#3F4147] bg-[#2B2D31] text-[#949BA4]" : "border-slate-200 bg-slate-50 text-slate-400"}`}>
+                  🔒 Group ini belum mencapai Level 2 Boost ({groupBoosts?.activeBoostCount ?? 0}/7 boosts). Boost lebih banyak untuk membuka fitur ini.
+                </div>
+              )}
             </div>
           </div>
 
@@ -9808,7 +10072,9 @@ setInterval(() => {
         <DialogContent className="max-w-md bg-[#1E1F22] border border-[#3F4147] rounded-2xl p-5 text-white">
           <DialogHeader>
             <DialogTitle className="text-sm font-black uppercase tracking-wider text-white">Buat Status Baru</DialogTitle>
-            <DialogDescription className="text-xs text-slate-400">Status Anda akan terhapus otomatis setelah 24 jam.</DialogDescription>
+            <DialogDescription className="text-xs text-slate-400">
+              Status terhapus otomatis setelah 24 jam. Sisa: {11 - (activeStories.find((u: any) => u.userId === me?.id)?.statuses?.length ?? 0)}/11
+            </DialogDescription>
           </DialogHeader>
 
           <div className="flex gap-2 mb-4 mt-2">
@@ -9822,11 +10088,19 @@ setInterval(() => {
             </Button>
             <Button
               size="sm"
+              variant={createStatusType === "video" ? "default" : "outline"}
+              onClick={() => setCreateStatusType("video")}
+              className={`flex-1 rounded-xl text-xs font-bold ${createStatusType === "video" ? "bg-[#5865F2] hover:bg-[#4752C4]" : "border-[#3F4147] text-slate-300 hover:bg-[#2B2D31]"}`}
+            >
+              <Video className="w-3.5 h-3.5 mr-1.5" /> Video
+            </Button>
+            <Button
+              size="sm"
               variant={createStatusType === "text" ? "default" : "outline"}
               onClick={() => setCreateStatusType("text")}
               className={`flex-1 rounded-xl text-xs font-bold ${createStatusType === "text" ? "bg-[#5865F2] hover:bg-[#4752C4]" : "border-[#3F4147] text-slate-300 hover:bg-[#2B2D31]"}`}
             >
-              <Edit3 className="w-3.5 h-3.5 mr-1.5" /> Teks Status
+              <Edit3 className="w-3.5 h-3.5 mr-1.5" /> Teks
             </Button>
           </div>
 
@@ -9856,7 +10130,7 @@ setInterval(() => {
                       id="status-media-file-input"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) uploadStatusMedia(file);
+                        if (file) uploadStatusMedia(file, "image");
                       }}
                     />
                     <Button
@@ -9874,6 +10148,60 @@ setInterval(() => {
 
               <div>
                 <Label className="text-xs font-bold text-slate-300">Keterangan Gambar (Opsional)</Label>
+                <Input
+                  type="text"
+                  placeholder="Tambahkan keterangan..."
+                  value={createStatusCaption}
+                  onChange={(e) => setCreateStatusCaption(e.target.value)}
+                  className="bg-[#2B2D31] border-[#3F4147] text-xs rounded-xl mt-1.5 text-white"
+                  maxLength={100}
+                />
+              </div>
+            </div>
+          ) : createStatusType === "video" ? (
+            <div className="space-y-4">
+              <div className="border border-dashed border-[#4f545c] rounded-xl p-6 bg-[#2B2D31] flex flex-col items-center justify-center min-h-[180px]">
+                {createStatusVideo ? (
+                  <div className="relative w-full max-h-[160px] rounded-lg overflow-hidden flex items-center justify-center bg-black">
+                    <video src={createStatusVideo} className="max-h-[160px] object-contain" controls />
+                    <button
+                      type="button"
+                      onClick={() => setCreateStatusVideo(null)}
+                      className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 w-6 h-6 rounded-full flex items-center justify-center text-white z-10"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <Video className="w-8 h-8 text-slate-400 mb-2" />
+                    <span className="text-xs text-slate-300 font-bold mb-1">Unggah video status</span>
+                    <span className="text-[10px] text-slate-500 mb-3">Maksimal file 100MB</span>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      id="status-video-file-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadStatusMedia(file, "video");
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => document.getElementById("status-video-file-input")?.click()}
+                      disabled={uploadingStatusMedia}
+                      className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold"
+                    >
+                      {uploadingStatusMedia ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                      Pilih Video
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-300">Keterangan Video (Opsional)</Label>
                 <Input
                   type="text"
                   placeholder="Tambahkan keterangan..."
@@ -9945,7 +10273,7 @@ setInterval(() => {
           <div className="flex justify-end gap-3 pt-4 border-t border-[#3F4147] mt-5">
             <Button
               variant="outline"
-              onClick={() => setShowCreateStatus(false)}
+              onClick={() => { setShowCreateStatus(false); setCreateStatusVideo(null); }}
               className="rounded-xl border-[#3F4147] text-slate-300 hover:bg-[#2B2D31] text-xs font-bold"
               disabled={statusSubmitting}
             >
@@ -9953,7 +10281,12 @@ setInterval(() => {
             </Button>
             <Button
               onClick={handleCreateStatusSubmit}
-              disabled={statusSubmitting || uploadingStatusMedia || (createStatusType === "image" ? !createStatusImage : !createStatusCaption.trim())}
+              disabled={
+                statusSubmitting || uploadingStatusMedia ||
+                (createStatusType === "image" ? !createStatusImage
+                  : createStatusType === "video" ? !createStatusVideo
+                  : !createStatusCaption.trim())
+              }
               className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl text-xs font-bold px-4 cursor-pointer"
             >
               {statusSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
@@ -10093,10 +10426,36 @@ setInterval(() => {
             <div className="flex-1 w-full h-full flex items-center justify-center relative bg-black">
               {activeStory.type === "image" ? (
                 <div className="w-full h-full flex flex-col justify-center items-center relative">
-                  <img 
-                    src={activeStory.mediaUrl} 
-                    alt="Status media" 
-                    className="w-full h-full object-contain max-h-[90%]" 
+                  <img
+                    src={activeStory.mediaUrl}
+                    alt="Status media"
+                    className="w-full h-full object-contain max-h-[90%]"
+                  />
+                  {activeStory.caption && (
+                    <div className="absolute bottom-6 left-4 right-4 bg-black/65 backdrop-blur px-4 py-3 rounded-2xl text-center z-10 border border-white/5 shadow-lg max-h-[120px] overflow-y-auto">
+                      <p className="text-sm font-semibold text-white leading-relaxed">{activeStory.caption}</p>
+                    </div>
+                  )}
+                </div>
+              ) : activeStory.type === "video" ? (
+                <div className="w-full h-full flex flex-col justify-center items-center relative">
+                  <video
+                    key={activeStory.mediaUrl}
+                    ref={storyVideoRef}
+                    src={activeStory.mediaUrl}
+                    className="w-full h-full object-contain max-h-[90%]"
+                    autoPlay
+                    playsInline
+                    onTimeUpdate={(e) => {
+                      const vid = e.currentTarget;
+                      if (vid.duration) {
+                        setViewerProgress((vid.currentTime / vid.duration) * 100);
+                      }
+                    }}
+                    onEnded={() => {
+                      setViewerProgress(100);
+                      handleNextSlide();
+                    }}
                   />
                   {activeStory.caption && (
                     <div className="absolute bottom-6 left-4 right-4 bg-black/65 backdrop-blur px-4 py-3 rounded-2xl text-center z-10 border border-white/5 shadow-lg max-h-[120px] overflow-y-auto">

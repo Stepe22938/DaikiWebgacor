@@ -27,6 +27,8 @@ export const messagesTable = pgTable("messages", {
   deletedAt: timestamp("deleted_at"),
   deletedByUserId: integer("deleted_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   deletedScope: varchar("deleted_scope", { length: 20 }).notNull().default("visible"), // visible | everyone
+  messageType: varchar("message_type", { length: 30 }).notNull().default("text"),
+  systemMeta: text("system_meta"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [index("messages_conv_idx").on(t.conversationId, t.createdAt)]);

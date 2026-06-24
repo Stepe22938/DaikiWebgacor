@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, asc, isNull } from "drizzle-orm";
 import { db, usersTable, followsTable, userCosmeticsTable, cosmeticsTable } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 import {
@@ -429,26 +429,66 @@ router.get("/me/friends", async (req, res): Promise<void> => {
   const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
   if (!me) { res.status(404).json({ error: "User not found" }); return; }
 
-  console.log("[DEBUG] /me/friends - current user:", me.id, me.username);
+  const iFollowRows = await db
+    .select({ id: followsTable.followingId, pinnedAt: followsTable.pinnedAt })
+    .from(followsTable)
+    .where(eq(followsTable.followerId, me.id));
+  const theyFollow = await db
+    .select({ id: followsTable.followerId })
+    .from(followsTable)
+    .where(eq(followsTable.followingId, me.id));
 
-  const iFollow = await db.select({ id: followsTable.followingId }).from(followsTable).where(eq(followsTable.followerId, me.id));
-  const theyFollow = await db.select({ id: followsTable.followerId }).from(followsTable).where(eq(followsTable.followingId, me.id));
-
-  console.log("[DEBUG] /me/friends - iFollow:", iFollow);
-  console.log("[DEBUG] /me/friends - theyFollow:", theyFollow);
-
-  const iFollowSet = new Set(iFollow.map((r) => r.id));
   const theyFollowSet = new Set(theyFollow.map((r) => r.id));
-  const friendIds = [...iFollowSet].filter((id) => theyFollowSet.has(id));
-
-  console.log("[DEBUG] /me/friends - friendIds:", friendIds);
+  const friendRows = iFollowRows.filter((r) => theyFollowSet.has(r.id));
+  const friendIds = friendRows.map((r) => r.id);
+  const pinnedAtMap = new Map(friendRows.map((r) => [r.id, r.pinnedAt]));
 
   if (friendIds.length === 0) { res.json([]); return; }
 
-  const result = await buildPublicUsers(me.id, friendIds);
-  console.log("[DEBUG] /me/friends - result:", result);
-  
-  res.json(GetMyFriendsResponse.parse(result));
+  const users = await buildPublicUsers(me.id, friendIds);
+
+  const result = users
+    .map((u) => ({ ...u, pinnedAt: pinnedAtMap.get(u.id)?.toISOString() ?? null }))
+    .sort((a, b) => {
+      if (a.pinnedAt && !b.pinnedAt) return -1;
+      if (!a.pinnedAt && b.pinnedAt) return 1;
+      if (a.pinnedAt && b.pinnedAt) return a.pinnedAt > b.pinnedAt ? -1 : 1;
+      return (a.username ?? "").localeCompare(b.username ?? "");
+    });
+
+  res.json(result);
+});
+
+router.post("/follows/:userId/pin", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!me) { res.status(404).json({ error: "User not found" }); return; }
+
+  const targetId = parseInt(req.params.userId as string, 10);
+
+  await db.update(followsTable)
+    .set({ pinnedAt: new Date() })
+    .where(and(eq(followsTable.followerId, me.id), eq(followsTable.followingId, targetId)));
+
+  res.json({ success: true });
+});
+
+router.delete("/follows/:userId/pin", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const me = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!me) { res.status(404).json({ error: "User not found" }); return; }
+
+  const targetId = parseInt(req.params.userId as string, 10);
+
+  await db.update(followsTable)
+    .set({ pinnedAt: null })
+    .where(and(eq(followsTable.followerId, me.id), eq(followsTable.followingId, targetId)));
+
+  res.json({ success: true });
 });
 
 router.post("/admin/follows", async (req, res): Promise<void> => {

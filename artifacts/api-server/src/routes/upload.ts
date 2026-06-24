@@ -11,7 +11,13 @@ async function getDbUser(clerkId: string) {
   return db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, clerkId) });
 }
 
-router.post("/upload", express.raw({ type: "image/*", limit: "10mb" }), async (req, res): Promise<void> => {
+router.post("/upload", express.raw({
+  type: (req) => {
+    const ct = req.headers["content-type"] || "";
+    return ct.startsWith("image/") || ct.startsWith("video/");
+  },
+  limit: "100mb",
+}), async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) {
     res.status(401).json({ error: "Unauthorized" });

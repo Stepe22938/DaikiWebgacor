@@ -320,7 +320,7 @@ export function getGroupBoostPerks(boostCount: number) {
     perks: level === 3
       ? ["80 channels", "100 roles", "priority badge", "premium presence"]
       : level === 2
-      ? ["40 channels", "50 roles", "group spotlight"]
+      ? ["40 channels", "50 roles", "group spotlight", "YouTube video background"]
       : level === 1
       ? ["20 channels", "25 roles"]
       : ["10 channels", "10 roles"],

@@ -32,4 +32,6 @@ export interface PublicUser {
   equippedBadge?: string | null;
   /** @nullable */
   equippedBackground?: string | null;
+  /** @nullable */
+  pinnedAt?: string | null;
 }

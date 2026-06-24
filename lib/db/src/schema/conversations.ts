@@ -7,6 +7,7 @@ export const conversationsTable = pgTable("conversations", {
   name: varchar("name", { length: 100 }),
   iconUrl: text("icon_url"),
   bannerUrl: text("banner_url"),
+  bgVideoUrl: text("bg_video_url"),
   description: text("description"),
   ownerId: integer("owner_id").references(() => usersTable.id, { onDelete: "set null" }),
   inviteCode: varchar("invite_code", { length: 50 }).unique(),
@@ -20,6 +21,8 @@ export const conversationMembersTable = pgTable("conversation_members", {
   conversationId: integer("conversation_id").notNull().references(() => conversationsTable.id, { onDelete: "cascade" }),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  pinnedAt: timestamp("pinned_at"),
+  archivedAt: timestamp("archived_at"),
 }, (t) => [unique().on(t.conversationId, t.userId)]);
 
 export type Conversation = typeof conversationsTable.$inferSelect;

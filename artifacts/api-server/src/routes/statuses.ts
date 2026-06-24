@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, gt, and, desc, inArray } from "drizzle-orm";
+import { eq, gt, and, desc, inArray, count } from "drizzle-orm";
 import { db, usersTable, statusesTable, followsTable } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 
@@ -27,13 +27,13 @@ router.post("/statuses", async (req, res): Promise<void> => {
 
   const { type, mediaUrl, caption, backgroundColor, textColor } = req.body;
 
-  if (!type || (type !== "image" && type !== "text")) {
-    res.status(400).json({ error: "Invalid status type (must be image or text)" });
+  if (!type || (type !== "image" && type !== "text" && type !== "video")) {
+    res.status(400).json({ error: "Invalid status type (must be image, video, or text)" });
     return;
   }
 
-  if (type === "image" && !mediaUrl) {
-    res.status(400).json({ error: "Media URL is required for image status" });
+  if ((type === "image" || type === "video") && !mediaUrl) {
+    res.status(400).json({ error: "Media URL is required for image/video status" });
     return;
   }
 
@@ -43,6 +43,17 @@ router.post("/statuses", async (req, res): Promise<void> => {
   }
 
   try {
+    // Enforce 11-status-per-24h limit
+    const [{ value: activeCount }] = await db
+      .select({ value: count() })
+      .from(statusesTable)
+      .where(and(eq(statusesTable.userId, user.id), gt(statusesTable.expiresAt, new Date())));
+
+    if (activeCount >= 11) {
+      res.status(400).json({ error: "Maksimal 11 status aktif dalam 24 jam" });
+      return;
+    }
+
     // Expires in exactly 24 hours
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 

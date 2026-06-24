@@ -222,6 +222,7 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
     });
   }
 
+  console.log(`[gacha/spin] count=${count} results.length=${results.length}`);
   res.json({
     results,
     diamonds: finalDiamonds,

@@ -829,6 +829,9 @@ export const ListConversationsResponseItem = zod.object({
   "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
+  "pinnedAt": zod.string().nullish(),
+  "archivedAt": zod.string().nullish(),
+  "bgVideoUrl": zod.string().nullish(),
   "isVerified": zod.boolean().optional(),
   "otherUserId": zod.number().nullish(),
   "otherUsername": zod.string().nullish(),
@@ -941,6 +944,7 @@ export const UpdateGroupBody = zod.object({
   "description": zod.string().max(updateGroupBodyDescriptionMax).nullish(),
   "iconUrl": zod.string().nullish(),
   "bannerUrl": zod.string().nullish(),
+  "bgVideoUrl": zod.string().nullish(),
   "inviteCode": zod.string().nullish()
 })
 
@@ -1016,6 +1020,8 @@ export const ListMessagesResponseItem = zod.object({
   "senderIsVerified": zod.boolean().optional(),
   "senderEquippedBorder": zod.string().nullish(),
   "starred": zod.boolean().optional(),
+  "messageType": zod.string().optional(),
+  "systemMeta": zod.string().nullish(),
   "reactions": zod.array(zod.object({
   "emoji": zod.string(),
   "count": zod.number(),
@@ -1404,7 +1410,8 @@ export const GetMyFriendsResponseItem = zod.object({
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
-  "equippedBackground": zod.string().nullish()
+  "equippedBackground": zod.string().nullish(),
+  "pinnedAt": zod.string().nullish()
 })
 export const GetMyFriendsResponse = zod.array(GetMyFriendsResponseItem)
 

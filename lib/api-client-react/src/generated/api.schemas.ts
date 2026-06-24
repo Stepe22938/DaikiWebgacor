@@ -119,6 +119,8 @@ export interface PublicUser {
   equippedBadge?: string | null;
   /** @nullable */
   equippedBackground?: string | null;
+  /** @nullable */
+  pinnedAt?: string | null;
 }
 
 export interface FollowInput {
@@ -390,6 +392,12 @@ export interface ConversationSummary {
   createdAt: string;
   /** @nullable */
   inviteCode?: string | null;
+  /** @nullable */
+  pinnedAt?: string | null;
+  /** @nullable */
+  archivedAt?: string | null;
+  /** @nullable */
+  bgVideoUrl?: string | null;
 }
 
 export interface MessageReactionSummary {

@@ -2113,7 +2113,7 @@ function FormsTab() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1.5">
                   <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${form.type === "poll" ? "bg-violet-50 text-[#6366f1] border-violet-100" : "bg-blue-50 text-blue-600 border-blue-100"}`}>
-                    {form.type === "poll" ? "ðŸ—³ï¸ Voting" : "ðŸ“‹ Form"}
+                    {form.type === "poll" ? "ðŸ—³ï¸ Voting" : "📋 Form"}
                   </span>
                   <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${form.status === "open" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-slate-50 text-slate-500 border-slate-100"}`}>
                     {form.status === "open" ? "Open" : "Closed"}
@@ -2199,7 +2199,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
       <DialogHeader className="px-5 pt-5 pb-3 border-b border-slate-100 bg-white shrink-0">
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
           <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black border ${form.type === "poll" ? "bg-violet-50 text-[#6366f1] border-violet-100" : "bg-blue-50 text-blue-600 border-blue-100"}`}>
-            {form.type === "poll" ? "ðŸ—³ï¸ Voting" : "ðŸ“‹ Form"}
+            {form.type === "poll" ? "ðŸ—³ï¸ Voting" : "📋 Form"}
           </span>
           {hasResponded && (
             <span className="text-[9px] px-2 py-0.5 rounded-lg font-black border bg-emerald-50 text-emerald-600 border-emerald-100">âœ“ Submitted</span>
@@ -2313,7 +2313,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
             </Button>
           ) : (
             <Button className="w-full bg-[#6366f1] text-white hover:bg-indigo-700 font-extrabold text-xs h-9 rounded-xl shadow-md shadow-violet-500/5" disabled={submitting} onClick={handleSubmitForm}>
-              {submitting ? "Submitting..." : "ðŸ“‹ Submit Answers"}
+              {submitting ? "Submitting..." : "📋 Submit Answers"}
             </Button>
           )}
         </div>
@@ -2767,6 +2767,7 @@ function GachaTab() {
     }, 100);
 
     setTimeout(async () => {
+      console.log('[gacha] res.results length:', res?.results?.length, 'full res:', res);
       setSpinResults(res.results ?? []);
       setResultsModalOpen(true);
       setIsSpinning(false);
@@ -2911,8 +2912,8 @@ function GachaTab() {
     }
 
     return (
-      <div className={`rounded-xl bg-purple-950/40 border border-purple-500/10 flex items-center justify-center shadow-inner select-none ${isLg ? "w-16 h-16 text-3xl" : "w-10 h-10 text-xl"}`}>
-        ðŸŽ
+      <div className={`rounded-xl bg-purple-950/40 border border-purple-500/10 flex items-center justify-center shadow-inner select-none ${isLg ? "w-16 h-16 text-3xl" : "w-10 h-10"}`}>
+        <Gift className={isLg ? "w-7 h-7 text-purple-400" : "w-4 h-4 text-purple-400"} />
       </div>
     );
   };
@@ -3191,7 +3192,7 @@ function GachaTab() {
                   animationDelay: `${i * 0.08}s`
                 } as any}
               >
-                ðŸ’Ž
+                <Gem className="h-4 w-4" />
               </div>
             );
           })}
@@ -3284,7 +3285,7 @@ function GachaTab() {
             <div className="flex flex-col">
               <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest leading-none">Your Diamonds</span>
               <span className="text-2xl font-black text-amber-300 mt-1 flex items-center gap-1.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                {board.diamonds ?? 0} <span className="text-xl">ðŸ’Ž</span>
+                {board.diamonds ?? 0} <span className="text-xl">💎</span>
               </span>
               <span className="text-[9px] font-bold text-purple-200/60 uppercase tracking-wider mt-1">
                 Top up lewat Wallet
@@ -3361,37 +3362,61 @@ function GachaTab() {
                           playSound("click");
                           setSelectedItem(item);
                         }}
-                        className={`relative rounded-xl p-3 border flex flex-col justify-between items-center text-center cursor-pointer transition-all aspect-square select-none ${rarityBorder}`}
+                        className={`relative rounded-xl border cursor-pointer transition-all aspect-square select-none overflow-hidden ${rarityBorder}`}
                       >
-                        <div className={`w-11 h-11 rounded-lg border flex items-center justify-center relative ${isOwned ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-purple-400/20 bg-black/35 text-purple-200"}`}>
-                          {renderCosmeticTypeIcon(item.type, "h-5 w-5")}
-                          {isOwned && (
-                            <span className="absolute -bottom-1 -right-1 rounded-full border border-[#0b0713] bg-emerald-400 p-0.5 text-slate-950">
-                              <CheckCircle2 className="h-3 w-3" />
+                        {/* Background image for background cosmetics */}
+                        {item.type === "background" && (
+                          <>
+                            <img
+                              src={item.value || getFallbackBackground(item.id)}
+                              alt={item.name}
+                              className="absolute inset-0 w-full h-full object-cover opacity-65"
+                              onError={(e: any) => handleBackgroundError(e, item.id)}
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                          </>
+                        )}
+
+                        {/* Dark base for non-background items */}
+                        {item.type !== "background" && (
+                          <div className="absolute inset-0 bg-[#0d0920]" />
+                        )}
+
+                        {/* Center cosmetic preview */}
+                        <div className="absolute inset-0 flex items-center justify-center p-3">
+                          {item.type === "badge" && (
+                            <span className={`text-[7px] px-2 py-1 rounded border font-black uppercase tracking-wider text-center max-w-full ${item.value}`}>
+                              {item.name}
                             </span>
                           )}
-                        </div>
-                        <div className="hidden w-10 h-10 rounded-lg bg-black/40 flex items-center justify-center border border-purple-500/5 text-lg relative">
-                          {item.type === "badge" ? "ðŸ›¡ï¸" : item.type === "border" ? "ðŸ–¼ï¸" : "ðŸ–¼ï¸"}
-                          {isOwned && (
-                            <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black border border-[#0b0713]">
-                              âœ“
-                            </span>
+                          {item.type === "border" && (
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${item.value}`}>
+                              <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center">
+                                <span className="text-[5px] font-bold text-slate-500 uppercase tracking-widest">BDR</span>
+                              </div>
+                            </div>
+                          )}
+                          {!["badge", "border", "background"].includes(item.type) && (
+                            <Gift className="h-6 w-6 text-purple-300/50" />
                           )}
                         </div>
 
-                        <div className="w-full mt-2 min-w-0">
-                          <p className="text-[10px] font-black text-slate-100 truncate w-full leading-tight">
+                        {/* Owned indicator */}
+                        {isOwned && (
+                          <span className="absolute top-1.5 right-1.5 rounded-full border border-black/50 bg-emerald-400 p-0.5 text-slate-950 z-10">
+                            <CheckCircle2 className="h-2.5 w-2.5" />
+                          </span>
+                        )}
+
+                        {/* Bottom name bar */}
+                        <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-black/60 backdrop-blur-sm">
+                          <p className="text-[9px] font-black text-slate-100 truncate leading-tight">
                             {item.name}
                           </p>
-                          <span className="text-[8px] font-bold text-purple-300/60 uppercase block mt-0.5">
+                          <span className="text-[7px] font-bold text-purple-300/60 uppercase">
                             {item.type}
                           </span>
                         </div>
-
-                        {!isOwned && (
-                          <span className="hidden absolute top-1 right-1 text-[8px] opacity-40">ðŸ”’</span>
-                        )}
                       </div>
                     );
                   })}
@@ -3401,13 +3426,13 @@ function GachaTab() {
           </div>
 
           {/* SPIN CONTROLS PANEL */}
-          <div className="bg-[#0f0a1a]/95 border border-purple-500/20 shadow-2xl rounded-2xl p-5 relative overflow-visible">
+          <div className="bg-[#0f0a1a]/95 border border-purple-500/20 shadow-2xl rounded-2xl p-5 relative">
             <div className="flex justify-between items-center mb-4">
               <div className="flex flex-col">
                 <span className="text-xs font-black text-purple-300 uppercase tracking-widest">SUMMON CONTROLS</span>
-                <span className="text-[10px] text-slate-400 font-semibold mt-0.5">Bulk spin activates Rush Guarantee mechanics</span>
+                <span className="text-[10px] text-slate-400 font-semibold mt-0.5">Pilih jumlah spin — bulk spin aktifkan Rush Guarantee</span>
               </div>
-              
+
               <div className="flex items-center gap-2 text-[10px] text-purple-300 font-black">
                 <input
                   type="checkbox"
@@ -3417,101 +3442,37 @@ function GachaTab() {
                   className="rounded border-purple-500 text-purple-600 bg-[#06040a] focus:ring-0 cursor-pointer"
                 />
                 <label htmlFor="auto-equip-check" className="cursor-pointer select-none">
-                  Auto-Equip Won Items
+                  Auto-Equip
                 </label>
               </div>
             </div>
 
-            <div className="grid grid-cols-12 gap-4 relative overflow-visible">
-              <div className="col-span-5">
+            <div className="grid grid-cols-4 gap-3">
+              {([
+                { count: 1 as const,  cost: 9,   label: "1x",  color: "from-cyan-600 to-purple-800 hover:from-cyan-500 hover:to-purple-700 border-cyan-400/30 text-white",          gem: "text-cyan-300",   guarantee: null        },
+                { count: 10 as const, cost: 79,  label: "10x", color: "from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 border-blue-400/30 text-white",          gem: "text-blue-200",   guarantee: "B+ Lock"   },
+                { count: 25 as const, cost: 195, label: "25x", color: "from-pink-600 to-rose-700 hover:from-pink-500 hover:to-rose-600 border-pink-400/30 text-white",             gem: "text-pink-200",   guarantee: "A+ Lock"   },
+                { count: 50 as const, cost: 390, label: "50x", color: "from-amber-500 to-yellow-400 hover:from-amber-600 hover:to-yellow-500 border-amber-400/30 text-slate-950", gem: "text-slate-700",  guarantee: "S Lock"    },
+              ]).map(({ count, cost, label, color, gem, guarantee }) => (
                 <button
+                  key={count}
                   type="button"
-                  onClick={() => handleSpin(1)}
+                  onClick={() => handleSpin(count)}
                   disabled={isSpinning}
-                  className="w-full py-4 rounded-xl bg-gradient-to-br from-cyan-600 to-purple-800 hover:from-cyan-500 hover:to-purple-700 text-white border border-cyan-400/30 shadow-[0_4px_15px_rgba(6,182,212,0.25)] flex flex-col items-center justify-center cursor-pointer active:scale-[0.97] transition-all disabled:opacity-50 select-none group -skew-x-12"
+                  className={`py-4 rounded-xl bg-gradient-to-br ${color} border shadow-[0_4px_14px_rgba(0,0,0,0.25)] flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-[0.96] transition-all disabled:opacity-50 select-none group`}
                 >
-                  <span className="text-xs font-black uppercase italic tracking-wider group-hover:scale-105 transition-transform skew-x-12">
-                    1 SPIN
+                  <span className="text-sm font-black uppercase italic tracking-wider group-hover:scale-105 transition-transform">
+                    {label}
                   </span>
-                  <span className="text-xs font-black text-cyan-300 mt-1.5 flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] skew-x-12">
-                    9 <Gem className="h-3.5 w-3.5" />
+                  <span className={`text-xs font-black flex items-center gap-0.5 ${gem}`}>
+                    {cost} <Gem className="h-3 w-3" />
                   </span>
+                  {guarantee && (
+                    <span className="text-[7px] font-black uppercase tracking-wider opacity-70 mt-0.5">
+                      {guarantee}
+                    </span>
+                  )}
                 </button>
-              </div>
-
-              <div className="col-span-7 flex relative overflow-visible">
-                <button
-                  type="button"
-                  onClick={() => handleSpin(bulkOption)}
-                  disabled={isSpinning}
-                  className="flex-1 py-4 rounded-l-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 border-t border-b border-l border-amber-400/20 shadow-[0_4px_20px_rgba(245,158,11,0.25)] flex flex-col items-center justify-center cursor-pointer active:scale-[0.98] transition-all disabled:opacity-50 select-none group -skew-x-12"
-                >
-                  <span className="text-xs font-black uppercase italic tracking-wider group-hover:scale-105 transition-transform skew-x-12">
-                    {bulkOption} SPIN
-                  </span>
-                  <span className="text-xs font-black text-slate-950 mt-1.5 flex items-center gap-1 skew-x-12">
-                    {bulkOption === 10 ? 79 : bulkOption === 25 ? 195 : 390} <Gem className="h-3.5 w-3.5" />
-                  </span>
-                  <span className="text-[8px] font-black text-slate-900/70 uppercase tracking-wider mt-1 skew-x-12">
-                    {getBulkGuaranteeLabel(bulkOption)}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    playSound("click");
-                    setBulkDropdownOpen(!bulkDropdownOpen);
-                  }}
-                  disabled={isSpinning}
-                  className="px-3 rounded-r-xl bg-amber-500 hover:bg-amber-400 border-l border-amber-955/20 border-t border-b border-r border-amber-400/20 text-slate-950 flex items-center justify-center cursor-pointer disabled:opacity-50 select-none -skew-x-12"
-                >
-                  <ChevronDown className={`h-4 w-4 skew-x-12 transition-transform duration-200 ${bulkDropdownOpen ? "rotate-180" : ""}`} />
-                </button>
-
-                {bulkDropdownOpen && (
-                  <div className="absolute right-0 bottom-full mb-3 bg-[#120a22] border-2 border-amber-500/40 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.9)] z-50 overflow-hidden w-56 py-1 divide-y divide-purple-500/10">
-                    {[10, 25, 50].map((option: any) => {
-                      let cost = 79;
-                      if (option === 25) cost = 195;
-                      else if (option === 50) cost = 390;
-                      
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => {
-                            playSound("click");
-                            setBulkOption(option);
-                            setBulkDropdownOpen(false);
-                          }}
-                          className={`w-full px-4 py-3.5 text-left text-xs font-black flex items-center justify-between hover:bg-purple-950/60 transition-colors ${
-                            bulkOption === option ? "text-amber-400" : "text-purple-200"
-                          }`}
-                        >
-                          <span className="flex flex-col">
-                            <span>{option} SPINS Option</span>
-                            <span className="text-[9px] text-purple-300/60 mt-0.5">{getBulkGuaranteeLabel(option)}</span>
-                          </span>
-                          <span className="flex items-center gap-1 text-amber-400 font-extrabold">{cost} <Gem className="h-3.5 w-3.5" /></span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              {[
-                ["10x", "B+ Lock"],
-                ["25x", "A+ Lock"],
-                ["50x", "S Lock"],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-lg border border-purple-500/20 bg-black/25 px-3 py-2 text-center">
-                  <p className="text-[9px] font-black text-purple-300 uppercase tracking-widest">{label}</p>
-                  <p className="text-[10px] font-black text-amber-300 uppercase tracking-wide mt-0.5">{value}</p>
-                </div>
               ))}
             </div>
           </div>
@@ -3666,9 +3627,6 @@ function GachaTab() {
                       <div className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 bg-slate-950/60 border border-purple-500/10 rounded-xl text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                         <Lock className="h-3.5 w-3.5" /> Spin gacha untuk membuka item ini
                       </div>
-                      <div className="hidden w-full text-center py-2 px-4 bg-slate-950/60 border border-purple-500/10 rounded-xl text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                        ðŸ”’ SPIN GACHA UNTUK MEMBUKA ITEM INI
-                      </div>
                     )}
                   </div>
                 </div>
@@ -3740,7 +3698,7 @@ function GachaTab() {
         <DialogContent className="bg-[#120a22] border-purple-500/30 text-white max-w-md flex flex-col p-6 rounded-2xl shadow-2xl z-[100]">
           <DialogHeader className="pb-4 border-b border-purple-500/10">
             <DialogTitle className="text-base font-black text-white italic tracking-wide flex items-center gap-2">
-              ðŸ“‹ PREVIEW HADIAH
+              📋 PREVIEW HADIAH
             </DialogTitle>
             <p className="text-[10px] text-purple-300 font-bold uppercase tracking-wider mt-1">
               Board NO. 780608
@@ -3797,19 +3755,20 @@ function GachaTab() {
 
       {/* CONGRATULATIONS (SELAMAT) REVEAL MODAL */}
       <Dialog open={resultsModalOpen} onOpenChange={(open) => { playSound("click"); if (!open) setResultsModalOpen(false); }}>
-        <DialogContent className="bg-[#0b0614] border-purple-500/30 text-white max-w-2xl flex flex-col max-h-[85vh] p-0 overflow-hidden rounded-2xl shadow-2xl z-[100]">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b border-purple-500/15 bg-black/40">
+        <DialogContent className="bg-[#0b0614] border-purple-500/30 text-white max-w-2xl flex flex-col h-[85vh] p-0 overflow-hidden rounded-2xl shadow-2xl z-[100]">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-purple-500/15 bg-black/40">
             <div className="flex items-center justify-between">
               <DialogTitle className="text-lg font-black text-white italic tracking-wider flex items-center gap-2">
-                ðŸŒŸ Spin Results ({spinCount}x)
+                🌟 Spin Results ({spinCount}x)
               </DialogTitle>
               <span className="text-[10px] bg-purple-950 border border-purple-500/30 text-amber-300 px-3 py-1 rounded-full font-black">
-                Balance: {board.diamonds} ðŸ’Ž
+                Balance: {board.diamonds} 💎
               </span>
             </div>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 p-6 bg-[radial-gradient(circle_at_center,_#1c102a_0%,_#09050d_100%)]">
+          <div className="flex-1 min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_center,_#1c102a_0%,_#09050d_100%)]">
+            <div className="p-6">
             {spinCount === 1 ? (
               (() => {
                 const res = spinResults?.[0];
@@ -3862,12 +3821,12 @@ function GachaTab() {
                           <div className="py-1.5 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex flex-col items-center">
                             <span className="text-[8px] font-black text-amber-400 uppercase tracking-wider leading-none">Duplicate</span>
                             <span className="text-xs font-black text-amber-300 mt-1 flex items-center gap-0.5">
-                              +{res.refundAmount ?? 0} ðŸ’Ž Refunded
+                              +{res.refundAmount ?? 0} 💎 Refunded
                             </span>
                           </div>
                         ) : (
                           <div className="py-1.5 px-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-[10px] font-black uppercase tracking-widest animate-bounce">
-                            ðŸŽ‰ UNLOCKED!
+                            🎉 UNLOCKED!
                           </div>
                         )}
                       </div>
@@ -3929,12 +3888,12 @@ function GachaTab() {
                           {isDup ? (
                             <div className="py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg text-center">
                               <span className="text-[7px] font-black text-amber-300 mt-1 flex items-center gap-0.5 justify-center leading-none">
-                                +{res.refundAmount ?? 0} ðŸ’Ž
+                                +{res.refundAmount ?? 0} 💎
                               </span>
                             </div>
                           ) : (
                             <div className="py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-[8px] font-black tracking-wider text-center leading-none">
-                              ðŸŽ‰ UNLOCKED
+                              🎉 UNLOCKED
                             </div>
                           )}
                         </div>
@@ -3944,9 +3903,10 @@ function GachaTab() {
                 </div>
               </div>
             )}
-          </ScrollArea>
+            </div>
+          </div>
 
-          <DialogFooter className="px-6 py-4 border-t border-purple-500/15 bg-black/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <DialogFooter className="flex-shrink-0 px-6 py-4 border-t border-purple-500/15 bg-black/40 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
               <span>{shouldEquipWon ? "âœ“ Auto-Equipped highest tier item." : "Items stored in Inventory."}</span>
             </div>
@@ -4107,7 +4067,7 @@ function WalletTab() {
       {/* TRANSACTION HISTORY */}
       <div className="bg-white border border-[#eae8f5] shadow-sm rounded-2xl p-5">
         <h3 className="text-sm font-extrabold text-[#110e3d] uppercase tracking-wider mb-4 pb-2 border-b border-[#eae8f5] flex items-center gap-2">
-          <span>ðŸ“œ</span> Transaction History
+          <span>📜</span> Transaction History
         </h3>
 
         {transactions.length === 0 ? (

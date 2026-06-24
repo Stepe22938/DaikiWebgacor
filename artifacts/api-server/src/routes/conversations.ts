@@ -1196,6 +1196,15 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
     .where(eq(conversationMembersTable.conversationId, conv.id));
 
+  const [myMembership] = await db
+    .select({ pinnedAt: conversationMembersTable.pinnedAt, archivedAt: conversationMembersTable.archivedAt })
+    .from(conversationMembersTable)
+    .where(and(
+      eq(conversationMembersTable.conversationId, conv.id),
+      eq(conversationMembersTable.userId, currentUserId),
+    ))
+    .limit(1);
+
   const [lastMsg] = await db
     .select()
     .from(messagesTable)
@@ -1266,6 +1275,9 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     lastMessageSenderId: lastMsg?.senderId ?? null,
     inviteCode: conv.inviteCode ?? null,
     createdAt: serializeDates(conv).createdAt,
+    pinnedAt: myMembership?.pinnedAt ? serializeDates({ pinnedAt: myMembership.pinnedAt }).pinnedAt : null,
+    archivedAt: myMembership?.archivedAt ? serializeDates({ archivedAt: myMembership.archivedAt }).archivedAt : null,
+    bgVideoUrl: conv.bgVideoUrl ?? null,
   };
 }
 
@@ -1336,6 +1348,14 @@ router.get("/conversations", async (req, res): Promise<void> => {
     .orderBy(desc(conversationsTable.updatedAt));
 
   const summaries = await Promise.all(convs.map((c) => buildSummary(c, user.id)));
+  summaries.sort((a, b) => {
+    if (a.pinnedAt && !b.pinnedAt) return -1;
+    if (!a.pinnedAt && b.pinnedAt) return 1;
+    if (a.pinnedAt && b.pinnedAt) return a.pinnedAt > b.pinnedAt ? -1 : 1;
+    const aTime = a.lastMessageAt ?? a.createdAt;
+    const bTime = b.lastMessageAt ?? b.createdAt;
+    return aTime > bTime ? -1 : 1;
+  });
   res.json(ListConversationsResponse.parse(summaries));
 });
 
@@ -1545,6 +1565,22 @@ router.patch("/conversations/:id", async (req, res): Promise<void> => {
     } else {
       updatePayload.inviteCode = null;
     }
+  }
+
+  // bgVideoUrl requires Level 2 boost
+  if (parsed.data.bgVideoUrl !== undefined && parsed.data.bgVideoUrl !== null && parsed.data.bgVideoUrl.trim() !== "") {
+    const boostState = await getGroupBoostState(id);
+    if (boostState.level < 2) {
+      res.status(403).json({ error: "Video background hanya tersedia untuk group Level 2 Boost atau lebih" });
+      return;
+    }
+    const ytUrl = parsed.data.bgVideoUrl.trim();
+    const ytIdMatch = ytUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([\w-]{11})/);
+    if (!ytIdMatch) {
+      res.status(400).json({ error: "URL YouTube tidak valid. Gunakan format youtube.com/watch?v=... atau youtu.be/..." });
+      return;
+    }
+    updatePayload.bgVideoUrl = ytUrl;
   }
 
   const [updated] = await db
@@ -1806,6 +1842,8 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
       deletedAt: messagesTable.deletedAt,
       deletedByUserId: messagesTable.deletedByUserId,
       deletedScope: messagesTable.deletedScope,
+      messageType: messagesTable.messageType,
+      systemMeta: messagesTable.systemMeta,
       createdAt: messagesTable.createdAt,
       updatedAt: messagesTable.updatedAt,
       senderUsername: sql<string>`coalesce(${usersTable.username}, ${messagesTable.webhookName})`,
@@ -2985,6 +3023,26 @@ router.post("/conversations/:id/members", async (req, res): Promise<void> => {
     .values({ conversationId: id, userId: parsed.data.userId })
     .onConflictDoNothing();
 
+  // System message in #general when member is added
+  const [firstChannel] = await db
+    .select()
+    .from(channelsTable)
+    .where(and(eq(channelsTable.conversationId, id), eq(channelsTable.type, "text")))
+    .orderBy(asc(channelsTable.position))
+    .limit(1);
+  if (firstChannel) {
+    const adderName = user.displayName || user.username;
+    const addedName = newUser.displayName || newUser.username;
+    await db.insert(messagesTable).values({
+      conversationId: id,
+      channelId: firstChannel.id,
+      senderId: null,
+      content: `${addedName} ditambahkan oleh ${adderName}`,
+      messageType: "system_added",
+      systemMeta: JSON.stringify({ addedByUserId: user.id, addedByUsername: user.username, addedByDisplayName: user.displayName }),
+    });
+  }
+
   res.status(201).json({
     userId: newUser.id,
     username: newUser.username,
@@ -3549,11 +3607,123 @@ router.post("/invites/:code/join", async (req, res): Promise<void> => {
         userId: user.id,
       })
       .onConflictDoNothing();
+
+    // System message in #general when member joins via link
+    const [firstChannel] = await db
+      .select()
+      .from(channelsTable)
+      .where(and(eq(channelsTable.conversationId, conv.id), eq(channelsTable.type, "text")))
+      .orderBy(asc(channelsTable.position))
+      .limit(1);
+    if (firstChannel) {
+      const joinName = user.displayName || user.username;
+      await db.insert(messagesTable).values({
+        conversationId: conv.id,
+        channelId: firstChannel.id,
+        senderId: null,
+        content: `${joinName} bergabung via tautan undangan`,
+        messageType: "system_join",
+      });
+    }
   }
 
   res.json(JoinGroupByInviteCodeResponse.parse({
     conversationId: conv.id,
   }));
+});
+
+/** POST /conversations/:id/pin — Pin a conversation for the current user */
+router.post("/conversations/:id/pin", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const [member] = await db
+    .select({ id: conversationMembersTable.id })
+    .from(conversationMembersTable)
+    .where(and(
+      eq(conversationMembersTable.conversationId, id),
+      eq(conversationMembersTable.userId, user.id),
+    ))
+    .limit(1);
+  if (!member) { res.status(403).json({ error: "Not a member" }); return; }
+
+  await db
+    .update(conversationMembersTable)
+    .set({ pinnedAt: new Date() })
+    .where(and(
+      eq(conversationMembersTable.conversationId, id),
+      eq(conversationMembersTable.userId, user.id),
+    ));
+
+  res.json({ success: true });
+});
+
+/** DELETE /conversations/:id/pin — Unpin a conversation for the current user */
+router.delete("/conversations/:id/pin", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  await db
+    .update(conversationMembersTable)
+    .set({ pinnedAt: null })
+    .where(and(
+      eq(conversationMembersTable.conversationId, id),
+      eq(conversationMembersTable.userId, user.id),
+    ));
+
+  res.json({ success: true });
+});
+
+/** POST /conversations/:id/archive — Archive a conversation for the current user */
+router.post("/conversations/:id/archive", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  await db
+    .update(conversationMembersTable)
+    .set({ archivedAt: new Date(), pinnedAt: null })
+    .where(and(
+      eq(conversationMembersTable.conversationId, id),
+      eq(conversationMembersTable.userId, user.id),
+    ));
+
+  res.json({ success: true });
+});
+
+/** DELETE /conversations/:id/archive — Unarchive a conversation */
+router.delete("/conversations/:id/archive", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  await db
+    .update(conversationMembersTable)
+    .set({ archivedAt: null })
+    .where(and(
+      eq(conversationMembersTable.conversationId, id),
+      eq(conversationMembersTable.userId, user.id),
+    ));
+
+  res.json({ success: true });
 });
 
 export default router;
