@@ -12,6 +12,7 @@ import {
   boostPackagesTable,
   premiumGiftsTable,
   walletTransactionsTable,
+  productOrdersTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
@@ -258,6 +259,24 @@ router.post("/payments/sayabayar/webhook", async (req, res): Promise<void> => {
         res.status(400).json({ error: "Invalid webhook signature" });
         return;
       }
+    }
+
+    // 1. Check if this is a product purchase order
+    const [order] = await db
+      .select()
+      .from(productOrdersTable)
+      .where(eq(productOrdersTable.invoiceId, invoiceId))
+      .limit(1);
+
+    if (order) {
+      if (order.status === "pending") {
+        await db
+          .update(productOrdersTable)
+          .set({ status: "completed", updatedAt: new Date() })
+          .where(eq(productOrdersTable.id, order.id));
+      }
+      res.json({ ok: true, message: "Product order marked as completed (paid)" });
+      return;
     }
 
     const likePattern = `%[SayaBayar ID: ${invoiceId}]%`;

@@ -124,6 +124,9 @@ import {
   Crown,
   Archive,
   ArchiveX,
+  Ban,
+  ShoppingBag,
+  Bell,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -160,7 +163,7 @@ type UploadedAttachment = {
 };
 
 function extractYouTubeId(url: string): string | null {
-  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([\w-]{11})/);
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|live\/))([\w-]{11})/);
   return m ? m[1] : null;
 }
 
@@ -1164,13 +1167,16 @@ function ConvItem({
                 <AvatarFallback className="text-xs bg-slate-100 font-bold text-[#6366f1]">{getInitials(name)}</AvatarFallback>
               </Avatar>
             </div>
-            <div className="min-w-0 flex-1 pr-5">
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1.5 min-w-0">
+            <div className="min-w-0 flex-1 pr-5 flex flex-col justify-center">
+              <div className="flex items-center justify-between gap-1 min-w-0 w-full">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
                   {isPinned && <Pin className={`w-2.5 h-2.5 shrink-0 flex-none ${dark ? "text-[#5865F2]" : "text-[#6366f1]"}`} />}
-                  <span className={`font-bold text-xs truncate ${selected ? dark ? "text-white" : "text-[#6366f1]" : dark ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{name}</span>
+                  <span className={`font-bold text-xs truncate block flex-1 ${selected ? dark ? "text-white" : "text-[#6366f1]" : dark ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{name}</span>
                   {conv.type === "dm" && (conv as any).otherUserIsVerified && (
                     <BadgeCheck className="w-3 h-3 text-blue-400 fill-blue-400/20 shrink-0 flex-none" />
+                  )}
+                  {conv.type === "dm" && (conv as any).otherUserIsBusinessVerified && (
+                    <BadgeCheck className="w-3 h-3 text-emerald-500 fill-emerald-500/20 shrink-0 flex-none" />
                   )}
                   {conv.type === "group" && (conv as any).isVerified && (
                     <BadgeCheck className="w-3 h-3 text-blue-400 fill-blue-400/20 shrink-0 flex-none" />
@@ -1188,11 +1194,11 @@ function ConvItem({
                 )}
               </div>
               {conv.lastMessageContent && (
-                <p className={`text-[10px] font-bold truncate mt-0.5 ${dark ? "text-[#949BA4]" : "text-slate-400"} flex items-center gap-1`}>
+                <p className={`text-[10px] font-bold mt-0.5 ${dark ? "text-[#949BA4]" : "text-slate-400"} flex items-center gap-1 min-w-0 w-full`}>
                   {conv.lastMessageSenderId === me?.id && (
                     <span className={`text-[11px] font-black select-none leading-none shrink-0 ${dark ? "text-[#5865F2]" : "text-[#34b7f1]"}`}>✓✓</span>
                   )}
-                  <span className="truncate">{conv.lastMessageContent}</span>
+                  <span className="truncate block flex-1">{conv.lastMessageContent}</span>
                 </p>
               )}
             </div>
@@ -2552,6 +2558,45 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   const selectedConv = conversations.find((c) => c.id === selectedId) ?? null;
   const isGroup = selectedConv?.type === "group";
+  const [selectedCatalogProduct, setSelectedCatalogProduct] = useState<any | null>(null);
+  const [buyingProduct, setBuyingProduct] = useState(false);
+
+  const { data: myPurchases = [], refetch: refetchMyPurchases } = useQuery({
+    queryKey: ["/api/business/purchases"],
+    queryFn: () => customFetch<any[]>("/api/business/purchases"),
+  });
+
+  const handleBuyProduct = async (productId: number) => {
+    try {
+      setBuyingProduct(true);
+      const data = await customFetch<{ checkoutUrl: string }>(`/api/business/products/${productId}/buy`, {
+        method: "POST"
+      });
+      if (data && data.checkoutUrl) {
+        refetchMyPurchases();
+        window.open(data.checkoutUrl, "_blank");
+      } else {
+        throw new Error("Checkout URL tidak ditemukan.");
+      }
+    } catch (err: any) {
+      toast({
+        title: "Gagal membuat invoice",
+        description: err.message || "Terjadi kesalahan saat menghubungi SayaBayar.",
+        variant: "destructive"
+      });
+    } finally {
+      setBuyingProduct(false);
+    }
+  };
+  const otherUserIdForCatalog = selectedConv?.type === "dm" && (selectedConv as any).otherUserIsSeller ? selectedConv.otherUserId : null;
+  const { data: sellerCatalogProducts = [] } = useQuery<any[]>({
+    queryKey: ["/api/business/products/seller", otherUserIdForCatalog],
+    queryFn: () => {
+      if (!otherUserIdForCatalog) return Promise.resolve([]);
+      return customFetch<any[]>(`/api/business/products/seller/${otherUserIdForCatalog}`);
+    },
+    enabled: !!otherUserIdForCatalog,
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2918,6 +2963,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     enabled: showDeveloperSettings,
   });
 
+  // Fetch my invitable groups for inviting my bot
+  const { data: invitableGroups = [], refetch: refetchInvitableGroups } = useQuery<any[]>({
+    queryKey: ["invitable-groups"],
+    queryFn: async () => {
+      const res = await fetch("/api/bots/my-invitable-groups");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: showDeveloperSettings,
+  });
+
   // Fetch all bots in the system for inviting
   const { data: systemBots = [], refetch: refetchSystemBots } = useQuery<any[]>({
     queryKey: ["system-bots"],
@@ -3069,6 +3125,30 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const reactMutation = useReactMessage();
   const unreactMutation = useUnreactMessage();
   const useAdminUpdateConversationMutation = useAdminUpdateConversation();
+
+  const blockMutation = useMutation({
+    mutationFn: (userId: number) =>
+      customFetch<any>(`/api/blocks/${userId}`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/blocks"] });
+      toast({ title: "User blocked successfully" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to block user", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const unblockMutation = useMutation({
+    mutationFn: (userId: number) =>
+      customFetch<any>(`/api/blocks/${userId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/blocks"] });
+      toast({ title: "User unblocked successfully" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to unblock user", description: err.message, variant: "destructive" });
+    }
+  });
 
   const { data: pinnedMessages = [], isLoading: pinnedLoading } = useListPinnedMessages(
     selectedId ?? 0,
@@ -3530,8 +3610,8 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           setAiTyping(true);
         }
       }
-    } catch {
-      toast({ title: "Failed to send message", variant: "destructive" });
+    } catch (err: any) {
+      toast({ title: "Failed to send message", description: err.message || "Please try again.", variant: "destructive" });
     }
   }
 
@@ -4526,7 +4606,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     );
   };
 
-  const isGroupView = isGroup;
+  const isGroupView = true;
 
   return (
     <div className={`${embedded ? "h-full" : "min-h-screen h-[100dvh]"} bg-[#f4f3f8] text-[#1e1b4b] flex font-sans antialiased overflow-hidden overscroll-none`}>
@@ -4878,405 +4958,186 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         )}
         {/* Content Container (Full Height chat panel layout) */}
         <div className="flex-1 flex overflow-hidden min-h-0">
-          {/* Chat Sidebar: Conversations List */}
-          <div className={`${selectedConv ? "hidden md:flex" : "flex"} w-full md:w-80 border-r border-[#3F4147] bg-[#1E1F22] flex-col shrink-0 min-h-0`}>
-            {/* Header + Create Dm/Group buttons */}
-            <div className="p-3 sm:p-4 border-b border-[#3F4147] flex items-center justify-between shrink-0">
-              <h2 className="font-extrabold text-lg md:text-sm text-white">Chats</h2>
-              <div className="flex gap-1.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
-                  onClick={() => setShowNewDm(true)}
-                >
-                  + DM
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
-                  onClick={() => { setNewGroupMode("create"); setShowNewGroup(true); }}
-                >
-                  + Group
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
-                  onClick={() => { setNewGroupMode("join"); setJoinCodeInput(""); setShowNewGroup(true); }}
-                >
-                  + Join Link
-                </Button>
-              </div>
-            </div>
-            
-            {/* Scrollable list of chats */}
-            <ScrollArea className="flex-1 min-h-0">
-              <div className="p-2 space-y-1">
-                {/* Stories Horizontal Row */}
-                <div className="px-2 py-3 border-b border-[#2F3136] mb-2 shrink-0">
-                  <div className="flex items-center justify-between mb-2 px-1">
-                    <span className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Status / Cerita</span>
-                    {activeStories.length > 0 && (
-                      <span className="text-[9px] font-bold text-[#5865F2] hover:underline cursor-pointer" onClick={() => {
-                        // Open first user's story that has unread statuses
-                        const firstUnreadUserIdx = activeStories.findIndex(u => u.statuses.some((s: any) => !readStatuses.has(s.id)));
-                        if (firstUnreadUserIdx !== -1) {
-                          setActiveStoriesUserIndex(firstUnreadUserIdx);
-                          setActiveStoriesIndex(0);
-                          setViewerPlaying(true);
-                        } else {
-                          // All read, open first user's story
-                          setActiveStoriesUserIndex(0);
-                          setActiveStoriesIndex(0);
-                          setViewerPlaying(true);
-                        }
-                      }}>
-                        Putar Semua
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
-                    {/* Add/View Own Story Circle */}
-                    {(() => {
-                      const ownStoryEntry = activeStories.find(u => u.userId === me?.id);
-                      const hasOwnStories = ownStoryEntry && ownStoryEntry.statuses.length > 0;
-                      const hasUnreadOwn = hasOwnStories && ownStoryEntry.statuses.some((s: any) => !readStatuses.has(s.id));
-                      
-                      return (
-                        <div className="flex flex-col items-center shrink-0 w-14 group">
-                          <div className="relative">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (hasOwnStories) {
-                                  // Ask whether to view or add
-                                  const idx = activeStories.findIndex(u => u.userId === me?.id);
-                                  setActiveStoriesUserIndex(idx);
-                                  setActiveStoriesIndex(0);
-                                  setViewerPlaying(true);
-                                } else {
-                                  setShowCreateStatus(true);
-                                }
-                              }}
-                              className={`relative w-11 h-11 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
-                                hasOwnStories 
-                                  ? (hasUnreadOwn ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600') 
-                                  : 'border border-dashed border-[#4f545c] bg-[#2f3136]'
-                              }`}
-                            >
-                              <Avatar className="w-full h-full border border-[#1E1F22]">
-                                <AvatarImage src={me?.avatarUrl || undefined} />
-                                <AvatarFallback className="text-[10px] font-bold bg-[#35373c] text-white">
-                                  {me?.displayName?.substring(0, 2).toUpperCase() || me?.username?.substring(0, 2).toUpperCase() || "ME"}
-                                </AvatarFallback>
-                              </Avatar>
-                            </button>
-                            {/* Small plus sign badge */}
-                            <button 
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setShowCreateStatus(true);
-                              }}
-                              className="absolute bottom-0 right-0 w-4 h-4 bg-[#5865F2] hover:bg-[#4752C4] rounded-full flex items-center justify-center text-white border border-[#1E1F22] shadow"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          <span className="text-[9px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
-                            Cerita Anda
-                          </span>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Other Users' Stories Circles */}
-                    {activeStories
-                      .filter(u => u.userId !== me?.id)
-                      .map((u, i) => {
-                        const hasUnread = u.statuses.some((s: any) => !readStatuses.has(s.id));
-                        const actualIdxInActiveStories = activeStories.findIndex(story => story.userId === u.userId);
-                        
-                        return (
-                          <div 
-                            key={u.userId} 
-                            className="flex flex-col items-center shrink-0 w-14 cursor-pointer group"
-                            onClick={() => {
-                              setActiveStoriesUserIndex(actualIdxInActiveStories);
-                              setActiveStoriesIndex(0);
-                              setViewerPlaying(true);
-                            }}
-                          >
-                            <div className={`w-11 h-11 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
-                              hasUnread ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600'
-                            }`}>
-                              <Avatar className="w-full h-full border border-[#1E1F22]">
-                                <AvatarImage src={u.avatarUrl || undefined} />
-                                <AvatarFallback className="text-[10px] font-bold bg-[#35373c] text-white">
-                                  {u.displayName?.substring(0, 2).toUpperCase() || u.username?.substring(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                            </div>
-                            <span className="text-[9px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
-                              {u.displayName || u.username}
-                            </span>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-
-                {meLoading || convsLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-3 px-3 py-2.5">
-                      <Skeleton className="w-9 h-9 rounded-xl" />
-                      <div className="flex-1">
-                        <Skeleton className="h-3 w-28 mb-1" />
-                        <Skeleton className="h-2.5 w-20" />
-                      </div>
-                    </div>
-                  ))
-                ) : convsError ? (
-                  <div className="px-3 py-4 space-y-3">
-                    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-xs font-semibold leading-relaxed text-red-100">
-                      Gagal memuat chat list. {conversationsError instanceof Error ? conversationsError.message : "Request timeout atau backend lagi nyangkut."}
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full rounded-xl border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
-                      onClick={() => void refetchConversations()}
-                    >
-                      Coba Lagi
-                    </Button>
-                  </div>
-                ) : conversations.length === 0 ? (
-                  <div className="text-center text-xs py-12 font-bold px-4 leading-relaxed text-[#949BA4]">
-                    No conversations yet.<br />
-                    Start a DM with a friend!
-                  </div>
-                ) : (() => {
-                  const activeConvs = conversations.filter((c) => !(c as any).archivedAt);
-                  const archivedConvs = conversations.filter((c) => !!(c as any).archivedAt);
-                  return (
-                    <>
-                      {activeConvs.map((c) => (
-                        <ConvItem
-                          key={c.id}
-                          conv={c}
-                          selected={selectedId === c.id}
-                          dark
-                          onClick={() => setSelectedId(c.id)}
-                          onPin={(id) => pinConvMutation.mutate(id)}
-                          onUnpin={(id) => unpinConvMutation.mutate(id)}
-                          onArchive={(id) => archiveConvMutation.mutate(id)}
-                          onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
-                        />
-                      ))}
-                      {archivedConvs.length > 0 && (
-                        <>
-                          <button
-                            onClick={() => setShowArchived((v) => !v)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-[#949BA4] hover:text-[#DCDDDE] transition-colors"
-                          >
-                            <Archive className="w-3.5 h-3.5" />
-                            Diarsipkan ({archivedConvs.length})
-                            <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${showArchived ? "rotate-180" : ""}`} />
-                          </button>
-                          {showArchived && archivedConvs.map((c) => (
-                            <ConvItem
-                              key={c.id}
-                              conv={c}
-                              selected={selectedId === c.id}
-                              dark
-                              onClick={() => setSelectedId(c.id)}
-                              onPin={(id) => pinConvMutation.mutate(id)}
-                              onUnpin={(id) => unpinConvMutation.mutate(id)}
-                              onArchive={(id) => archiveConvMutation.mutate(id)}
-                              onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
-                            />
-                          ))}
-                        </>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            </ScrollArea>
-
-            {/* Developer Settings Footer */}
-            <div className="p-3 border-t border-[#3F4147] bg-[#1E1F22] shrink-0 space-y-2">
-              <Button
-                size="sm"
-                onClick={() => setLocation("/member?tab=membership")}
-                className="w-full flex items-center justify-center gap-2 h-9 rounded-xl text-xs font-black transition-all bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-md shadow-violet-900/40"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse fill-amber-300" />
-                Premium & Boosts
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowDeveloperSettings(true)}
-                className="w-full flex items-center justify-center gap-2 h-9 rounded-xl text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
-              >
-                <Hammer className="w-4 h-4 text-[#6366f1]" />
-                Developer Settings
-              </Button>
-            </div>
-          </div>
-
-          {/* Channel Sidebar (Groups only - Discord style) */}
-          {isGroup && selectedConv && mobileChannelDrawerOpen && (
+          {/* Mobile Drawer Backdrop */}
+          {selectedConv && mobileChannelDrawerOpen && (
             <button
               type="button"
-              className="fixed inset-0 z-40 bg-black/60 md:hidden"
+              className="fixed inset-0 z-40 bg-black/60 md:hidden border-0 outline-none"
               onClick={() => setMobileChannelDrawerOpen(false)}
-              aria-label="Close channels"
+              aria-label="Close drawer"
             />
           )}
-          {isGroup && selectedConv && (
-            <div className={`${mobileChannelDrawerOpen ? "flex" : "hidden"} fixed inset-y-0 left-0 z-50 w-72 bg-[#2B2D31] border-r border-[#1E1F22] flex-col shrink-0 min-h-0 shadow-2xl md:static md:z-auto md:flex md:w-56 md:shadow-none`}>
-              {/* Channel header */}
-              <div className="p-3 border-b border-[#1E1F22] flex items-center justify-between shrink-0">
-                <h3 className="font-extrabold text-xs text-[#DCDDDE] uppercase tracking-wider">Channels</h3>
-                <div className="flex items-center gap-1">
-                  {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
-                    <>
-                    <button
-                      onClick={() => setShowChannelEditor(true)}
-                      className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
-                      title="Channel Editor"
-                    >
-                      <ListOrdered className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setShowCreateCategory(true)}
-                      className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
-                      title="Create Category"
-                    >
-                      <FolderPlus className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => { setNewChannelCategoryId(categories[0]?.id ?? null); setShowCreateChannel(true); }}
-                      className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
-                      title="Create Channel"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setMobileChannelDrawerOpen(false)}
-                    className="text-[#949BA4] hover:text-white transition-colors cursor-pointer md:hidden"
-                    title="Close Channels"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              {/* Channel list grouped by category */}
-              <ScrollArea className="flex-1 min-h-0">
-                <div className="p-2 space-y-3">
-                  {categories.length === 0 ? (
-                    <>
-                      {channels.filter(c => (c.type === "text" || c.type === "announce" || c.type === "forum") && !c.categoryId).map((ch) => (
-                        <div key={ch.id} className="group relative flex items-center justify-between rounded-md">
-                          <button onClick={() => handleSelectChannel(ch.id)}
-                            className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
-                              selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
-                            }`}>
-                            {ch.type === "announce" ? (
-                              <Megaphone className="w-4 h-4 shrink-0 opacity-70" />
-                            ) : ch.type === "forum" ? (
-                              <MessageSquare className="w-4 h-4 shrink-0 opacity-70" />
-                            ) : (
-                              <Hash className="w-4 h-4 shrink-0 opacity-70" />
-                            )}
-                            <span className="truncate">{ch.name}</span>
-                          </button>
-                          {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
-                              className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                              title="Edit Channel"
-                            >
-                              <Settings className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      {channels.filter(c => c.type === "voice" && !c.categoryId).length > 0 && (
-                        <div className="pt-2 pb-1"><span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider px-2">Voice Channels</span></div>
-                      )}
-                      {channels.filter(c => c.type === "voice" && !c.categoryId).map((ch) => (
-                        <div key={ch.id} className="w-full">
-                          <div className="group relative flex items-center justify-between rounded-md">
-                            <button onClick={() => handleSelectChannel(ch.id)}
-                              className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
-                                selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
-                              }`}>
-                              <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
-                              <span className="truncate">{ch.name}</span>
-                              <VoiceChannelDuration members={ch.members} now={voiceTimerNow} />
-                            </button>
-                            {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
-                                className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                title="Edit Channel"
-                              >
-                                <Settings className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
 
-                          {/* Active voice members */}
-                          {ch.members && ch.members.length > 0 && (
-                            <div className="pl-6 pr-2 py-1 space-y-1">
-                              {ch.members.map((member) => (
-                                <VoiceMemberRow key={member.id} member={member} onClick={() => openProfileFromVoiceMember(member)} />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </>
-                  ) : (
-                    categories.map((cat) => {
-                      const catChannels = channels.filter(c => c.categoryId === cat.id);
-                      const textChannels = catChannels.filter(c => c.type === "text" || c.type === "announce" || c.type === "forum");
-                      const voiceChannels = catChannels.filter(c => c.type === "voice");
-                      return (
-                        <div key={cat.id}>
-                          <div className="flex items-center justify-between px-1 pb-1 group">
-                            <span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider">{cat.name}</span>
-                            {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => { setNewChannelCategoryId(cat.id); setShowCreateChannel(true); }}
-                                  className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
-                                  title="Create Channel"
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </button>
-                                <button
-                                  onClick={() => handleOpenEditCategory(cat)}
-                                  className="text-[#949BA4] hover:text-white transition-colors cursor-pointer"
-                                  title="Edit Category"
-                                >
-                                  <Settings className="w-3 h-3" />
-                                </button>
-                              </div>
+          {/* Chat Sidebar: Two Column Discord Layout */}
+          <div className={`
+            ${selectedConv 
+              ? (mobileChannelDrawerOpen ? "fixed inset-y-0 left-0 z-50 w-[332px] flex animate-in slide-in-from-left duration-200" : "hidden md:flex") 
+              : "flex w-full"
+            } md:w-[332px] border-r border-[#1f2023] bg-[#2b2d31] shrink-0 min-w-0 min-h-0 overflow-hidden
+          `}>
+            
+            {/* Column 1: Discord Server List (w-[72px]) */}
+            <div className="w-[72px] bg-[#1e1f22] flex flex-col items-center py-3 shrink-0 gap-2 select-none">
+              {/* Direct Messages Icon */}
+              <div className="relative group flex items-center justify-center w-full">
+                {/* Active Indicator Pill */}
+                <div className={`absolute left-0 w-1 bg-white rounded-r transition-all ${
+                  (!selectedConv || selectedConv.type !== "group") ? "h-10" : "h-2 scale-0 group-hover:scale-100 group-hover:h-5"
+                }`} />
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(null)}
+                  className={`w-12 h-12 rounded-[16px] flex items-center justify-center transition-all duration-200 cursor-pointer ${
+                    (!selectedConv || selectedConv.type !== "group") ? "bg-[#5865F2] text-white" : "bg-[#313338] text-[#B5BAC1] hover:bg-[#5865F2] hover:text-white"
+                  }`}
+                  title="Direct Messages"
+                >
+                  <MessageSquare className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Divider */}
+              <div className="w-8 h-[2px] bg-[#35373c] my-1 rounded" />
+
+              {/* Group Conversations (Servers) */}
+              {conversations.filter(c => c.type === "group" && !(c as any).archivedAt).map((group) => {
+                const isSelected = selectedId === group.id;
+                const initials = (group.name ?? "G").split(" ").map(w => w[0]).join("").substring(0, 3).toUpperCase();
+                const hasUnread = (group as any).unreadCount > 0;
+                const groupIcon = (group as any).iconUrl;
+                return (
+                  <TooltipProvider key={group.id}>
+                    <Tooltip delayDuration={100}>
+                      <TooltipTrigger asChild>
+                        <div className="relative group flex items-center justify-center w-full">
+                          {/* Active/Hover Indicator Pill */}
+                          <div className={`absolute left-0 w-1 bg-white rounded-r transition-all ${
+                            isSelected ? "h-10" : "h-2 scale-0 group-hover:scale-100 group-hover:h-5"
+                          }`} />
+                          <button
+                            type="button"
+                            onClick={() => setSelectedId(group.id)}
+                            className={`w-12 h-12 flex items-center justify-center transition-all duration-200 overflow-hidden relative border-0 cursor-pointer ${
+                              isSelected 
+                                ? "rounded-[16px] bg-[#5865F2] text-white" 
+                                : "rounded-[24px] hover:rounded-[16px] bg-[#313338] text-[#B5BAC1] hover:bg-[#5865F2] hover:text-white"
+                            }`}
+                          >
+                            {groupIcon ? (
+                              <img src={groupIcon} alt={group.name ?? "Group"} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-xs font-black tracking-wider">{initials}</span>
                             )}
-                          </div>
-                          {textChannels.map((ch) => (
+                            {hasUnread && (
+                              <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#f23f43] rounded-full border-2 border-[#1e1f22]" />
+                            )}
+                          </button>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="bg-[#111214] text-white border-0 font-bold text-xs">
+                        {group.name ?? "Unnamed Group"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              })}
+
+              {/* Divider */}
+              <div className="w-8 h-[2px] bg-[#35373c] my-1 rounded" />
+
+              {/* Add/Join Group Plus Button (Discord Style) */}
+              <TooltipProvider>
+                <Tooltip delayDuration={100}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => { setNewGroupMode("create"); setShowNewGroup(true); }}
+                      className="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-[#313338] hover:bg-[#23a55a] text-[#23a55a] hover:text-white flex items-center justify-center transition-all duration-200 cursor-pointer border-0"
+                    >
+                      <Plus className="w-6 h-6" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="bg-[#111214] text-white border-0 font-bold text-xs">
+                    Tambah atau Gabung Grup
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            {/* Column 2: Messages List & Stories & User Status Footer */}
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[#2b2d31]">
+              {selectedConv?.type === "group" ? (
+                /* Group Channels List View */
+                <>
+                  {/* Header */}
+                  <div className="p-3.5 border-b border-[#1f2023] flex items-center justify-between shrink-0 bg-[#2b2d31] shadow-sm">
+                    <h2 className="font-black text-[15px] text-white tracking-wide truncate max-w-[150px]" title={selectedConv.name ?? undefined}>
+                      {selectedConv.name}
+                    </h2>
+                    <div className="flex items-center gap-1.5">
+                      {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                        <>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 rounded-full text-[#B5BAC1] hover:text-white hover:bg-[#35373C]"
+                                  onClick={() => setShowChannelEditor(true)}
+                                >
+                                  <ListOrdered className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-[#111214] text-white border-0 text-xs">Edit Channels Order</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 rounded-full text-[#B5BAC1] hover:text-white hover:bg-[#35373C]"
+                                  onClick={() => setShowCreateCategory(true)}
+                                >
+                                  <FolderPlus className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-[#111214] text-white border-0 text-xs">Create Category</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 rounded-full text-[#B5BAC1] hover:text-white hover:bg-[#35373C]"
+                                  onClick={() => { setNewChannelCategoryId(categories[0]?.id ?? null); setShowCreateChannel(true); }}
+                                >
+                                  <Plus className="w-4.5 h-4.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-[#111214] text-white border-0 text-xs">Create Channel</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Channels Scroll Area */}
+                  <ScrollArea className="flex-1 min-h-0">
+                    <div className="p-2 space-y-3">
+                      {categories.length === 0 ? (
+                        <>
+                          {channels.filter(c => (c.type === "text" || c.type === "announce" || c.type === "forum") && !c.categoryId).map((ch) => (
                             <div key={ch.id} className="group relative flex items-center justify-between rounded-md">
                               <button onClick={() => handleSelectChannel(ch.id)}
-                                className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
+                                className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer pr-7 ${
                                   selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
                                 }`}>
                                 {ch.type === "announce" ? (
@@ -5291,7 +5152,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
-                                  className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                  className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer border-0 bg-transparent"
                                   title="Edit Channel"
                                 >
                                   <Settings className="w-3.5 h-3.5" />
@@ -5299,11 +5160,14 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               )}
                             </div>
                           ))}
-                          {voiceChannels.map((ch) => (
+                          {channels.filter(c => c.type === "voice" && !c.categoryId).length > 0 && (
+                            <div className="pt-2 pb-1"><span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider px-2">Voice Channels</span></div>
+                          )}
+                          {channels.filter(c => c.type === "voice" && !c.categoryId).map((ch) => (
                             <div key={ch.id} className="w-full">
                               <div className="group relative flex items-center justify-between rounded-md">
                                 <button onClick={() => handleSelectChannel(ch.id)}
-                                  className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
+                                  className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer pr-7 ${
                                     selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
                                   }`}>
                                   <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
@@ -5313,7 +5177,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                                 {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
-                                    className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                    className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer border-0 bg-transparent"
                                     title="Edit Channel"
                                   >
                                     <Settings className="w-3.5 h-3.5" />
@@ -5321,7 +5185,6 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                                 )}
                               </div>
 
-                              {/* Active voice members */}
                               {ch.members && ch.members.length > 0 && (
                                 <div className="pl-6 pr-2 py-1 space-y-1">
                                   {ch.members.map((member) => (
@@ -5331,75 +5194,414 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               )}
                             </div>
                           ))}
-                        </div>
-                      );
-                    })
-                  )}
-                  {/* Uncategorized channels */}
-                  {channels.filter(c => !c.categoryId && categories.length > 0).length > 0 && (
-                    <div>
-                      <div className="px-1 pb-1"><span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider">Uncategorized</span></div>
-                      {channels.filter(c => !c.categoryId && categories.length > 0).map((ch) => (
-                        <div key={ch.id} className="w-full">
-                          <div className="group relative flex items-center justify-between rounded-md">
-                            <button onClick={() => handleSelectChannel(ch.id)}
-                              className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer pr-7 ${
-                                selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
-                              }`}>
-                              {ch.type === "voice" ? <Volume2 className="w-4 h-4 shrink-0 opacity-70" /> : <Hash className="w-4 h-4 shrink-0 opacity-70" />}
-                              <span className="truncate">{ch.name}</span>
-                              {ch.type === "voice" && <VoiceChannelDuration members={ch.members} now={voiceTimerNow} />}
-                            </button>
-                            {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
-                                className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                title="Edit Channel"
-                              >
-                                <Settings className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
+                        </>
+                      ) : (
+                        categories.map((cat) => {
+                          const catChannels = channels.filter(c => c.categoryId === cat.id);
+                          const textChannels = catChannels.filter(c => c.type === "text" || c.type === "announce" || c.type === "forum");
+                          const voiceChannels = catChannels.filter(c => c.type === "voice");
+                          return (
+                            <div key={cat.id}>
+                              <div className="flex items-center justify-between px-1 pb-1 group">
+                                <span className="text-[10px] font-bold text-[#949BA4] uppercase tracking-wider">{cat.name}</span>
+                                {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      onClick={() => { setNewChannelCategoryId(cat.id); setShowCreateChannel(true); }}
+                                      className="text-[#949BA4] hover:text-white transition-colors cursor-pointer border-0 bg-transparent"
+                                      title="Create Channel"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleOpenEditCategory(cat)}
+                                      className="text-[#949BA4] hover:text-white transition-colors cursor-pointer border-0 bg-transparent"
+                                      title="Edit Category"
+                                    >
+                                      <Settings className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                              {textChannels.map((ch) => (
+                                <div key={ch.id} className="group relative flex items-center justify-between rounded-md">
+                                  <button onClick={() => handleSelectChannel(ch.id)}
+                                    className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer pr-7 ${
+                                      selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                                    }`}>
+                                    {ch.type === "announce" ? (
+                                      <Megaphone className="w-4 h-4 shrink-0 opacity-70" />
+                                    ) : ch.type === "forum" ? (
+                                      <MessageSquare className="w-4 h-4 shrink-0 opacity-70" />
+                                    ) : (
+                                      <Hash className="w-4 h-4 shrink-0 opacity-70" />
+                                    )}
+                                    <span className="truncate">{ch.name}</span>
+                                  </button>
+                                  {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
+                                      className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer border-0 bg-transparent"
+                                      title="Edit Channel"
+                                    >
+                                      <Settings className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              {voiceChannels.map((ch) => (
+                                <div key={ch.id} className="w-full">
+                                  <div className="group relative flex items-center justify-between rounded-md">
+                                    <button onClick={() => handleSelectChannel(ch.id)}
+                                      className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer pr-7 ${
+                                        selectedChannelId === ch.id ? "bg-[#404249] text-white" : "text-[#949BA4] hover:text-[#DCDDDE] hover:bg-[#35373C]"
+                                      }`}>
+                                      <Volume2 className="w-4 h-4 shrink-0 opacity-70" />
+                                      <span className="truncate">{ch.name}</span>
+                                      <VoiceChannelDuration members={ch.members} now={voiceTimerNow} />
+                                    </button>
+                                    {(selectedConv.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleOpenEditChannel(ch); }}
+                                        className="absolute right-2 text-[#949BA4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer border-0 bg-transparent"
+                                        title="Edit Channel"
+                                      >
+                                        <Settings className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
 
-                          {/* Active voice members */}
-                          {ch.type === "voice" && ch.members && ch.members.length > 0 && (
-                            <div className="pl-6 pr-2 py-1 space-y-1">
-                              {ch.members.map((member) => (
-                                <VoiceMemberRow key={member.id} member={member} onClick={() => openProfileFromVoiceMember(member)} />
+                                  {ch.members && ch.members.length > 0 && (
+                                    <div className="pl-6 pr-2 py-1 space-y-1">
+                                      {ch.members.map((member) => (
+                                        <VoiceMemberRow key={member.id} member={member} onClick={() => openProfileFromVoiceMember(member)} />
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               ))}
                             </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {/* Active connected bots section */}
-                  {Object.keys(activeBotsByCategory).length > 0 && (
-                    <div className="pt-4 border-t border-[#3F4147] mt-4 space-y-3">
-                      <div className="px-1"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Bots</span></div>
-                      {Object.entries(activeBotsByCategory).map(([catName, botList]) => (
-                        <div key={catName} className="space-y-1">
-                          <span className="text-[9px] font-black text-[#949BA4] uppercase tracking-wider px-2">🤖 {catName}</span>
-                          {botList.map((bot) => (
-                            <div key={bot.id} className="flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-[#35373C]">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Avatar className="w-5.5 h-5.5 border border-[#3F4147] shrink-0">
-                                  <AvatarImage src={bot.avatarUrl ?? undefined} />
-                                  <AvatarFallback className="text-[8px] bg-slate-800 text-white font-extrabold">B</AvatarFallback>
-                                </Avatar>
-                                <span className="text-xs font-bold text-[#DCDDDE] truncate">{bot.name}</span>
-                              </div>
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 shadow-lg shadow-emerald-500/50" />
+                          );
+                        })
+                      )}
+
+                      {/* Active connected bots section */}
+                      {Object.keys(activeBotsByCategory).length > 0 && (
+                        <div className="pt-4 border-t border-[#3F4147] mt-4 space-y-3">
+                          <div className="px-1"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Bots</span></div>
+                          {Object.entries(activeBotsByCategory).map(([catName, botList]) => (
+                            <div key={catName} className="space-y-1">
+                              <span className="text-[9px] font-black text-[#949BA4] uppercase tracking-wider px-2">🤖 {catName}</span>
+                              {botList.map((bot) => (
+                                <div key={bot.id} className="flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-[#35373C]">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <Avatar className="w-5.5 h-5.5 border border-[#3F4147] shrink-0">
+                                      <AvatarImage src={bot.avatarUrl ?? undefined} />
+                                      <AvatarFallback className="text-[8px] bg-slate-800 text-white font-extrabold">B</AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-xs font-bold text-[#DCDDDE] truncate">{bot.name}</span>
+                                  </div>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 shadow-lg shadow-emerald-500/50" />
+                                </div>
+                              ))}
                             </div>
                           ))}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
+                  </ScrollArea>
+                </>
+              ) : (
+                /* DM / Messages List View */
+                <>
+                  {/* Header */}
+                  <div className="p-3.5 border-b border-[#1f2023] flex items-center justify-between shrink-0 bg-[#2b2d31] shadow-sm">
+                    <h2 className="font-black text-[15px] text-white tracking-wide">Messages</h2>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+                        onClick={() => setShowNewDm(true)}
+                      >
+                        + DM
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+                        onClick={() => { setNewGroupMode("create"); setShowNewGroup(true); }}
+                      >
+                        + Group
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Scrollable list of chats */}
+                  <ScrollArea className="flex-1 min-h-0">
+                    <div className="p-2 space-y-1">
+                      {/* Stories Horizontal Row */}
+                      <div className="px-2 py-2.5 border-b border-[#1f2023] mb-2 shrink-0">
+                        <div className="flex items-center justify-between mb-2 px-1">
+                          <span className="text-[9px] font-black text-[#949BA4] uppercase tracking-wider">Status / Cerita</span>
+                          {activeStories.length > 0 && (
+                            <span className="text-[9px] font-bold text-[#5865F2] hover:underline cursor-pointer" onClick={() => {
+                              const firstUnreadUserIdx = activeStories.findIndex(u => u.statuses.some((s: any) => !readStatuses.has(s.id)));
+                              if (firstUnreadUserIdx !== -1) {
+                                setActiveStoriesUserIndex(firstUnreadUserIdx);
+                                setActiveStoriesIndex(0);
+                                setViewerPlaying(true);
+                              } else {
+                                setActiveStoriesUserIndex(0);
+                                setActiveStoriesIndex(0);
+                                setViewerPlaying(true);
+                              }
+                            }}>
+                              Putar Semua
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+                          {/* Add/View Own Story Circle */}
+                          {(() => {
+                            const ownStoryEntry = activeStories.find(u => u.userId === me?.id);
+                            const hasOwnStories = ownStoryEntry && ownStoryEntry.statuses.length > 0;
+                            const hasUnreadOwn = hasOwnStories && ownStoryEntry.statuses.some((s: any) => !readStatuses.has(s.id));
+                            
+                            return (
+                              <div className="flex flex-col items-center shrink-0 w-12 group">
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (hasOwnStories) {
+                                        const idx = activeStories.findIndex(u => u.userId === me?.id);
+                                        setActiveStoriesUserIndex(idx);
+                                        setActiveStoriesIndex(0);
+                                        setViewerPlaying(true);
+                                      } else {
+                                        setShowCreateStatus(true);
+                                      }
+                                    }}
+                                    className={`relative w-10 h-10 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
+                                      hasOwnStories 
+                                        ? (hasUnreadOwn ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600') 
+                                        : 'border border-dashed border-[#4f545c] bg-[#1e1f22]'
+                                    }`}
+                                  >
+                                    <Avatar className="w-full h-full border border-[#2b2d31]">
+                                      <AvatarImage src={me?.avatarUrl || undefined} />
+                                      <AvatarFallback className="text-[9px] font-black bg-[#35373c] text-white">
+                                        {me?.displayName?.substring(0, 2).toUpperCase() || me?.username?.substring(0, 2).toUpperCase() || "ME"}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  </button>
+                                  <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowCreateStatus(true);
+                                    }}
+                                    className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#5865F2] hover:bg-[#4752C4] rounded-full flex items-center justify-center text-white border border-[#2b2d31] shadow"
+                                  >
+                                    <Plus className="w-2.5 h-2.5" />
+                                  </button>
+                                </div>
+                                <span className="text-[8px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
+                                  Cerita Anda
+                                </span>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Other Users' Stories Circles */}
+                          {activeStories
+                            .filter(u => u.userId !== me?.id)
+                            .map((u, i) => {
+                              const hasUnread = u.statuses.some((s: any) => !readStatuses.has(s.id));
+                              const actualIdxInActiveStories = activeStories.findIndex(story => story.userId === u.userId);
+                              
+                              return (
+                                <div 
+                                  key={u.userId} 
+                                  className="flex flex-col items-center shrink-0 w-12 cursor-pointer group"
+                                  onClick={() => {
+                                    setActiveStoriesUserIndex(actualIdxInActiveStories);
+                                    setActiveStoriesIndex(0);
+                                    setViewerPlaying(true);
+                                  }}
+                                >
+                                  <div className={`w-10 h-10 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
+                                    hasUnread ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600'
+                                  }`}>
+                                    <Avatar className="w-full h-full border border-[#2b2d31]">
+                                      <AvatarImage src={u.avatarUrl || undefined} />
+                                      <AvatarFallback className="text-[9px] font-black bg-[#35373c] text-white">
+                                        {u.displayName?.substring(0, 2).toUpperCase() || u.username?.substring(0, 2).toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  </div>
+                                  <span className="text-[8px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
+                                    {u.displayName || u.username}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+
+                      {meLoading || convsLoading ? (
+                        Array.from({ length: 5 }).map((_, i) => (
+                          <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                            <Skeleton className="w-9 h-9 rounded-xl" />
+                            <div className="flex-1">
+                              <Skeleton className="h-3 w-28 mb-1" />
+                              <Skeleton className="h-2.5 w-20" />
+                            </div>
+                          </div>
+                        ))
+                      ) : convsError ? (
+                        <div className="px-3 py-4 space-y-3">
+                          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-xs font-semibold leading-relaxed text-red-100">
+                            Gagal memuat chat list.
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full rounded-xl border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+                            onClick={() => void refetchConversations()}
+                          >
+                            Coba Lagi
+                          </Button>
+                        </div>
+                      ) : conversations.length === 0 ? (
+                        <div className="text-center text-xs py-12 font-bold px-4 leading-relaxed text-[#949BA4]">
+                          No conversations yet.<br />
+                          Start a DM with a friend!
+                        </div>
+                      ) : (() => {
+                        const activeConvs = conversations.filter((c) => !(c as any).archivedAt && c.type !== "group");
+                        const archivedConvs = conversations.filter((c) => !!(c as any).archivedAt && c.type !== "group");
+                        return (
+                          <>
+                            {activeConvs.map((c) => (
+                              <ConvItem
+                                key={c.id}
+                                conv={c}
+                                selected={selectedId === c.id}
+                                dark
+                                onClick={() => setSelectedId(c.id)}
+                                onPin={(id) => pinConvMutation.mutate(id)}
+                                onUnpin={(id) => unpinConvMutation.mutate(id)}
+                                onArchive={(id) => archiveConvMutation.mutate(id)}
+                                onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
+                              />
+                            ))}
+                            {archivedConvs.length > 0 && (
+                              <>
+                                <button
+                                  onClick={() => setShowArchived((v) => !v)}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-[#949BA4] hover:text-[#DCDDDE] transition-colors"
+                                >
+                                  <Archive className="w-3.5 h-3.5" />
+                                  Diarsipkan ({archivedConvs.length})
+                                  <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${showArchived ? "rotate-180" : ""}`} />
+                                </button>
+                                {showArchived && archivedConvs.map((c) => (
+                                  <ConvItem
+                                    key={c.id}
+                                    conv={c}
+                                    selected={selectedId === c.id}
+                                    dark
+                                    onClick={() => setSelectedId(c.id)}
+                                    onPin={(id) => pinConvMutation.mutate(id)}
+                                    onUnpin={(id) => unpinConvMutation.mutate(id)}
+                                    onArchive={(id) => archiveConvMutation.mutate(id)}
+                                    onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
+                                  />
+                                ))}
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </ScrollArea>
+                </>
+              )}
+
+              {/* Bottom User Status Bar (Discord Style) */}
+              <div className="h-[52px] bg-[#232428] px-2 flex items-center justify-between shrink-0 select-none border-t border-[#1f2023]/35">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${(me as any)?.equippedBorder ? (me as any).equippedBorder : "border border-[#2b2d31]"}`}>
+                    <div className="relative w-8 h-8 rounded-full">
+                      <Avatar className="w-full h-full">
+                        <AvatarImage src={me?.avatarUrl ?? undefined} />
+                        <AvatarFallback className="text-[10px] bg-[#35373c] font-black text-white">{getInitials(me?.displayName || me?.username)}</AvatarFallback>
+                      </Avatar>
+                      {/* Online status dot */}
+                      <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-[#23a55a] rounded-full border-[2px] border-[#232428]" />
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <p className="text-[11px] font-black text-white truncate">{me?.displayName || me?.username}</p>
+                    <p className="text-[9px] text-[#949BA4] truncate" title={me?.bio ?? "Online"}>
+                      {me?.bio || "Online"}
+                    </p>
+                  </div>
                 </div>
-              </ScrollArea>
+                
+                <div className="flex items-center gap-0.5 text-[#B5BAC1] shrink-0">
+                  {/* Notification Bell */}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button 
+                          type="button"
+                          className="p-1.5 rounded-md hover:bg-[#35373c] hover:text-white transition-colors relative"
+                        >
+                          <Bell className="w-4 h-4" />
+                          <div className="absolute top-1 right-1 w-2 h-2 bg-[#f23f43] rounded-full" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="bg-[#111214] text-white border-0 text-xs">Notifications</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
+                  {/* Settings / Premium Hub Link (Dropdown Menu) */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button 
+                        type="button"
+                        className="p-1.5 rounded-md hover:bg-[#35373c] hover:text-white transition-colors cursor-pointer border-0 bg-transparent text-[#B5BAC1]"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="bg-[#18191c] border-[#3F4147] text-[#DCDDDE] min-w-[160px]"
+                    >
+                      <DropdownMenuItem className="gap-2 cursor-pointer text-xs focus:bg-[#35373c]" asChild>
+                        <Link href="/member?tab=profile" className="flex items-center w-full">
+                          <Settings className="w-3.5 h-3.5" />
+                          User Settings
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="gap-2 cursor-pointer text-xs focus:bg-[#35373c]"
+                        onSelect={() => setShowDeveloperSettings(true)}
+                      >
+                        <Hammer className="w-3.5 h-3.5 text-[#5865F2]" />
+                        Developer Settings
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+
             </div>
-          )}
+          </div>
 
           {/* Active Chat Screen Console */}
           <div className={`${selectedConv ? "flex" : "hidden md:flex"} flex-1 flex-col ${isGroupView ? "bg-[#18191C]" : "bg-[#efe7dd]"} overflow-hidden min-h-0`}>
@@ -5461,6 +5663,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           {selectedConv.type === "dm" && (selectedConv as any).otherUserIsVerified && (
                             <BadgeCheck className="w-4 h-4 text-blue-300 fill-blue-300/20 shrink-0" />
                           )}
+                          {selectedConv.type === "dm" && (selectedConv as any).otherUserIsBusinessVerified && (
+                            <BadgeCheck className="w-4 h-4 text-emerald-500 fill-emerald-500/20 shrink-0" />
+                          )}
                           {selectedConv.type === "group" && (selectedConv as any).isVerified && (
                             <BadgeCheck className="w-4 h-4 text-blue-300 fill-blue-300/20 shrink-0" />
                           )}
@@ -5492,9 +5697,39 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
                   <div className="flex items-center gap-0.5 sm:gap-2 shrink-0">
                     {selectedConv.type === "dm" && selectedConv.otherUserId && (
-                      <Button asChild size="icon" variant="ghost" className="hidden sm:inline-flex h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white transition-colors" title="View Profile">
-                        <Link href={`/profile/${selectedConv.otherUserId}`}><UserCircle className="h-5 w-5" /></Link>
-                      </Button>
+                      <>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className={`h-9 w-9 rounded-full transition-colors ${
+                            blockedUsers.some((u: any) => u.userId === selectedConv.otherUserId)
+                              ? "text-red-500 hover:bg-red-500/10 hover:text-red-500"
+                              : "text-white/80 hover:bg-white/10 hover:text-white"
+                          }`}
+                          onClick={async () => {
+                            const isBlocked = blockedUsers.some((u: any) => u.userId === selectedConv.otherUserId);
+                            if (isBlocked) {
+                              await unblockMutation.mutateAsync(selectedConv.otherUserId!);
+                            } else {
+                              if (confirm(`Apakah Anda yakin ingin memblokir ${selectedName}?`)) {
+                                await blockMutation.mutateAsync(selectedConv.otherUserId!);
+                              }
+                            }
+                          }}
+                          title={
+                            blockedUsers.some((u: any) => u.userId === selectedConv.otherUserId)
+                              ? "Unblock User"
+                              : "Block User"
+                          }
+                          disabled={blockMutation.isPending || unblockMutation.isPending}
+                        >
+                          <Ban className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+                        </Button>
+
+                        <Button asChild size="icon" variant="ghost" className="hidden sm:inline-flex h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white transition-colors" title="View Profile">
+                          <Link href={`/profile/${selectedConv.otherUserId}`}><UserCircle className="h-5 w-5" /></Link>
+                        </Button>
+                      </>
                     )}
                     <Button
                       size="sm"
@@ -5613,13 +5848,13 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 )}
 
                 {/* Messages Bubbles Feed */}
-                <ScrollArea className={`flex-1 px-2.5 sm:px-4 md:px-6 py-3 sm:py-4 min-h-0 relative overflow-x-hidden ${isGroupView ? "bg-[#0b141a]" : "bg-[#efe7dd]"}`}>
+                <ScrollArea className={`flex-1 px-2.5 sm:px-4 md:px-6 py-3 sm:py-4 min-h-0 relative overflow-x-hidden ${isGroupView ? "bg-[#313338]" : "bg-[#efe7dd]"}`}>
                   <div
                     className="absolute inset-0 pointer-events-none bg-repeat"
                     style={{
                       backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
                       backgroundSize: "400px",
-                      opacity: isGroupView ? 0.05 : 0.07,
+                      opacity: isGroupView ? 0 : 0.07,
                       mixBlendMode: isGroupView ? "difference" : "multiply",
                     }}
                   />
@@ -6344,7 +6579,12 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 {(() => {
                   const bgVid = (selectedConv as any).bgVideoUrl as string | null | undefined;
                   const ytId = bgVid ? extractYouTubeId(bgVid) : null;
-                  const hasBanner = selectedConv.type === "group" && (selectedConv.bannerUrl || ytId);
+                  
+                  const otherYtVid = selectedConv.type === "dm" ? (selectedConv as any).otherUserYoutubeLiveUrl : null;
+                  const otherYtId = otherYtVid ? extractYouTubeId(otherYtVid) : null;
+                  
+                  const hasBanner = (selectedConv.type === "group" && (selectedConv.bannerUrl || ytId)) ||
+                                    (selectedConv.type === "dm" && otherYtId);
                   return (
                 <div className={`flex flex-col items-center border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"} ${hasBanner ? "" : "py-6 px-4"}`}>
                   {/* Banner — video or image */}
@@ -6369,6 +6609,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       />
                       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/40" />
                     </div>
+                  ) : selectedConv.type === "dm" && otherYtId ? (
+                    <div className="w-full h-36 relative overflow-hidden bg-black">
+                      <iframe
+                        src={`https://www.youtube.com/embed/${otherYtId}?autoplay=1&mute=1&loop=1&playlist=${otherYtId}&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&rel=0`}
+                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                        style={{ width: "177.78%", height: "177.78%", minWidth: "100%", minHeight: "100%" }}
+                        allow="autoplay; encrypted-media"
+                        title="user-banner-video"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50 pointer-events-none" />
+                    </div>
                   ) : null}
                   {/* Avatar */}
                   <div className={`rounded-full overflow-hidden ${selectedConv.type === "group" ? "w-24 h-24" : "w-24 h-24"} ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder + " p-1" : isGroupView ? "border-2 border-[#3F4147]" : "border-2 border-slate-100"} ${hasBanner ? "-mt-12 relative z-10 ring-4 ring-[#1E1F22]" : ""}`}>
@@ -6391,6 +6642,16 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             <BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400/20 shrink-0" />
                           </TooltipTrigger>
                           <TooltipContent side="top" className="text-xs">Akun Terverifikasi</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {selectedConv.type === "dm" && (selectedConv as any).otherUserIsBusinessVerified && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <BadgeCheck className="w-5 h-5 text-emerald-500 fill-emerald-500/20 shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">Bisnis Terverifikasi</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
@@ -6564,11 +6825,36 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 {/* Actions */}
                 <div className="px-5 py-4 space-y-2">
                   {selectedConv.type === "dm" && selectedConv.otherUserId && (
-                    <Button asChild className="w-full bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold">
-                      <Link href={`/profile/${selectedConv.otherUserId}`}>
-                        <UserCircle className="h-4 w-4 mr-2" /> View Full Profile
-                      </Link>
-                    </Button>
+                    <>
+                      <Button asChild className="w-full bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold">
+                        <Link href={`/profile/${selectedConv.otherUserId}`}>
+                          <UserCircle className="h-4 w-4 mr-2" /> View Full Profile
+                        </Link>
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          const isBlocked = blockedUsers.some((u: any) => u.userId === selectedConv.otherUserId);
+                          if (isBlocked) {
+                            await unblockMutation.mutateAsync(selectedConv.otherUserId!);
+                          } else {
+                            if (confirm(`Apakah Anda yakin ingin memblokir ${selectedName}?`)) {
+                              await blockMutation.mutateAsync(selectedConv.otherUserId!);
+                            }
+                          }
+                        }}
+                        disabled={blockMutation.isPending || unblockMutation.isPending}
+                        className={`w-full rounded-xl text-xs font-bold transition-all ${
+                          blockedUsers.some((u: any) => u.userId === selectedConv.otherUserId)
+                            ? "bg-green-600 text-white hover:bg-green-750"
+                            : "bg-red-600 text-white hover:bg-red-700"
+                        }`}
+                      >
+                        <Ban className="h-4 w-4 mr-2" />
+                        {blockedUsers.some((u: any) => u.userId === selectedConv.otherUserId)
+                          ? "Buka Blokir User"
+                          : "Blokir User"}
+                      </Button>
+                    </>
                   )}
                   {selectedConv.type === "group" && selectedConv.ownerId === me?.id && (
                     <Button
@@ -6606,6 +6892,55 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     </Button>
                   )}
                 </div>
+
+                {/* Katalog Toko (DM with Seller only) */}
+                {selectedConv.type === "dm" && (selectedConv as any).otherUserIsSeller && (
+                  <div className={`px-5 py-4 border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
+                    <p className={`text-[10px] font-black uppercase tracking-wider mb-3 flex items-center gap-1.5 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                      <ShoppingBag className="h-3.5 w-3.5 text-emerald-500" /> Katalog Toko
+                    </p>
+
+                    {sellerCatalogProducts.length === 0 ? (
+                      <p className={`text-xs font-bold italic ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
+                        Belum ada produk aktif di katalog.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                        {sellerCatalogProducts.map((product: any) => (
+                          <div
+                            key={`catalog-item-${product.id}`}
+                            onClick={() => setSelectedCatalogProduct(product)}
+                            className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer hover:scale-[1.01] active:scale-[0.99] transition-all ${
+                              isGroupView
+                                ? "bg-[#2B2D31]/40 border-[#3F4147] hover:bg-[#2B2D31]/70"
+                                : "bg-slate-50/50 border-slate-200/60 hover:bg-slate-50"
+                            }`}
+                          >
+                            <div className="w-10 h-10 rounded-lg bg-white border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
+                              {product.imageUrl ? (
+                                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <ShoppingBag className="w-4 h-4 text-slate-300" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <h4 className={`text-xs font-black truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>
+                                {product.name}
+                              </h4>
+                              <p className="text-[11px] font-black text-emerald-500">
+                                {new Intl.NumberFormat("id-ID", {
+                                  style: "currency",
+                                  currency: "IDR",
+                                  maximumFractionDigits: 0
+                                }).format(product.price)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </ScrollArea>
             </div>
           )}
@@ -8336,7 +8671,15 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 </div>
 
                 <div className="mt-3">
-                  <h3 className="text-xl font-black leading-tight text-white">{displayName}</h3>
+                  <h3 className="text-xl font-black leading-tight text-white">
+                    {displayName}
+                    {((overviewUser as any)?.isVerified || (profilePreviewUser as any)?.isVerified) && (
+                      <BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400/20 shrink-0 inline-block align-middle ml-1.5" />
+                    )}
+                    {((overviewUser as any)?.isBusinessVerified || (profilePreviewUser as any)?.isBusinessVerified) && (
+                      <BadgeCheck className="w-5 h-5 text-emerald-500 fill-emerald-500/20 shrink-0 inline-block align-middle ml-1.5" />
+                    )}
+                  </h3>
                   <p className="text-xs font-bold text-[#B5BAC1]">@{username}</p>
                 </div>
 
@@ -8863,8 +9206,74 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                         </p>
                       </div>
 
-                      {/* Delete bot */}
-                      <div className="flex justify-end pt-1">
+                      {/* Bot Actions */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#3F4147]/50">
+                        <div className="flex items-center gap-2">
+                          {/* Chat with Bot Button */}
+                          <Button
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const res = await fetch("/api/conversations/dm", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ targetUserId: bot.userId }),
+                                });
+                                if (!res.ok) {
+                                  const errData = await res.json().catch(() => ({}));
+                                  throw new Error(errData.error || "Failed to start chat");
+                                }
+                                const conv = await res.json();
+                                setSelectedId(conv.id);
+                                setShowDeveloperSettings(false);
+                                toast({ title: `Chatting with ${bot.name}!` });
+                              } catch (err: any) {
+                                toast({ title: "Failed to start chat", description: err.message, variant: "destructive" });
+                              }
+                            }}
+                            className="bg-[#5865F2] text-white hover:bg-[#4752C4] text-[10px] font-black rounded-xl h-8 px-3.5 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" /> Chat with Bot
+                          </Button>
+
+                          {/* Add to Group Dropdown */}
+                          {invitableGroups.length > 0 && (
+                            <div className="relative">
+                              <select
+                                value=""
+                                onChange={async (e) => {
+                                  const val = e.target.value;
+                                  if (!val) return;
+                                  const groupId = parseInt(val, 10);
+                                  const groupName = invitableGroups.find(g => g.id === groupId)?.name || "Group";
+                                  try {
+                                    const res = await fetch(`/api/conversations/${groupId}/bots`, {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ botId: bot.id }),
+                                    });
+                                    if (!res.ok) throw new Error();
+                                    toast({ title: `Added ${bot.name} to ${groupName}!` });
+                                    await refetchConversationBots();
+                                    await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${groupId}/members`] });
+                                  } catch {
+                                    toast({ title: "Failed to invite bot", variant: "destructive" });
+                                  }
+                                }}
+                                className="bg-[#1E1F22] border border-[#3F4147] text-[#DCDDDE] rounded-xl px-3 py-1.5 text-[10px] font-bold outline-none cursor-pointer hover:border-[#5865F2] transition-colors"
+                              >
+                                <option value="">➕ Add to Group...</option>
+                                {invitableGroups.map((g: any) => (
+                                  <option key={g.id} value={g.id}>
+                                    {g.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Delete Bot */}
                         <Button
                           variant="destructive"
                           size="sm"
@@ -8879,7 +9288,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               toast({ title: "Failed to delete bot", variant: "destructive" });
                             }
                           }}
-                          className="bg-[#da373c] text-white hover:bg-[#a92b2f] text-[10px] font-bold rounded-lg py-1 px-3 h-8 flex items-center gap-1.5"
+                          className="bg-[#da373c] text-white hover:bg-[#a92b2f] text-[10px] font-bold rounded-xl py-1 px-3 h-8 flex items-center gap-1.5 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" /> Delete Bot
                         </Button>
@@ -9551,6 +9960,119 @@ setInterval(() => {
               {forwarding ? "Mengirim..." : "Forward"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* BUYER PRODUCT DETAIL DIALOG */}
+      <Dialog open={selectedCatalogProduct !== null} onOpenChange={() => setSelectedCatalogProduct(null)}>
+        <DialogContent className="bg-white border-[#eae8f5] max-w-lg rounded-2xl p-0 overflow-hidden text-slate-800">
+          {selectedCatalogProduct && (
+            <div className="flex flex-col">
+              {/* Product Image */}
+              <div className="relative w-full h-56 bg-slate-50 flex items-center justify-center border-b border-slate-100">
+                {selectedCatalogProduct.imageUrl ? (
+                  <img src={selectedCatalogProduct.imageUrl} alt={selectedCatalogProduct.name} className="w-full h-full object-cover" />
+                ) : (
+                  <ShoppingBag className="w-14 h-14 text-slate-300" />
+                )}
+                <button
+                  onClick={() => setSelectedCatalogProduct(null)}
+                  className="absolute top-4 right-4 w-7 h-7 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white border-0 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Product Info */}
+              <div className="p-5 space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-base font-black text-[#110e3d]">{selectedCatalogProduct.name}</h3>
+                  <p className="text-lg font-black text-emerald-600">
+                    {new Intl.NumberFormat("id-ID", {
+                      style: "currency",
+                      currency: "IDR",
+                      maximumFractionDigits: 0
+                    }).format(selectedCatalogProduct.price)}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Deskripsi Produk</span>
+                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                    {selectedCatalogProduct.description || "Tidak ada deskripsi produk."}
+                  </p>
+                </div>
+
+                {/* Payment Instructions */}
+                <div className="space-y-3.5 pt-2">
+                  {(() => {
+                    const activePurchase = myPurchases.find(
+                      (p: any) => p.productId === selectedCatalogProduct.id && p.status !== "delivered"
+                    );
+
+                    return (
+                      <>
+                        {activePurchase && (
+                          <div className={`rounded-xl p-3.5 border ${
+                            activePurchase.status === "completed"
+                              ? "bg-emerald-55 border-emerald-100 text-emerald-800"
+                              : "bg-amber-55 border-amber-100 text-amber-800"
+                          }`}>
+                            <h4 className="text-xs font-black flex items-center gap-1.5">
+                              {activePurchase.status === "completed" ? "🟢 Status: Pembayaran Sukses" : "🟡 Status: Menunggu Pembayaran"}
+                            </h4>
+                            <p className="text-[10px] font-bold mt-1 opacity-90 leading-normal">
+                              {activePurchase.status === "completed"
+                                ? "Pesanan Anda sedang diproses oleh seller. Silakan hubungi seller untuk pengiriman."
+                                : "Pembelian Anda sedang diproses. Silakan selesaikan pembayaran di SayaBayar menggunakan tombol di bawah."}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="rounded-xl bg-violet-50 border border-violet-100 p-3.5 space-y-1.5">
+                          <h4 className="text-xs font-black text-violet-800 flex items-center gap-1">
+                            💳 Cara Pembelian
+                          </h4>
+                          <ol className="text-[10px] text-violet-700/80 font-bold list-decimal list-inside space-y-1 leading-normal">
+                            <li>Klik tombol <b>Beli Sekarang</b> untuk diarahkan ke sayabayar.com.</li>
+                            <li>Selesaikan pembayaran dengan deskripsi invoice yang terisi otomatis.</li>
+                            <li>Ambil screenshot bukti transfer/pembayaran berhasil.</li>
+                            <li>Kirim bukti tersebut di ruang obrolan ini kepada seller.</li>
+                          </ol>
+                        </div>
+
+                        {activePurchase?.status === "completed" ? (
+                          <Button
+                            disabled
+                            className="w-full rounded-xl bg-emerald-100/50 text-emerald-800 border border-emerald-200 font-black text-xs h-11 cursor-not-allowed"
+                          >
+                            Sudah Dibayar & Sedang Diproses
+                          </Button>
+                        ) : activePurchase?.status === "pending" ? (
+                          <a
+                            href={activePurchase.paymentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full flex items-center justify-center rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs h-11 shadow-lg shadow-amber-500/10 transition-colors"
+                          >
+                            Lanjutkan Pembayaran
+                          </a>
+                        ) : (
+                          <Button
+                            onClick={() => handleBuyProduct(selectedCatalogProduct.id)}
+                            disabled={buyingProduct}
+                            className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-black text-xs h-11 shadow-lg shadow-violet-500/10 transition-colors"
+                          >
+                            {buyingProduct ? "Membuat Invoice..." : "Beli Sekarang"}
+                          </Button>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

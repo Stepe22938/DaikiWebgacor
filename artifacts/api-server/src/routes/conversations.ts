@@ -20,6 +20,7 @@ import {
   starredMessagesTable,
   messageReactionsTable,
   stickersTable,
+  userBlocksTable,
 } from "@workspace/db";
 import { deleteStickerResources } from "./stickers";
 import { getGroupBoostState } from "../lib/tierBoosts";
@@ -1191,6 +1192,9 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
       avatarUrl: usersTable.avatarUrl,
       role: usersTable.role,
       isVerified: usersTable.isVerified,
+      isSeller: usersTable.isSeller,
+      isBusinessVerified: usersTable.isBusinessVerified,
+      youtubeLiveUrl: usersTable.youtubeLiveUrl,
     })
     .from(conversationMembersTable)
     .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
@@ -1220,7 +1224,10 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
   let otherAvatarUrl: string | null = null;
   let otherUserRole: string | null = null;
   let otherUserIsVerified = false;
+  let otherUserIsBusinessVerified = false;
+  let otherUserIsSeller = false;
   let otherUserEquippedBorder: string | null = null;
+  let otherUserYoutubeLiveUrl: string | null = null;
 
   if (conv.type === "dm") {
     const other = memberRows.find((m) => m.userId !== currentUserId);
@@ -1231,6 +1238,9 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
       otherAvatarUrl = other.avatarUrl ?? null;
       otherUserRole = other.role ?? null;
       otherUserIsVerified = other.isVerified ?? false;
+      otherUserIsBusinessVerified = (other as any).isBusinessVerified ?? false;
+      otherUserIsSeller = (other as any).isSeller ?? false;
+      otherUserYoutubeLiveUrl = other.youtubeLiveUrl ?? null;
       name = other.displayName ?? other.username;
       iconUrl = other.avatarUrl ?? null;
 
@@ -1269,7 +1279,10 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     otherAvatarUrl,
     otherUserRole,
     otherUserIsVerified,
+    otherUserIsBusinessVerified,
+    otherUserIsSeller,
     otherUserEquippedBorder,
+    otherUserYoutubeLiveUrl,
     lastMessageContent: lastMsg ? (lastMsg.content || (lastMsg.imageUrl ? "📷 Image" : "")) : null,
     lastMessageAt: lastMsg ? serializeDates(lastMsg).createdAt : null,
     lastMessageSenderId: lastMsg?.senderId ?? null,
@@ -1378,28 +1391,42 @@ router.post("/conversations/dm", async (req, res): Promise<void> => {
   });
   if (!target) { res.status(404).json({ error: "Target user not found" }); return; }
 
-  if (target.messagePrivacy === "nobody") {
-    res.status(403).json({ error: "This user does not accept messages" }); return;
+  // Check if target has blocked the user
+  const isBlocked = await db.query.userBlocksTable.findFirst({
+    where: and(
+      eq(userBlocksTable.blockerId, target.id),
+      eq(userBlocksTable.blockedId, user.id)
+    )
+  });
+  if (isBlocked) {
+    res.status(403).json({ error: "Maaf, pesan kamu tidak terkirim karena server ngeleg, atau karena mungkin kamu kena blokir" });
+    return;
   }
 
-  if (target.messagePrivacy === "following_only") {
-    const theyFollow = await db.query.followsTable.findFirst({
-      where: and(eq(followsTable.followerId, target.id), eq(followsTable.followingId, user.id)),
-    });
-    if (!theyFollow) {
-      res.status(403).json({ error: "This user only accepts messages from people they follow" }); return;
+  if (target.role !== "bot") {
+    if (target.messagePrivacy === "nobody") {
+      res.status(403).json({ error: "This user does not accept messages" }); return;
     }
-  } else if (target.messagePrivacy === "friends_only") {
-    const [iFollow, theyFollow] = await Promise.all([
-      db.query.followsTable.findFirst({
-        where: and(eq(followsTable.followerId, user.id), eq(followsTable.followingId, target.id)),
-      }),
-      db.query.followsTable.findFirst({
+
+    if (target.messagePrivacy === "following_only") {
+      const theyFollow = await db.query.followsTable.findFirst({
         where: and(eq(followsTable.followerId, target.id), eq(followsTable.followingId, user.id)),
-      }),
-    ]);
-    if (!iFollow || !theyFollow) {
-      res.status(403).json({ error: "You can only start a DM with mutual friends (users who follow each other)" }); return;
+      });
+      if (!theyFollow) {
+        res.status(403).json({ error: "This user only accepts messages from people they follow" }); return;
+      }
+    } else if (target.messagePrivacy === "friends_only") {
+      const [iFollow, theyFollow] = await Promise.all([
+        db.query.followsTable.findFirst({
+          where: and(eq(followsTable.followerId, user.id), eq(followsTable.followingId, target.id)),
+        }),
+        db.query.followsTable.findFirst({
+          where: and(eq(followsTable.followerId, target.id), eq(followsTable.followingId, user.id)),
+        }),
+      ]);
+      if (!iFollow || !theyFollow) {
+        res.status(403).json({ error: "You can only start a DM with mutual friends (users who follow each other)" }); return;
+      }
     }
   }
 
@@ -1864,7 +1891,21 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
 
   rows.reverse();
 
-  const senderIds = Array.from(new Set(rows.map((r) => r.senderId).filter(Boolean))) as number[];
+  // Filter out messages from blocked users
+  const blocks = await db.query.userBlocksTable.findMany({
+    where: (t, { or, eq }) => or(
+      eq(t.blockerId, user.id),
+      eq(t.blockedId, user.id)
+    )
+  });
+  const blockedUserIds = new Set<number>();
+  for (const b of blocks) {
+    if (b.blockerId === user.id) blockedUserIds.add(b.blockedId);
+    if (b.blockedId === user.id) blockedUserIds.add(b.blockerId);
+  }
+  const filteredRows = rows.filter(r => !r.senderId || !blockedUserIds.has(r.senderId));
+
+  const senderIds = Array.from(new Set(filteredRows.map((r) => r.senderId).filter(Boolean))) as number[];
   const bordersMap = new Map<number, string>();
   if (senderIds.length > 0) {
     const senderBorders = await db
@@ -1886,7 +1927,7 @@ router.get("/conversations/:id/messages", async (req, res): Promise<void> => {
     }
   }
 
-  const result = await populateMessageDetails(user.id, rows, bordersMap);
+  const result = await populateMessageDetails(user.id, filteredRows, bordersMap);
 
   res.json(ListMessagesResponse.parse(result));
 });
@@ -1903,6 +1944,27 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
 
   const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
   if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  if (conv.type === "dm") {
+    const otherMember = await db.query.conversationMembersTable.findFirst({
+      where: and(
+        eq(conversationMembersTable.conversationId, id),
+        ne(conversationMembersTable.userId, user.id)
+      )
+    });
+    if (otherMember) {
+      const isBlocked = await db.query.userBlocksTable.findFirst({
+        where: and(
+          eq(userBlocksTable.blockerId, otherMember.userId),
+          eq(userBlocksTable.blockedId, user.id)
+        )
+      });
+      if (isBlocked) {
+        res.status(403).json({ error: "Maaf, pesan kamu tidak terkirim karena server ngeleg, atau karena mungkin kamu kena blokir" });
+        return;
+      }
+    }
+  }
 
   if (conv.type === "group") {
     const isOwner = conv.ownerId === user.id;
@@ -1936,6 +1998,52 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     .update(conversationsTable)
     .set({ updatedAt: new Date() })
     .where(eq(conversationsTable.id, id));
+
+  // ── Business Auto-Reply (DM only) ─────────────────────────────────────────
+  if (conv.type === "dm") {
+    const otherMember = await db.query.conversationMembersTable.findFirst({
+      where: and(
+        eq(conversationMembersTable.conversationId, id),
+        ne(conversationMembersTable.userId, user.id)
+      )
+    });
+    if (otherMember) {
+      const recipient = await db.query.usersTable.findFirst({
+        where: eq(usersTable.id, otherMember.userId)
+      });
+      if (recipient && (recipient as any).businessAutoReply) {
+        // Check if there is already an auto-reply in the last few messages to prevent loops
+        const lastMessages = await db
+          .select({ senderId: messagesTable.senderId, content: messagesTable.content })
+          .from(messagesTable)
+          .where(eq(messagesTable.conversationId, id))
+          .orderBy(desc(messagesTable.id))
+          .limit(5);
+
+        const hasRecentAutoReply = lastMessages.some(
+          m => m.senderId === recipient.id && m.content && m.content.startsWith("[Auto-Reply]")
+        );
+
+        if (!hasRecentAutoReply) {
+          setTimeout(async () => {
+            try {
+              await db.insert(messagesTable).values({
+                conversationId: id,
+                senderId: recipient.id,
+                content: `[Auto-Reply] ${(recipient as any).businessAutoReply}`,
+              });
+              await db
+                .update(conversationsTable)
+                .set({ updatedAt: new Date() })
+                .where(eq(conversationsTable.id, id));
+            } catch (err) {
+              console.error("[Auto-Reply] Failed to send auto-reply:", err);
+            }
+          }, 1000);
+        }
+      }
+    }
+  }
 
   // ── Auto-Moderation (background, non-blocking) ──────────────────────────
   if (conv.type === "group") {
@@ -2164,6 +2272,31 @@ router.post("/conversations/:id/messages/:messageId/forward", async (req, res): 
   if (!sourceMember || !targetMember) {
     res.status(403).json({ error: "Kamu harus jadi member di source dan target group" });
     return;
+  }
+
+  // If target is a DM, check if the recipient has blocked the sender
+  const targetConv = await db.query.conversationsTable.findFirst({
+    where: eq(conversationsTable.id, parsedTargetConversationId)
+  });
+  if (targetConv && targetConv.type === "dm") {
+    const otherMember = await db.query.conversationMembersTable.findFirst({
+      where: and(
+        eq(conversationMembersTable.conversationId, parsedTargetConversationId),
+        ne(conversationMembersTable.userId, user.id)
+      )
+    });
+    if (otherMember) {
+      const isBlocked = await db.query.userBlocksTable.findFirst({
+        where: and(
+          eq(userBlocksTable.blockerId, otherMember.userId),
+          eq(userBlocksTable.blockedId, user.id)
+        )
+      });
+      if (isBlocked) {
+        res.status(403).json({ error: "Maaf, pesan kamu tidak terkirim karena server ngeleg, atau karena mungkin kamu kena blokir" });
+        return;
+      }
+    }
   }
 
   if (parsedTargetChannelId) {
@@ -2673,7 +2806,21 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
 
   rows.reverse();
 
-  const senderIds = Array.from(new Set(rows.map((r) => r.senderId).filter(Boolean))) as number[];
+  // Filter out messages from blocked users
+  const blocks = await db.query.userBlocksTable.findMany({
+    where: (t, { or, eq }) => or(
+      eq(t.blockerId, user.id),
+      eq(t.blockedId, user.id)
+    )
+  });
+  const blockedUserIds = new Set<number>();
+  for (const b of blocks) {
+    if (b.blockerId === user.id) blockedUserIds.add(b.blockedId);
+    if (b.blockedId === user.id) blockedUserIds.add(b.blockerId);
+  }
+  const filteredRows = rows.filter(r => !r.senderId || !blockedUserIds.has(r.senderId));
+
+  const senderIds = Array.from(new Set(filteredRows.map((r) => r.senderId).filter(Boolean))) as number[];
   const bordersMap = new Map<number, string>();
   if (senderIds.length > 0) {
     const senderBorders = await db
@@ -2684,7 +2831,7 @@ router.get("/conversations/:id/channels/:channelId/messages", async (req, res): 
     for (const b of senderBorders) { bordersMap.set(b.userId, b.value); }
   }
 
-  const result = await populateMessageDetails(user.id, rows, bordersMap);
+  const result = await populateMessageDetails(user.id, filteredRows, bordersMap);
 
   res.json(ListMessagesResponse.parse(result));
 });
@@ -2922,63 +3069,81 @@ router.get("/conversations/:id/my-permissions", async (req, res): Promise<void> 
 });
 
 router.get("/conversations/:id/members", async (req, res): Promise<void> => {
-  const auth = getAuth(req);
-  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const auth = getAuth(req);
+    if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-  const user = await getDbUser(auth.userId);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    const user = await getDbUser(auth.userId);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-  const id = parseInt(req.params.id as string, 10);
-  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+    const id = parseInt(req.params.id as string, 10);
+    console.log('[members] Step 1: Checking membership for user', user.id, 'in conv', id);
 
-  const rows = await db
-    .select({
-      id: conversationMembersTable.id,
-      userId: usersTable.id,
-      username: usersTable.username,
-      userTag: usersTable.userTag,
-      displayName: usersTable.displayName,
-      avatarUrl: usersTable.avatarUrl,
-      role: usersTable.role,
-      joinedAt: conversationMembersTable.joinedAt,
-    })
-    .from(conversationMembersTable)
-    .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
-    .where(eq(conversationMembersTable.conversationId, id))
-    .orderBy(asc(conversationMembersTable.joinedAt), asc(conversationMembersTable.id));
+    if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+    console.log('[members] Step 2: User is member, fetching rows');
 
-  const mentionNameCounts = new Map<string, number>();
-  const rowsWithMentionTags = rows.map((row) => {
-    const key = normalizeMemberName(row.username);
-    const next = (mentionNameCounts.get(key) ?? 0) + 1;
-    mentionNameCounts.set(key, next);
-    return {
-      ...row,
-      mentionTag: `#${String(next).padStart(3, "0")}`,
-    };
-  });
+    const rows = await db
+      .select({
+        id: conversationMembersTable.id,
+        userId: usersTable.id,
+        username: usersTable.username,
+        userTag: usersTable.userTag,
+        displayName: usersTable.displayName,
+        avatarUrl: usersTable.avatarUrl,
+        role: usersTable.role,
+        joinedAt: conversationMembersTable.joinedAt,
+      })
+      .from(conversationMembersTable)
+      .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
+      .where(eq(conversationMembersTable.conversationId, id))
+      .orderBy(asc(conversationMembersTable.joinedAt), asc(conversationMembersTable.id));
 
-  const enrichedMembers = await Promise.all(
-    rowsWithMentionTags.map(async (row) => {
-      const memberRoles = await db
-        .select({
-          id: rolesTable.id,
-          name: rolesTable.name,
-          color: rolesTable.color,
-        })
-        .from(memberRolesTable)
-        .innerJoin(rolesTable, eq(memberRolesTable.roleId, rolesTable.id))
-        .where(eq(memberRolesTable.conversationMemberId, row.id))
-        .orderBy(asc(rolesTable.position));
+    console.log('[members] Step 3: Got', rows.length, 'rows');
 
+    const mentionNameCounts = new Map<string, number>();
+    const rowsWithMentionTags = rows.map((row) => {
+      const key = normalizeMemberName(row.username);
+      const next = (mentionNameCounts.get(key) ?? 0) + 1;
+      mentionNameCounts.set(key, next);
       return {
-        ...serializeDates(row),
-        roles: memberRoles,
+        ...row,
+        mentionTag: `#${String(next).padStart(3, "0")}`,
       };
-    })
-  );
+    });
 
-  res.json(ListConversationMembersResponse.parse(enrichedMembers));
+    console.log('[members] Step 4: Adding mention tags');
+
+    const enrichedMembers = await Promise.all(
+      rowsWithMentionTags.map(async (row) => {
+        try {
+          const memberRoles = await db
+            .select({
+              id: rolesTable.id,
+              name: rolesTable.name,
+              color: rolesTable.color,
+            })
+            .from(memberRolesTable)
+            .innerJoin(rolesTable, eq(memberRolesTable.roleId, rolesTable.id))
+            .where(eq(memberRolesTable.conversationMemberId, row.id))
+            .orderBy(asc(rolesTable.position));
+
+          return {
+            ...serializeDates(row),
+            roles: memberRoles,
+          };
+        } catch (err) {
+          console.error('[members] Error fetching roles for member', row.id, ':', err);
+          throw err;
+        }
+      })
+    );
+
+    console.log('[members] Step 5: Enriched members done, sending response');
+    res.json(enrichedMembers);
+  } catch (err: any) {
+    console.error('[members] Error:', err);
+    res.status(500).json({ error: "Server error: " + err.message });
+  }
 });
 
 router.post("/conversations/:id/members", async (req, res): Promise<void> => {

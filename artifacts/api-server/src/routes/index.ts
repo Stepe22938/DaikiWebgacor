@@ -26,6 +26,8 @@ import boostPackagesRouter from "./boostPackages";
 import webhooksRouter from "./webhooks";
 import statusesRouter from "./statuses";
 import blocksRouter from "./blocks";
+import specialGachaRouter from "./specialGacha";
+import businessRouter from "./business";
 
 const router: IRouter = Router();
 
@@ -56,5 +58,7 @@ router.use(emojisRouter);
 router.use(boostPackagesRouter);
 router.use(statusesRouter);
 router.use(blocksRouter);
+router.use(specialGachaRouter);
+router.use(businessRouter);
 
 export default router;

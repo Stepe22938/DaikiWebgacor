@@ -5,22 +5,25 @@ import {
   db,
   usersTable,
   specialGachaEventsTable,
-  tokenRoyalPrizesTable,
-  userTokenProgressTable,
   biddingEntriesTable,
   titleNumbersTable,
   walletTransactionsTable,
+  eventRewardsTable,
+  userEventRewardProgressTable,
+  eventSpinResultsTable,
 } from "@workspace/db";
 import { serializeDates } from "../lib/serialize";
 
 const router: IRouter = Router();
+
+const DEV_WEBSITE_ROLE = "dev_website";
 
 async function getDbUser(clerkId: string) {
   return db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, clerkId) });
 }
 
 function isAdmin(user: { role?: string | null }) {
-  return user.role === "admin" || user.role === "owner";
+  return user.role === "admin" || user.role === "owner" || user.role === DEV_WEBSITE_ROLE;
 }
 
 // ─────────────────────────── ADMIN ROUTES ───────────────────────────
@@ -28,15 +31,17 @@ function isAdmin(user: { role?: string | null }) {
 // GET /admin/special-gacha — list all events with prize counts and bid stats
 router.get("/admin/special-gacha", async (req, res): Promise<void> => {
   const auth = getAuth(req);
-  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized - no auth userId" }); return; }
   const user = await getDbUser(auth.userId);
-  if (!user || !isAdmin(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+  console.log('[specialGacha] GET list - auth.userId:', auth.userId, 'user found:', !!user, 'user.role:', user?.role);
+  if (!user) { res.status(403).json({ error: "Forbidden - user not found in database" }); return; }
+  if (!isAdmin(user)) { res.status(403).json({ error: "Forbidden - needs admin/owner role, has: " + user.role }); return; }
 
   const events = await db.select().from(specialGachaEventsTable).orderBy(desc(specialGachaEventsTable.createdAt));
 
   const enriched = await Promise.all(events.map(async (ev) => {
-    const prizes = ev.type === "token_royal"
-      ? await db.select().from(tokenRoyalPrizesTable).where(eq(tokenRoyalPrizesTable.eventId, ev.id)).orderBy(tokenRoyalPrizesTable.tokenPosition)
+    const rewards = ev.type === "token_royal" || ev.type === "rush_board"
+      ? await db.select().from(eventRewardsTable).where(eq(eventRewardsTable.eventId, ev.id)).orderBy(eventRewardsTable.rewardTier)
       : [];
 
     const [bidStats] = ev.type === "bidding"
@@ -49,7 +54,7 @@ router.get("/admin/special-gacha", async (req, res): Promise<void> => {
           .from(titleNumbersTable).where(eq(titleNumbersTable.eventId, ev.id)).limit(1)
       : [];
 
-    return { ...serializeDates(ev), prizes, bidCount: bidStats?.total ?? 0, topBid: bidStats?.topBid ?? null, winner: winner[0] ?? null };
+    return { ...serializeDates(ev), rewards, bidCount: bidStats?.total ?? 0, topBid: bidStats?.topBid ?? null, winner: winner[0] ?? null };
   }));
 
   res.json(enriched);
@@ -58,9 +63,11 @@ router.get("/admin/special-gacha", async (req, res): Promise<void> => {
 // POST /admin/special-gacha — create event
 router.post("/admin/special-gacha", async (req, res): Promise<void> => {
   const auth = getAuth(req);
-  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized - no auth userId" }); return; }
   const user = await getDbUser(auth.userId);
-  if (!user || !isAdmin(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+  console.log('[specialGacha] POST create - auth.userId:', auth.userId, 'user found:', !!user, 'user.role:', user?.role);
+  if (!user) { res.status(403).json({ error: "Forbidden - user not found in database. userId:" + auth.userId }); return; }
+  if (!isAdmin(user)) { res.status(403).json({ error: "Forbidden - user role is " + user.role + ", needs admin or owner" }); return; }
 
   const { type, name, description, videoUrl, isActive, costPerToken, prizes, startingBid, minBidIncrement, endsAt } = req.body;
 
@@ -71,7 +78,6 @@ router.post("/admin/special-gacha", async (req, res): Promise<void> => {
 
   if (type === "token_royal") {
     if (!costPerToken || costPerToken < 1) { res.status(400).json({ error: "costPerToken required" }); return; }
-    if (!prizes || prizes.length !== 5) { res.status(400).json({ error: "Exactly 5 prizes required" }); return; }
   }
   if (type === "bidding") {
     if (!startingBid || startingBid < 1) { res.status(400).json({ error: "startingBid required" }); return; }
@@ -84,23 +90,13 @@ router.post("/admin/special-gacha", async (req, res): Promise<void> => {
     description: description?.trim() || null,
     videoUrl: videoUrl?.trim() || null,
     isActive: isActive ?? false,
-    costPerToken: type === "token_royal" ? costPerToken : null,
+    spinCost: type === "token_royal" ? costPerToken : 50,
     startingBid: type === "bidding" ? startingBid : null,
     minBidIncrement: type === "bidding" ? (minBidIncrement ?? 1) : null,
     endsAt: type === "bidding" ? new Date(endsAt) : null,
   }).returning();
 
-  if (type === "token_royal" && prizes) {
-    await db.insert(tokenRoyalPrizesTable).values(
-      prizes.map((p: any, i: number) => ({
-        eventId: event.id,
-        tokenPosition: i + 1,
-        name: p.name?.trim() || `Prize ${i + 1}`,
-        description: p.description?.trim() || null,
-        imageUrl: p.imageUrl?.trim() || null,
-      }))
-    );
-  }
+  // Token Royal slots are set separately via POST /admin/special-gacha/:id/token-royal/slots
 
   res.status(201).json(serializeDates(event));
 });
@@ -125,26 +121,14 @@ router.patch("/admin/special-gacha/:id", async (req, res): Promise<void> => {
     ...(description !== undefined && { description: description?.trim() || null }),
     ...(videoUrl !== undefined && { videoUrl: videoUrl?.trim() || null }),
     ...(isActive !== undefined && { isActive }),
-    ...(costPerToken !== undefined && { costPerToken }),
+    ...(costPerToken !== undefined && { spinCost: costPerToken }),
     ...(startingBid !== undefined && { startingBid }),
     ...(minBidIncrement !== undefined && { minBidIncrement }),
     ...(endsAt !== undefined && { endsAt: endsAt ? new Date(endsAt) : null }),
     updatedAt: new Date(),
   }).where(eq(specialGachaEventsTable.id, eventId));
 
-  // Update prizes if provided for token_royal
-  if (existing.type === "token_royal" && prizes && prizes.length === 5) {
-    await db.delete(tokenRoyalPrizesTable).where(eq(tokenRoyalPrizesTable.eventId, eventId));
-    await db.insert(tokenRoyalPrizesTable).values(
-      prizes.map((p: any, i: number) => ({
-        eventId,
-        tokenPosition: i + 1,
-        name: p.name?.trim() || `Prize ${i + 1}`,
-        description: p.description?.trim() || null,
-        imageUrl: p.imageUrl?.trim() || null,
-      }))
-    );
-  }
+  // Token Royal slots are updated separately via POST /admin/special-gacha/:id/token-royal/slots
 
   const updated = await db.query.specialGachaEventsTable.findFirst({ where: eq(specialGachaEventsTable.id, eventId) });
   res.json(serializeDates(updated));
@@ -162,6 +146,56 @@ router.delete("/admin/special-gacha/:id", async (req, res): Promise<void> => {
 
   await db.delete(specialGachaEventsTable).where(eq(specialGachaEventsTable.id, eventId));
   res.json({ success: true });
+});
+
+// POST /admin/special-gacha/:id/rewards — set custom rewards untuk event
+router.post("/admin/special-gacha/:id/rewards", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user || !isAdmin(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const eventId = parseInt(req.params.id, 10);
+  if (isNaN(eventId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const event = await db.query.specialGachaEventsTable.findFirst({ where: eq(specialGachaEventsTable.id, eventId) });
+  if (!event || (event.type !== "token_royal" && event.type !== "rush_board")) {
+    res.status(400).json({ error: "Event type doesn't support custom rewards" }); return;
+  }
+
+  const { rewards } = req.body;
+  if (!Array.isArray(rewards) || rewards.length === 0) {
+    res.status(400).json({ error: "Must provide at least 1 reward" }); return;
+  }
+
+  // Delete old rewards
+  await db.delete(eventRewardsTable).where(eq(eventRewardsTable.eventId, eventId));
+
+  // Create new rewards
+  await db.insert(eventRewardsTable).values(
+    rewards.map((r: any, i: number) => ({
+      eventId,
+      rewardType: r.rewardType || `tier${i + 1}`,
+      rewardTier: i + 1,
+      rewardName: r.rewardName?.trim() || `Reward ${i + 1}`,
+      rewardDescription: r.rewardDescription?.trim() || null,
+      rewardImageUrl: r.rewardImageUrl?.trim() || null,
+      rewardQuantity: r.rewardQuantity || 1,
+      isGrandPrize: r.isGrandPrize || false,
+    }))
+  );
+
+  const savedRewards = await db.select().from(eventRewardsTable).where(eq(eventRewardsTable.eventId, eventId)).orderBy(eventRewardsTable.rewardTier);
+  res.json(savedRewards);
+});
+
+// GET /admin/special-gacha/:id/rewards
+router.get("/admin/special-gacha/:id/rewards", async (req, res): Promise<void> => {
+  const eventId = parseInt(req.params.id, 10);
+  if (isNaN(eventId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const rewards = await db.select().from(eventRewardsTable).where(eq(eventRewardsTable.eventId, eventId)).orderBy(eventRewardsTable.rewardTier);
+  res.json(rewards);
 });
 
 // POST /admin/special-gacha/:id/award-winner — close bidding, award title #, refund losers
@@ -237,15 +271,9 @@ router.get("/special-gacha", async (req, res): Promise<void> => {
     .orderBy(desc(specialGachaEventsTable.createdAt));
 
   const enriched = await Promise.all(events.map(async (ev) => {
-    const prizes = ev.type === "token_royal"
-      ? await db.select().from(tokenRoyalPrizesTable).where(eq(tokenRoyalPrizesTable.eventId, ev.id)).orderBy(tokenRoyalPrizesTable.tokenPosition)
-      : [];
+    const slots: any[] = [];
 
-    const progress = ev.type === "token_royal"
-      ? await db.query.userTokenProgressTable.findFirst({
-          where: and(eq(userTokenProgressTable.userId, user.id), eq(userTokenProgressTable.eventId, ev.id))
-        })
-      : null;
+    const progress = null;
 
     const myBid = ev.type === "bidding"
       ? await db.select({ amount: biddingEntriesTable.amount }).from(biddingEntriesTable)
@@ -260,9 +288,10 @@ router.get("/special-gacha", async (req, res): Promise<void> => {
 
     return {
       ...serializeDates(ev),
-      prizes,
-      tokensCollected: progress?.tokensCollected ?? 0,
-      completedAt: progress?.completedAt ? serializeDates(progress).completedAt : null,
+      slots,
+      completedSlots: [],
+      sharkDiscountCount: 0,
+      isCompleted: false,
       myBid: myBid[0]?.amount ?? null,
       topBid: topBidRow?.topBid ?? null,
       bidCount: topBidRow?.total ?? 0,
@@ -272,8 +301,8 @@ router.get("/special-gacha", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
-// POST /special-gacha/:id/collect-token — spend diamonds, advance token progress
-router.post("/special-gacha/:id/collect-token", async (req, res): Promise<void> => {
+// POST /special-gacha/:id/spin — spin any special event (Token Royal, Rush Board, etc) dengan shark discount
+router.post("/special-gacha/:id/spin", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const user = await getDbUser(auth.userId);
@@ -283,58 +312,102 @@ router.post("/special-gacha/:id/collect-token", async (req, res): Promise<void> 
   if (isNaN(eventId)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
   const event = await db.query.specialGachaEventsTable.findFirst({ where: eq(specialGachaEventsTable.id, eventId) });
-  if (!event || !event.isActive || event.type !== "token_royal") {
+  if (!event || !event.isActive || (event.type !== "token_royal" && event.type !== "rush_board")) {
     res.status(400).json({ error: "Event not available" }); return;
   }
 
-  const cost = event.costPerToken!;
-  if (user.diamonds < cost) {
-    res.status(400).json({ error: "Insufficient diamonds" }); return;
+  // Get rewards for this event
+  const rewards = await db.select().from(eventRewardsTable).where(eq(eventRewardsTable.eventId, eventId));
+  if (rewards.length === 0) {
+    res.status(400).json({ error: "Event has no rewards configured" }); return;
   }
 
   // Get or create progress
-  let progress = await db.query.userTokenProgressTable.findFirst({
-    where: and(eq(userTokenProgressTable.userId, user.id), eq(userTokenProgressTable.eventId, eventId))
+  let progress = await db.query.userEventRewardProgressTable.findFirst({
+    where: and(eq(userEventRewardProgressTable.userId, user.id), eq(userEventRewardProgressTable.eventId, eventId))
   });
 
-  const currentTokens = progress?.tokensCollected ?? 0;
-  if (currentTokens >= 5) {
-    res.status(400).json({ error: "Semua token sudah dikumpulkan" }); return;
+  if (progress?.isCompleted) {
+    res.status(400).json({ error: "Event sudah selesai" }); return;
   }
 
-  const nextToken = currentTokens + 1;
-  const isGrandPrize = nextToken === 5;
+  const spinCost = event.spinCost || 50;
+  const sharkCount = progress?.sharkCount || 0;
+  const sharkDiscount = sharkCount * 10; // 10% per shark
+  const discountedCost = Math.floor(spinCost * (100 - sharkDiscount) / 100);
+
+  if (user.diamonds < discountedCost) {
+    res.status(400).json({ error: "Insufficient diamonds" }); return;
+  }
+
+  // Determine spin result
+  const sharkRate = parseFloat(event.sharkRate?.toString() || "0.30");
+  const isShark = Math.random() < sharkRate;
+  let result: any = { isSharked: isShark, diamondsSpent: discountedCost, discountApplied: spinCost - discountedCost };
+
+  if (isShark) {
+    // Got shark - increment discount count
+    const newSharkCount = sharkCount + 1;
+    if (progress) {
+      await db.update(userEventRewardProgressTable)
+        .set({ sharkCount: newSharkCount, totalSpins: (progress.totalSpins || 0) + 1, updatedAt: new Date() })
+        .where(and(eq(userEventRewardProgressTable.userId, user.id), eq(userEventRewardProgressTable.eventId, eventId)));
+    } else {
+      await db.insert(userEventRewardProgressTable).values({
+        userId: user.id, eventId, sharkCount: 1, totalSpins: 1,
+      });
+    }
+    result.type = "shark";
+    result.nextDiscount = newSharkCount * 10;
+  } else {
+    // Got reward - random from available rewards
+    const randomReward = rewards[Math.floor(Math.random() * rewards.length)];
+    const collectedIds = progress?.collectedRewardIds || [];
+    const newCollectedIds = [...new Set([...collectedIds, randomReward.id])];
+    const isEventComplete = randomReward.isGrandPrize;
+
+    if (progress) {
+      await db.update(userEventRewardProgressTable)
+        .set({
+          collectedRewardIds: newCollectedIds,
+          totalSpins: (progress.totalSpins || 0) + 1,
+          isCompleted: isEventComplete,
+          completedAt: isEventComplete ? new Date() : null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(userEventRewardProgressTable.userId, user.id), eq(userEventRewardProgressTable.eventId, eventId)));
+    } else {
+      await db.insert(userEventRewardProgressTable).values({
+        userId: user.id, eventId, collectedRewardIds: [randomReward.id], totalSpins: 1,
+        isCompleted: isEventComplete, completedAt: isEventComplete ? new Date() : null,
+      });
+    }
+
+    result.type = "reward";
+    result.reward = serializeDates(randomReward);
+    result.collectedRewards = newCollectedIds.length;
+    result.totalRewards = rewards.length;
+    result.eventComplete = isEventComplete;
+  }
 
   // Deduct diamonds
-  await db.update(usersTable).set({ diamonds: user.diamonds - cost }).where(eq(usersTable.id, user.id));
+  await db.update(usersTable).set({ diamonds: user.diamonds - discountedCost }).where(eq(usersTable.id, user.id));
   await db.insert(walletTransactionsTable).values({
-    userId: user.id, amount: -cost, currency: "diamond",
-    type: "token_royal_spend", description: `Token Royal: Token #${nextToken} — "${event.name}"`,
+    userId: user.id, amount: -discountedCost, currency: "diamond",
+    type: "special_gacha_spend", description: `${event.name} Spin: ${isShark ? "🦈 Shark!" : `${result.reward?.rewardName}`}`,
   });
 
-  // Update progress
-  if (progress) {
-    await db.update(userTokenProgressTable)
-      .set({ tokensCollected: nextToken, completedAt: isGrandPrize ? new Date() : null })
-      .where(and(eq(userTokenProgressTable.userId, user.id), eq(userTokenProgressTable.eventId, eventId)));
-  } else {
-    await db.insert(userTokenProgressTable).values({
-      userId: user.id, eventId, tokensCollected: nextToken,
-      completedAt: isGrandPrize ? new Date() : null,
-    });
-  }
-
-  // Fetch the prize for this token position
-  const prize = await db.query.tokenRoyalPrizesTable.findFirst({
-    where: and(eq(tokenRoyalPrizesTable.eventId, eventId), eq(tokenRoyalPrizesTable.tokenPosition, nextToken))
+  // Log spin result
+  await db.insert(eventSpinResultsTable).values({
+    userId: user.id, eventId, resultType: isShark ? "shark" : "reward",
+    rewardId: isShark ? null : result.reward?.id,
+    isShark,
+    diamondsSpent: discountedCost,
+    discountApplied: sharkDiscount > 0 ? spinCost - discountedCost : 0,
   });
 
-  res.json({
-    tokenNumber: nextToken,
-    isGrandPrize,
-    prize: prize ? serializeDates(prize) : null,
-    diamondsLeft: user.diamonds - cost,
-  });
+  result.diamondsLeft = user.diamonds - discountedCost;
+  res.json(result);
 });
 
 // POST /special-gacha/:id/bid — place/raise a bid

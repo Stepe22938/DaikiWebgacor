@@ -69,6 +69,12 @@ import {
   ImageIcon,
   Lock,
   Shield,
+  Trophy,
+  X,
+  Store,
+  Trash2,
+  Pencil,
+  ShoppingBag,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -89,6 +95,952 @@ declare global {
     Spotify?: any;
     onSpotifyWebPlaybackSDKReady?: () => void;
   }
+}
+
+function SellerHub({
+  agreed1, setAgreed1,
+  agreed2, setAgreed2,
+  agreed3, setAgreed3,
+  subTab, setSubTab,
+  searchQuery, setSearchQuery,
+  productModalOpen, setProductModalOpen,
+  editingProduct, setEditingProduct,
+  prodName, setProdName,
+  prodDesc, setProdDesc,
+  prodPrice, setProdPrice,
+  prodImg, setProdImg,
+  prodActive, setProdActive,
+  selectedProduct, setSelectedProduct,
+  bizName, setBizName,
+  bizDesc, setBizDesc,
+  bizAutoReply, setBizAutoReply,
+  hideOnline, setHideOnline
+}: any) {
+  const { data: me, refetch: refetchMe } = useGetMe();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const [buyingProduct, setBuyingProduct] = useState(false);
+
+  const { data: myPurchases = [], refetch: refetchMyPurchases } = useQuery({
+    queryKey: ["/api/business/purchases"],
+    queryFn: () => customFetch<any[]>("/api/business/purchases"),
+  });
+
+  const handleBuyProduct = async (productId: number) => {
+    try {
+      setBuyingProduct(true);
+      const data = await customFetch<{ checkoutUrl: string }>(`/api/business/products/${productId}/buy`, {
+        method: "POST"
+      });
+      if (data && data.checkoutUrl) {
+        refetchMyPurchases();
+        window.open(data.checkoutUrl, "_blank");
+      } else {
+        throw new Error("Checkout URL tidak ditemukan.");
+      }
+    } catch (err: any) {
+      toast({
+        title: "Gagal membuat invoice",
+        description: err.message || "Terjadi kesalahan saat menghubungi SayaBayar.",
+        variant: "destructive"
+      });
+    } finally {
+      setBuyingProduct(false);
+    }
+  };
+
+  const [orderStatusFilter, setOrderStatusFilter] = useState<"completed" | "pending" | "delivered">("completed");
+
+  const { data: myOrders = [], isLoading: myOrdersLoading, refetch: refetchMyOrders } = useQuery({
+    queryKey: ["/api/business/orders"],
+    queryFn: () => customFetch<any[]>("/api/business/orders"),
+    enabled: subTab === "orders" || subTab === "myshop"
+  });
+
+  const deliverOrderMutation = useMutation({
+    mutationFn: (id: number) => customFetch<any>(`/api/business/orders/${id}/deliver`, { method: "POST" }),
+    onSuccess: () => {
+      refetchMyOrders();
+      toast({ title: "Pesanan berhasil ditandai sebagai dikirim!" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal memproses pesanan", description: err.message, variant: "destructive" });
+    }
+  });
+
+  // Queries
+  const { data: marketplaceProducts = [], isLoading: marketLoading } = useQuery({
+    queryKey: ["/api/business/products"],
+    queryFn: () => customFetch<any[]>("/api/business/products")
+  });
+
+  const { data: myProducts = [], isLoading: myProductsLoading, refetch: refetchMyProducts } = useQuery({
+    queryKey: ["/api/business/my-products"],
+    queryFn: () => customFetch<any[]>("/api/business/my-products"),
+    enabled: subTab === "myshop"
+  });
+
+  // Mutations
+  const saveProfileMutation = useMutation({
+    mutationFn: (payload: any) => customFetch<any>("/api/business/profile", {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+    onSuccess: () => {
+      refetchMe();
+      toast({ title: "Profil Bisnis berhasil disimpan!" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal menyimpan profil", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const saveProductMutation = useMutation({
+    mutationFn: (payload: any) => {
+      const url = editingProduct ? `/api/business/products/${editingProduct.id}` : "/api/business/products";
+      const method = editingProduct ? "PATCH" : "POST";
+      return customFetch<any>(url, {
+        method,
+        body: JSON.stringify(payload)
+      });
+    },
+    onSuccess: () => {
+      refetchMyProducts();
+      queryClient.invalidateQueries({ queryKey: ["/api/business/products"] });
+      setProductModalOpen(false);
+      setEditingProduct(null);
+      toast({ title: editingProduct ? "Produk berhasil diperbarui!" : "Produk baru berhasil dibuat!" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal menyimpan produk", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const deleteProductMutation = useMutation({
+    mutationFn: (id: number) => customFetch<any>(`/api/business/products/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      refetchMyProducts();
+      queryClient.invalidateQueries({ queryKey: ["/api/business/products"] });
+      toast({ title: "Produk berhasil dihapus!" });
+    }
+  });
+
+  const toggleProductActiveMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => customFetch<any>(`/api/business/products/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ isActive })
+    }),
+    onSuccess: () => {
+      refetchMyProducts();
+      queryClient.invalidateQueries({ queryKey: ["/api/business/products"] });
+    }
+  });
+
+  const requestVerificationMutation = useMutation({
+    mutationFn: async () => {
+      return new Promise((resolve) => setTimeout(resolve, 1000));
+    },
+    onSuccess: () => {
+      toast({
+        title: "Pengajuan Terkirim!",
+        description: "Admin kami akan memverifikasi bisnis Anda dalam 24 jam."
+      });
+    }
+  });
+
+  const [, setLocation] = useLocation();
+  const handleStartChatWithSeller = async (sellerUserId: number, sellerName: string) => {
+    try {
+      const conv = await customFetch<any>("/api/conversations/dm", {
+        method: "POST",
+        body: JSON.stringify({ targetUserId: sellerUserId })
+      });
+      setSelectedProduct(null);
+      setLocation(`/member?tab=messages&convId=${conv.id}`);
+      toast({ title: `Membuka obrolan dengan ${sellerName}` });
+    } catch (err) {
+      toast({ title: "Gagal memulai obrolan", variant: "destructive" });
+    }
+  };
+
+  const handleOpenProductModal = (product?: any) => {
+    if (product) {
+      setEditingProduct(product);
+      setProdName(product.name);
+      setProdDesc(product.description || "");
+      setProdPrice(product.price.toString());
+      setProdImg(product.imageUrl || "");
+      setProdActive(product.isActive);
+    } else {
+      setEditingProduct(null);
+      setProdName("");
+      setProdDesc("");
+      setProdPrice("");
+      setProdImg("");
+      setProdActive(true);
+    }
+    setProductModalOpen(true);
+  };
+
+  const handleSaveProduct = () => {
+    saveProductMutation.mutate({
+      name: prodName,
+      description: prodDesc,
+      price: prodPrice,
+      imageUrl: prodImg,
+      isActive: prodActive
+    });
+  };
+
+  const filteredProducts = marketplaceProducts.filter((p: any) => 
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (p.seller.businessName && p.seller.businessName.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0
+    }).format(price);
+  };
+
+  const allAgreed = agreed1 && agreed2 && agreed3;
+
+  const becomeSellerMutation = useMutation({
+    mutationFn: () => customFetch<any>("/api/business/become-seller", {
+      method: "POST"
+    }),
+    onSuccess: () => {
+      refetchMe();
+      toast({
+        title: "Toko Aktif!",
+        description: "Selamat! Anda sekarang resmi menjadi Seller di Arcadia."
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Pendaftaran gagal", description: err.message, variant: "destructive" });
+    }
+  });
+
+  if (me && !(me as any).isSeller) {
+    return (
+      <div className="max-w-xl mx-auto bg-[#13121f] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6 my-4 text-white">
+        <div className="text-center space-y-2">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-950/40 border border-emerald-900/30 flex items-center justify-center mx-auto text-emerald-400">
+            <Store className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-black text-white">Mulai Jualan di Arcadia</h2>
+          <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">
+            WhatsApp Business Seller Agreement
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-zinc-950/40 border border-zinc-800/60 p-4 space-y-3.5">
+          <p className="text-xs text-zinc-400 font-medium leading-relaxed">
+            Untuk mengaktifkan fitur toko dan mulai menjual produk Anda di Marketplace Arcadia, silakan baca dan setujui ketentuan prosedur berikut:
+          </p>
+
+          <div className="space-y-3 pt-2">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={agreed1}
+                onChange={(e) => setAgreed1(e.target.checked)}
+                className="mt-1 w-4.5 h-4.5 rounded border-zinc-700 bg-zinc-900/80 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+              />
+              <span className="text-xs text-zinc-300 font-bold leading-normal">
+                Saya bersedia melayani seluruh pembeli dengan jujur, ramah, dan sopan.
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={agreed2}
+                onChange={(e) => setAgreed2(e.target.checked)}
+                className="mt-1 w-4.5 h-4.5 rounded border-zinc-700 bg-zinc-900/80 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+              />
+              <span className="text-xs text-zinc-300 font-bold leading-normal">
+                Saya setuju bahwa transaksi pembayaran wajib diarahkan ke platform <span className="text-violet-400 hover:underline">sayabayar.com</span> dengan deskripsi invoice yang sesuai.
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={agreed3}
+                onChange={(e) => setAgreed3(e.target.checked)}
+                className="mt-1 w-4.5 h-4.5 rounded border-zinc-700 bg-zinc-900/80 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+              />
+              <span className="text-xs text-zinc-300 font-bold leading-normal">
+                Saya bersedia memproses pesanan dan menyerahkan barang segera setelah pembeli mengirimkan tangkapan layar (screenshot) bukti pembayaran yang sah.
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <Button
+          onClick={() => becomeSellerMutation.mutate()}
+          disabled={!allAgreed || becomeSellerMutation.isPending}
+          className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm h-11 shadow-lg shadow-emerald-500/10 transition-all disabled:opacity-50"
+        >
+          {becomeSellerMutation.isPending ? "Mengaktifkan..." : "Aktifkan Akun Seller"}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 text-white">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
+        <div className="flex flex-col">
+          <h2 className="text-xl font-black text-white flex items-center gap-2">
+            <Store className="w-5.5 h-5.5 text-emerald-500" /> Toko Saya
+          </h2>
+          <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+            WhatsApp Business Center
+          </p>
+        </div>
+      </div>
+
+      {/* MY SHOP CONTENT */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Business Settings Pane */}
+          <div className="lg:col-span-1 space-y-5">
+            <div className="bg-[#1e1f22]/60 rounded-2xl border border-zinc-800/80 p-5 shadow-xl space-y-4">
+              <h3 className="text-sm font-black text-white flex items-center gap-1.5">
+                ⚙️ Profil Bisnis
+              </h3>
+
+              {/* Verification Status Banner */}
+              {me && (me as any).isBusinessVerified ? (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3.5 flex items-start gap-2.5">
+                  <BadgeCheck className="w-5 h-5 text-emerald-400 fill-emerald-400/10 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs font-black text-emerald-400">Bisnis Terverifikasi</h4>
+                    <p className="text-[10px] text-emerald-300/80 font-bold mt-0.5 leading-normal">
+                      Akun bisnis Anda telah mendapatkan lencana centang hijau resmi!
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 flex flex-col gap-2">
+                  <div className="flex items-start gap-2.5">
+                    <Store className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-black text-amber-400">Belum Terverifikasi</h4>
+                      <p className="text-[10px] text-amber-300/80 font-bold mt-0.5 leading-normal">
+                        Ajukan verifikasi untuk membangun reputasi dan mendapatkan lencana centang hijau.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => requestVerificationMutation.mutate()}
+                    className="w-full text-xs font-black border-amber-900/30 text-amber-400 hover:bg-amber-950/20 hover:text-amber-300"
+                  >
+                    Ajukan Verifikasi Bisnis
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-3.5 pt-2">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-zinc-400">Nama Bisnis</Label>
+                  <Input
+                    placeholder="Contoh: Toko Diamond Zaidan"
+                    value={bizName}
+                    onChange={(e) => setBizName(e.target.value)}
+                    className="rounded-xl border-zinc-800 text-xs font-semibold text-white bg-zinc-950/40 focus-visible:ring-violet-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-zinc-400">Deskripsi Bisnis</Label>
+                  <Textarea
+                    placeholder="Jelaskan apa yang Anda jual..."
+                    value={bizDesc}
+                    onChange={(e) => setBizDesc(e.target.value)}
+                    rows={3}
+                    className="rounded-xl border-zinc-800 text-xs font-semibold text-white bg-zinc-950/40 focus-visible:ring-violet-500 resize-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-zinc-400">Balas Otomatis Bot</Label>
+                    <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/20 px-1.5 py-0.5 rounded border border-emerald-900/30">Bot Active</span>
+                  </div>
+                  <Textarea
+                    placeholder="Contoh: Halo! Terima kasih telah menghubungi kami. Silakan beri tahu produk apa yang Anda minati..."
+                    value={bizAutoReply}
+                    onChange={(e) => setBizAutoReply(e.target.value)}
+                    rows={3}
+                    className="rounded-xl border-zinc-800 text-xs font-semibold text-white bg-zinc-950/40 focus-visible:ring-violet-500 resize-none"
+                  />
+                  <p className="text-[9px] text-zinc-500 font-bold leading-normal">
+                    Pesan ini akan otomatis dikirimkan dari akun Anda sebagai balasan bot pertama di DM jika Anda menerima pesan baru.
+                  </p>
+                </div>
+
+                {/* Hide Online Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-xl border border-zinc-800/85 bg-zinc-950/20">
+                  <div className="space-y-0.5 pr-2">
+                    <Label className="text-xs font-bold text-white">Sembunyikan Online</Label>
+                    <p className="text-[9px] text-zinc-500 font-bold leading-normal">
+                      Sembunyikan kehadiran aktif Anda agar selalu terlihat offline di chat.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHideOnline(!hideOnline)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${hideOnline ? "bg-emerald-500" : "bg-zinc-750"}`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${hideOnline ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
+
+                <Button
+                  onClick={() => saveProfileMutation.mutate({
+                    businessName: bizName,
+                    businessDescription: bizDesc,
+                    businessAutoReply: bizAutoReply,
+                    hideOnlineStatus: hideOnline
+                  })}
+                  disabled={saveProfileMutation.isPending}
+                  className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-black text-xs h-10 shadow-md shadow-violet-500/10"
+                >
+                  {saveProfileMutation.isPending ? "Menyimpan..." : "Simpan Pengaturan"}
+                </Button>
+              </div>
+            </div>
+          </div>          {/* Product & Order Management Pane */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Tab Switcher */}
+            <div className="flex items-center gap-1 bg-[#1e1f22]/80 p-1 rounded-xl border border-zinc-800/80 w-fit">
+              <button
+                type="button"
+                onClick={() => setSubTab("myshop")}
+                className={`text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all ${
+                  subTab === "myshop"
+                    ? "bg-[#2b2d31] text-[#6366f1] shadow-sm"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                📦 Kelola Produk
+              </button>
+              <button
+                type="button"
+                onClick={() => setSubTab("orders")}
+                className={`text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  subTab === "orders"
+                    ? "bg-[#2b2d31] text-[#6366f1] shadow-sm"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                📋 Pesanan Masuk
+                {myOrders.filter((o: any) => o.status === "completed").length > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                )}
+              </button>
+            </div>
+
+            {subTab === "myshop" ? (
+              <div className="bg-[#1e1f22]/60 rounded-2xl border border-zinc-800/80 p-5 shadow-xl space-y-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h3 className="text-sm font-black text-white flex items-center gap-1.5">
+                    📦 Produk Saya ({myProducts.length})
+                  </h3>
+                  <Button
+                    size="sm"
+                    onClick={() => handleOpenProductModal()}
+                    className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-wider h-8"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Tambah Produk
+                  </Button>
+                </div>
+
+                {myProductsLoading ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Skeleton key={i} className="w-full h-16 rounded-xl bg-zinc-800/50" />
+                    ))}
+                  </div>
+                ) : myProducts.length === 0 ? (
+                  <div className="border border-dashed border-zinc-800 rounded-2xl p-12 text-center space-y-2">
+                    <ShoppingBag className="w-8 h-8 text-zinc-700 mx-auto" />
+                    <p className="text-xs text-zinc-500 font-bold">Anda belum mengunggah produk apapun.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {myProducts.map((product: any) => (
+                      <div
+                        key={product.id}
+                        className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-zinc-800/60 bg-zinc-900/10 hover:border-zinc-700/80 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-12 h-12 rounded-lg bg-zinc-950/50 border border-zinc-800/80 flex items-center justify-center shrink-0 overflow-hidden">
+                            {product.imageUrl ? (
+                              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <ShoppingBag className="w-5 h-5 text-zinc-700" />
+                            )}
+                          </div>
+                          <div className="min-w-0 space-y-0.5">
+                            <h4 className="text-xs font-black text-white truncate">{product.name}</h4>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black text-emerald-400">{formatPrice(product.price)}</span>
+                              <span className={`text-[9px] font-black uppercase px-1.5 py-0.25 rounded ${product.isActive ? "bg-emerald-950/30 text-emerald-400 border border-emerald-900/50" : "bg-zinc-800/50 text-zinc-400 border border-zinc-750"}`}>
+                                {product.isActive ? "Aktif" : "Draft"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {/* Toggle Active Status */}
+                          <button
+                            type="button"
+                            onClick={() => toggleProductActiveMutation.mutate({ id: product.id, isActive: !product.isActive })}
+                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${product.isActive ? "bg-emerald-500" : "bg-zinc-750"}`}
+                          >
+                            <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${product.isActive ? "translate-x-4.5" : "translate-x-0"}`} />
+                          </button>
+
+                          {/* Edit Button */}
+                          <button
+                            onClick={() => handleOpenProductModal(product)}
+                            className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Delete Button */}
+                          <button
+                            onClick={() => {
+                              if (confirm("Apakah Anda yakin ingin menghapus produk ini?")) {
+                                deleteProductMutation.mutate(product.id);
+                              }
+                            }}
+                            className="p-1.5 hover:bg-red-950/20 text-zinc-500 hover:text-red-400 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-[#1e1f22]/60 rounded-2xl border border-zinc-800/80 p-5 shadow-xl space-y-4">
+                <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
+                  <h3 className="text-sm font-black text-white flex items-center gap-1.5">
+                    📋 Pesanan Masuk
+                  </h3>
+                  
+                  {/* Status Filter Tabs */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setOrderStatusFilter("completed")}
+                      className={`text-xs font-bold pb-1 border-b-2 transition-all ${
+                        orderStatusFilter === "completed"
+                          ? "border-emerald-500 text-emerald-400"
+                          : "border-transparent text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      Perlu Dikirim ({myOrders.filter((o: any) => o.status === "completed").length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrderStatusFilter("pending")}
+                      className={`text-xs font-bold pb-1 border-b-2 transition-all ${
+                        orderStatusFilter === "pending"
+                          ? "border-amber-500 text-amber-400"
+                          : "border-transparent text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      Pending ({myOrders.filter((o: any) => o.status === "pending").length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrderStatusFilter("delivered")}
+                      className={`text-xs font-bold pb-1 border-b-2 transition-all ${
+                        orderStatusFilter === "delivered"
+                          ? "border-zinc-500 text-zinc-400"
+                          : "border-transparent text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      Selesai ({myOrders.filter((o: any) => o.status === "delivered").length})
+                    </button>
+                  </div>
+                </div>
+
+                {myOrdersLoading ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Skeleton key={i} className="w-full h-16 rounded-xl bg-zinc-800/50" />
+                    ))}
+                  </div>
+                ) : myOrders.filter((o: any) => o.status === orderStatusFilter).length === 0 ? (
+                  <div className="border border-dashed border-zinc-800 rounded-2xl p-12 text-center space-y-2">
+                    <ClipboardList className="w-8 h-8 text-zinc-700 mx-auto" />
+                    <p className="text-xs text-zinc-500 font-bold">
+                      {orderStatusFilter === "completed"
+                        ? "Tidak ada pesanan yang perlu dikirim saat ini."
+                        : orderStatusFilter === "pending"
+                        ? "Tidak ada pesanan pending (menunggu pembayaran)."
+                        : "Belum ada pesanan yang selesai dikirim."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {myOrders
+                      .filter((o: any) => o.status === orderStatusFilter)
+                      .map((order: any) => (
+                        <div
+                          key={order.id}
+                          className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/10 space-y-3.5"
+                        >
+                          {/* Top Row: Product and Price */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-lg bg-zinc-950/50 border border-zinc-800/80 flex items-center justify-center shrink-0 overflow-hidden">
+                                {order.product?.imageUrl ? (
+                                  <img src={order.product.imageUrl} alt={order.product.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <ShoppingBag className="w-4 h-4 text-zinc-700" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="text-xs font-black text-white truncate">{order.product?.name || "Produk Dihapus"}</h4>
+                                <p className="text-[10px] text-zinc-500 font-bold">
+                                  Dipesan pada: {new Date(order.createdAt).toLocaleString("id-ID", {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit"
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="text-xs font-black text-emerald-400 block">{formatPrice(order.price)}</span>
+                              <span className={`text-[9px] font-black uppercase tracking-wider block mt-0.5 ${
+                                order.status === "completed"
+                                  ? "text-emerald-400"
+                                  : order.status === "pending"
+                                  ? "text-amber-450"
+                                  : "text-zinc-500"
+                              }`}>
+                                {order.status === "completed"
+                                  ? "🟢 Sudah Bayar"
+                                  : order.status === "pending"
+                                  ? "🟡 Menunggu Bayar"
+                                  : "✅ Selesai Dikirim"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Middle Row: Buyer Profile */}
+                          <div className="flex items-center gap-2.5 bg-zinc-950/20 rounded-xl p-2.5 border border-zinc-800/40">
+                            <Avatar className="w-7 h-7 border border-zinc-850">
+                              <AvatarImage src={order.buyer?.avatarUrl} />
+                              <AvatarFallback className="text-[9px] font-bold bg-zinc-900 text-zinc-400">
+                                {order.buyer?.displayName ? order.buyer.displayName[0] : "?"}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[11px] font-extrabold text-zinc-200 truncate">
+                                {order.buyer?.displayName || order.buyer?.username}
+                              </p>
+                              <p className="text-[9px] font-bold text-zinc-500 truncate">@{order.buyer?.username}</p>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleStartChatWithSeller(order.buyer.id, order.buyer.displayName || order.buyer.username)}
+                              className="flex-1 text-[10px] font-black uppercase tracking-wider border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white h-8.5 rounded-lg"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 mr-1 text-[#6366f1]" /> Hubungi Pembeli
+                            </Button>
+
+                            {order.status === "completed" && (
+                              <Button
+                                size="sm"
+                                onClick={() => deliverOrderMutation.mutate(order.id)}
+                                disabled={deliverOrderMutation.isPending}
+                                className="flex-1 text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white h-8.5 rounded-lg"
+                              >
+                                {deliverOrderMutation.isPending ? (
+                                  "Memproses..."
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Tandai Dikirim
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div> </div>
+
+      {/* BUYER PRODUCT DETAIL MODAL */}
+      <Dialog open={selectedProduct !== null} onOpenChange={() => setSelectedProduct(null)}>
+        <DialogContent className="bg-[#1E1F22] border-[#3F4147] text-white max-w-lg rounded-2xl p-0 overflow-hidden">
+          {selectedProduct && (
+            <div className="flex flex-col">
+              {/* Product Image Panel */}
+              <div className="relative w-full h-56 bg-zinc-950/50 flex items-center justify-center border-b border-zinc-800/80">
+                {selectedProduct.imageUrl ? (
+                  <img src={selectedProduct.imageUrl} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                ) : (
+                  <ShoppingBag className="w-14 h-14 text-zinc-755" />
+                )}
+                <button
+                  onClick={() => setSelectedProduct(null)}
+                  className="absolute top-4 right-4 w-7 h-7 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white border-none cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Product Info */}
+              <div className="p-5 space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-base font-black text-white">{selectedProduct.name}</h3>
+                  <p className="text-lg font-black text-emerald-400">{formatPrice(selectedProduct.price)}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black text-zinc-550 uppercase tracking-wider">Deskripsi Produk</span>
+                  <p className="text-xs text-zinc-355 leading-relaxed font-medium">
+                    {selectedProduct.description || "Tidak ada deskripsi produk."}
+                  </p>
+                </div>
+
+                {/* Seller Details Card */}
+                <div className="p-3.5 rounded-xl border border-zinc-800/60 bg-zinc-950/30 space-y-2">
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-wider">Informasi Penjual</span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar className="w-9 h-9 shrink-0 border border-zinc-800/80">
+                        <AvatarImage src={selectedProduct.seller.avatarUrl} />
+                        <AvatarFallback className="text-xs font-black bg-zinc-850 text-zinc-400">
+                          {selectedProduct.seller.username.substring(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1">
+                          <h4 className="text-xs font-black text-white truncate">
+                            {selectedProduct.seller.businessName || selectedProduct.seller.displayName || selectedProduct.seller.username}
+                          </h4>
+                          {selectedProduct.seller.isBusinessVerified && (
+                            <BadgeCheck className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500/20 shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-[10px] text-zinc-500 font-bold truncate">@{selectedProduct.seller.username}</p>
+                      </div>
+                    </div>
+
+                    {me?.id !== selectedProduct.seller.id && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleStartChatWithSeller(selectedProduct.seller.id, selectedProduct.seller.businessName || selectedProduct.seller.username)}
+                        className="text-[10px] font-black h-8 px-3 rounded-lg border-zinc-800 hover:bg-zinc-800 hover:text-white text-zinc-300"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 mr-1" /> Chat Seller
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payment & Instructions */}
+                {me?.id !== selectedProduct.seller.id ? (
+                  <div className="space-y-3.5 pt-2">
+                    {(() => {
+                      const activePurchase = myPurchases.find(
+                        (p: any) => p.productId === selectedProduct.id && p.status !== "delivered"
+                      );
+
+                      return (
+                        <>
+                          {activePurchase && (
+                            <div className={`rounded-xl p-3.5 border ${
+                              activePurchase.status === "completed"
+                                ? "bg-emerald-950/20 border-emerald-900/30 text-emerald-400"
+                                : "bg-amber-950/20 border-amber-900/30 text-amber-400"
+                            }`}>
+                              <h4 className="text-xs font-black flex items-center gap-1.5">
+                                {activePurchase.status === "completed" ? "🟢 Status: Pembayaran Sukses" : "🟡 Status: Menunggu Pembayaran"}
+                              </h4>
+                              <p className="text-[10px] font-bold mt-1 opacity-90 leading-normal">
+                                {activePurchase.status === "completed"
+                                  ? "Pesanan Anda sedang diproses oleh seller. Silakan hubungi seller untuk pengiriman."
+                                  : "Pembelian Anda sedang diproses. Silakan selesaikan pembayaran di SayaBayar menggunakan tombol di bawah."}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="rounded-xl bg-violet-950/20 border border-violet-900/30 p-3.5 space-y-1.5">
+                            <h4 className="text-xs font-black text-violet-400 flex items-center gap-1">
+                              💳 Cara Pembelian
+                            </h4>
+                            <ol className="text-[10px] text-violet-300/80 font-bold list-decimal list-inside space-y-1 leading-normal">
+                              <li>Klik tombol <b>Beli Sekarang</b> untuk diarahkan ke sayabayar.com.</li>
+                              <li>Selesaikan pembayaran dengan deskripsi invoice yang terisi otomatis.</li>
+                              <li>Ambil screenshot bukti transfer/pembayaran berhasil.</li>
+                              <li>Kirim bukti tersebut ke seller via tombol <b>Chat Seller</b> di atas.</li>
+                            </ol>
+                          </div>
+
+                          {activePurchase?.status === "completed" ? (
+                            <Button
+                              disabled
+                              className="w-full rounded-xl bg-emerald-950/20 text-emerald-400 border border-emerald-900/30 font-black text-xs h-11 cursor-not-allowed"
+                            >
+                              Sudah Dibayar & Sedang Diproses
+                            </Button>
+                          ) : activePurchase?.status === "pending" ? (
+                            <a
+                              href={activePurchase.paymentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full flex items-center justify-center rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs h-11 shadow-lg shadow-amber-500/10 transition-colors"
+                            >
+                              Lanjutkan Pembayaran
+                            </a>
+                          ) : (
+                            <Button
+                              onClick={() => handleBuyProduct(selectedProduct.id)}
+                              disabled={buyingProduct}
+                              className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-black text-xs h-11 shadow-lg shadow-violet-500/10 transition-colors"
+                            >
+                              {buyingProduct ? "Membuat Invoice..." : "Beli Sekarang"}
+                            </Button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-center text-zinc-500 font-bold pt-2">
+                    Ini adalah produk milik Anda sendiri.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* SELLER CREATE/EDIT PRODUCT MODAL */}
+      <Dialog open={productModalOpen} onOpenChange={setProductModalOpen}>
+        <DialogContent className="bg-[#1E1F22] border-[#3F4147] text-white max-w-md rounded-2xl p-5">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-white">
+              {editingProduct ? "Edit Produk" : "Tambah Produk Baru"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-zinc-400">Nama Produk</Label>
+              <Input
+                placeholder="Contoh: 1,000 Diamonds"
+                value={prodName}
+                onChange={(e) => setProdName(e.target.value)}
+                className="rounded-xl border-zinc-800 text-xs font-semibold text-white bg-zinc-950/40 focus-visible:ring-violet-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-zinc-400">Harga (Rupiah)</Label>
+              <Input
+                type="number"
+                placeholder="Contoh: 50000"
+                value={prodPrice}
+                onChange={(e) => setProdPrice(e.target.value)}
+                className="rounded-xl border-zinc-800 text-xs font-semibold text-white bg-zinc-950/40 focus-visible:ring-violet-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-zinc-400">Deskripsi</Label>
+              <Textarea
+                placeholder="Spesifikasi produk, bonus, dll..."
+                value={prodDesc}
+                onChange={(e) => setProdDesc(e.target.value)}
+                rows={3}
+                className="rounded-xl border-zinc-800 text-xs font-semibold text-white bg-zinc-950/40 focus-visible:ring-violet-500 resize-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-zinc-400">URL Gambar (Opsional)</Label>
+              <Input
+                placeholder="https://example.com/image.png"
+                value={prodImg}
+                onChange={(e) => setProdImg(e.target.value)}
+                className="rounded-xl border-zinc-800 text-xs font-semibold text-white bg-zinc-950/40 focus-visible:ring-violet-500"
+              />
+            </div>
+
+            {/* Active Switch */}
+            <div className="flex items-center justify-between p-3 rounded-xl border border-zinc-800/60 bg-zinc-950/20">
+              <div className="space-y-0.5">
+                <Label className="text-xs font-bold text-white">Tampilkan di Marketplace</Label>
+                <p className="text-[9px] text-zinc-500 font-bold leading-normal">
+                  Jika dinonaktifkan, produk hanya disimpan sebagai draf.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProdActive(!prodActive)}
+                className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${prodActive ? "bg-emerald-500" : "bg-zinc-750"}`}
+              >
+                <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${prodActive ? "translate-x-4.5" : "translate-x-0"}`} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="ghost"
+              onClick={() => setProductModalOpen(false)}
+              className="rounded-xl text-xs font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white"
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleSaveProduct}
+              disabled={saveProductMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold px-4"
+            >
+              {saveProductMutation.isPending ? "Menyimpan..." : "Simpan"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
 
 export default function Member() {
@@ -119,6 +1071,34 @@ export default function Member() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Lifted SellerHub states to survive Clerk settings panel remounts
+  const [sellerSubTab, setSellerSubTab] = useState<"marketplace" | "myshop">("marketplace");
+  const [sellerSearchQuery, setSellerSearchQuery] = useState("");
+  const [sellerProductModalOpen, setSellerProductModalOpen] = useState(false);
+  const [sellerEditingProduct, setSellerEditingProduct] = useState<any | null>(null);
+  const [sellerProdName, setSellerProdName] = useState("");
+  const [sellerProdDesc, setSellerProdDesc] = useState("");
+  const [sellerProdPrice, setSellerProdPrice] = useState("");
+  const [sellerProdImg, setSellerProdImg] = useState("");
+  const [sellerProdActive, setSellerProdActive] = useState(true);
+  const [sellerSelectedProduct, setSellerSelectedProduct] = useState<any | null>(null);
+  const [sellerBizName, setSellerBizName] = useState("");
+  const [sellerBizDesc, setSellerBizDesc] = useState("");
+  const [sellerBizAutoReply, setSellerBizAutoReply] = useState("");
+  const [sellerHideOnline, setSellerHideOnline] = useState(false);
+  const [sellerAgreed1, setSellerAgreed1] = useState(false);
+  const [sellerAgreed2, setSellerAgreed2] = useState(false);
+  const [sellerAgreed3, setSellerAgreed3] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setSellerBizName((user as any).businessName || "");
+      setSellerBizDesc((user as any).businessDescription || "");
+      setSellerBizAutoReply((user as any).businessAutoReply || "");
+      setSellerHideOnline(!!(user as any).hideOnlineStatus);
+    }
+  }, [user]);
   const realmName = realmSettings.realmName || "Arcadia Guild";
   const realmLogoUrl = realmSettings.realmLogoUrl || "";
   const selfDisplayName =
@@ -133,21 +1113,43 @@ export default function Member() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet", "membership", "music", "messages"].includes(tab)) {
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet", "membership", "music", "messages", "seller"].includes(tab)) {
       setActiveTab(tab);
     } else if (!tab) {
       setActiveTab("dashboard");
     }
   }, [window.location.search]);
 
+  useEffect(() => {
+    if (activeTab !== "settings") return;
+
+    const observer = new MutationObserver(() => {
+      const emailInput = document.querySelector('input[type="email"], input[name="emailAddress"]');
+      if (emailInput) {
+        const form = emailInput.closest('form, .cl-form');
+        if (form && !form.querySelector('.email-cooldown-warning')) {
+          const warning = document.createElement('div');
+          warning.className = 'email-cooldown-warning bg-amber-950/20 border border-amber-900/30 border-l-4 border-l-amber-500 p-3 rounded-r-lg mb-4 shadow-sm text-xs text-amber-200 font-bold leading-relaxed';
+          warning.innerHTML = '⚠️ <strong>Keamanan Akun:</strong> Tunggu 7 hari setelah pembuatan akun, atau setelah ganti akun gmail untuk dapat mengubah email kembali demi keamanan akun Anda.';
+          form.insertBefore(warning, form.firstChild);
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [activeTab]);
+
   const handleTabChange = (tabName: string) => {
     setActiveTab(tabName);
     setLocation(`/member?tab=${tabName}`);
+    window.location.hash = "";
   };
 
   const handleTabChangeMobile = (tabName: string) => {
     setActiveTab(tabName);
     setLocation(`/member?tab=${tabName}`);
+    window.location.hash = "";
     setMobileSidebarOpen(false);
   };
 
@@ -241,6 +1243,13 @@ export default function Member() {
       toast({ title: "Nothing to save", description: "Fill in at least one field to update." });
       return;
     }
+
+    const containsHtml = (str: string) => /<[^>]+>/.test(str);
+    if (containsHtml(displayName) || containsHtml(bio) || containsHtml(username) || containsHtml(youtubeLiveUrl)) {
+      toast({ title: "Validation Error", description: "HTML tags are not allowed in profile fields.", variant: "destructive" });
+      return;
+    }
+
     setSavingProfile(true);
     try {
       const apiUpdates: { displayName?: string; bio?: string; username?: string; youtubeLiveUrl?: string } = {};
@@ -464,6 +1473,16 @@ export default function Member() {
                   <Wallet className="w-4.5 h-4.5 text-emerald-500" /> My Wallet
                 </button>
                 <button
+                  onClick={() => handleTabChange("seller")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "seller"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Store className="w-4.5 h-4.5 text-emerald-500" /> Seller Hub
+                </button>
+                <button
                   onClick={() => handleTabChange("membership")}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
                     activeTab === "membership"
@@ -684,6 +1703,14 @@ export default function Member() {
                   <Wallet className="w-4.5 h-4.5 text-emerald-500" /> My Wallet
                 </button>
                 <button
+                  onClick={() => handleTabChangeMobile("seller")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "seller" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Store className="w-4.5 h-4.5 text-emerald-500" /> Seller Hub
+                </button>
+                <button
                   onClick={() => handleTabChangeMobile("membership")}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
                     activeTab === "membership" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
@@ -798,24 +1825,24 @@ export default function Member() {
       )}
 
       {/* â”€â”€ Main Content Area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <main className={`flex-1 flex flex-col min-w-0 ${activeTab === "messages" ? "overflow-hidden" : "overflow-y-auto"}`}>
+      <main className={`flex-1 flex flex-col min-w-0 ${activeTab === "messages" ? "overflow-hidden" : "overflow-y-auto"} ${activeTab === "seller" ? "bg-[#09090b]" : ""}`}>
         {/* Top Header Bar */}
-        <header className="h-16 bg-white border-b border-[#eae8f5] px-6 flex items-center justify-between shrink-0">
+        <header className={`h-16 border-b px-6 flex items-center justify-between shrink-0 ${activeTab === "seller" ? "bg-[#0c0c0e] border-zinc-800/80" : "bg-white border-[#eae8f5]"}`}>
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setMobileSidebarOpen(true)}
-              className="md:hidden p-1 text-slate-500 hover:text-slate-900"
+              className={`md:hidden p-1 ${activeTab === "seller" ? "text-zinc-400 hover:text-white" : "text-slate-500 hover:text-slate-900"}`}
             >
               <Menu className="w-5.5 h-5.5" />
             </Button>
             {/* Breadcrumbs */}
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+            <div className={`flex items-center gap-2 text-xs font-bold ${activeTab === "seller" ? "text-zinc-500" : "text-slate-400"}`}>
               <span>Guild Portal</span>
               <span>/</span>
-              <span className="text-[#110e3d] capitalize">
-                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "membership" ? "Membership & Boost" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : "Arcadia Credits"}
+              <span className={`capitalize ${activeTab === "seller" ? "text-white font-black" : "text-[#110e3d]"}`}>
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "membership" ? "Membership & Boost" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : activeTab === "seller" ? "Toko Saya" : "Arcadia Credits"}
               </span>
             </div>
           </div>
@@ -824,14 +1851,18 @@ export default function Member() {
             {/* Copy server IP widget */}
             <button
               onClick={handleCopyIP}
-              className="hidden sm:flex items-center gap-2 border border-[#eae8f5] bg-slate-50 hover:bg-violet-50/50 hover:border-violet-200 transition-all rounded-xl py-1.5 px-3 group text-left cursor-pointer"
+              className={`hidden sm:flex items-center gap-2 border transition-all rounded-xl py-1.5 px-3 group text-left cursor-pointer ${
+                activeTab === "seller"
+                  ? "border-zinc-800 bg-zinc-900/40 hover:bg-zinc-850/50 hover:border-zinc-750"
+                  : "border-[#eae8f5] bg-slate-50 hover:bg-violet-50/50 hover:border-violet-200"
+              }`}
             >
               <Activity className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
               <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-slate-400 leading-none">SERVER IP</span>
-                <span className="text-[10px] font-black text-slate-700 leading-tight">play.arcadiamc.net</span>
+                <span className="text-[9px] font-bold text-zinc-500 leading-none">SERVER IP</span>
+                <span className={`text-[10px] font-black leading-tight ${activeTab === "seller" ? "text-zinc-200" : "text-slate-700"}`}>play.arcadiamc.net</span>
               </div>
-              <div className="ml-1 text-slate-400 group-hover:text-[#6366f1] transition-colors">
+              <div className={`ml-1 transition-colors ${activeTab === "seller" ? "text-zinc-500 group-hover:text-emerald-450" : "text-slate-400 group-hover:text-[#6366f1]"}`}>
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
               </div>
             </button>
@@ -859,7 +1890,7 @@ export default function Member() {
 
         {/* Content Container */}
         {activeTab !== "messages" && (
-        <div className="flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6 overflow-y-auto">
+        <div className={`flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6 overflow-y-auto ${activeTab === "seller" ? "bg-[#09090b]" : ""}`}>
           {/* Dashboard Tab Overview */}
           {activeTab === "dashboard" && (
             <div className="space-y-6">
@@ -1390,10 +2421,97 @@ export default function Member() {
           {activeTab === "settings" && (
             <div className="space-y-6 max-w-4xl">
               <div className="flex flex-col">
-                <h2 className="text-lg font-black text-[#110e3d]">Account Settings</h2>
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Manage your email, two-factor authentication, and connected accounts</p>
+                <h2 className="text-lg font-black text-white flex items-center gap-2">
+                  <Settings className="h-5 w-5 text-[#a78bfa]" /> Account Settings
+                </h2>
+                <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Manage your email, two-factor authentication, and connected accounts</p>
               </div>
-              <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden p-1 sm:p-4 md:p-6">
+
+              {/* Email Change Security Warning */}
+              <div className="bg-amber-950/20 border border-amber-900/30 border-l-4 border-l-amber-500 p-4 rounded-r-xl shadow-sm">
+                <div className="flex gap-3">
+                  <ShieldAlert className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs font-black text-amber-400 uppercase tracking-wider">Perhatian Keamanan Akun</h4>
+                    <p className="text-xs text-amber-200/90 font-bold mt-1 leading-relaxed">
+                      Tunggu 7 hari setelah pembuatan akun, atau setelah ganti akun gmail untuk dapat mengubah email kembali demi keamanan akun Anda.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Email Addresses List (for 2 or more emails) */}
+              {clerkUser && clerkUser.emailAddresses.length > 1 && (
+                <div className="bg-[#0f0e17]/80 border border-zinc-800/80 p-5 rounded-2xl shadow-xl">
+                  <h3 className="text-xs font-black text-white uppercase tracking-wider mb-3">Daftar Email Anda</h3>
+                  <div className="space-y-2">
+                    {clerkUser.emailAddresses.map((email) => (
+                      <div key={email.id} className="flex items-center justify-between bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/60">
+                        <span className="text-xs font-bold text-zinc-300">{email.emailAddress}</span>
+                        <div className="flex items-center gap-2">
+                          {email.id === clerkUser.primaryEmailAddressId ? (
+                            <span className="text-[10px] bg-violet-950/40 text-[#a78bfa] border border-violet-900/50 px-2 py-0.5 rounded-md font-black uppercase tracking-wide">Primary</span>
+                          ) : (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-red-400 hover:bg-red-950/30 hover:text-red-300 rounded-lg transition-colors"
+                              onClick={async () => {
+                                if (confirm(`Apakah Anda yakin ingin menghapus email ${email.emailAddress}?`)) {
+                                  try {
+                                    await email.destroy();
+                                    toast({ title: "Email berhasil dihapus" });
+                                  } catch (err: any) {
+                                    toast({ title: "Gagal menghapus email", description: err.message, variant: "destructive" });
+                                  }
+                                }
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* WhatsApp Bisnis Seller Status Card */}
+              <Card className="bg-[#0f0e17]/80 backdrop-blur-xl border border-zinc-800/80 shadow-2xl shadow-black/50 rounded-3xl overflow-hidden p-6 transition-all duration-300 hover:border-violet-500/20">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-black text-white flex items-center gap-1.5 uppercase tracking-wider">
+                      <Store className="w-5 h-5 text-emerald-500" /> Akun Toko & Seller Hub
+                    </h3>
+                    <p className="text-xs text-zinc-500 font-medium">
+                      {user && (user as any).isSeller 
+                        ? "Akun seller Anda aktif. Anda dapat mengunggah produk dan mengelola toko Anda."
+                        : "Aktifkan akun seller Anda untuk mulai menjual produk dan mengaktifkan fitur WhatsApp Bisnis."}
+                    </p>
+                  </div>
+
+                  <div>
+                    {user && (user as any).isSeller ? (
+                      <Button
+                        onClick={() => handleTabChange("seller")}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-5 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-500/10 uppercase tracking-wider"
+                      >
+                        Buka Seller Hub
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => handleTabChange("seller")}
+                        className="bg-[#6366f1] hover:bg-indigo-700 text-white font-black text-xs px-5 py-2.5 rounded-xl transition-all shadow-md shadow-violet-500/10 uppercase tracking-wider"
+                      >
+                        Daftar Jadi Seller
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="bg-[#0f0e17]/80 backdrop-blur-xl border border-zinc-800/80 shadow-2xl shadow-black/50 rounded-3xl overflow-hidden p-1 sm:p-4 md:p-6 transition-all duration-300 hover:border-violet-500/20">
                 <UserProfile 
                   routing="hash" 
                   appearance={{
@@ -1401,47 +2519,47 @@ export default function Member() {
                       rootBox: "w-full",
                       cardBox: "w-full shadow-none border-0 bg-transparent max-w-none flex",
                       card: "shadow-none border-0 bg-transparent w-full",
-                      navbar: "hidden md:flex bg-slate-50/50 border-r border-[#eae8f5] p-4 rounded-l-xl shrink-0",
-                      pageScrollable: "p-4 sm:p-6 md:p-8 w-full",
-                      profileSectionTitleText: "!text-slate-800 font-bold",
-                      profileSectionSubtitleText: "!text-slate-500 text-xs",
-                      headerTitle: "!text-[#110e3d] font-extrabold",
-                      headerSubtitle: "!text-slate-500",
-                      formButtonPrimary: "bg-[#6366f1] hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl",
-                      navbarButton: "text-slate-500 hover:text-slate-900 hover:bg-slate-100 font-bold text-xs rounded-lg px-3 py-2",
-                      navbarButtonActive: "text-[#6366f1] bg-violet-50/80 hover:text-[#6366f1] hover:bg-violet-50 font-bold",
-                      profileSection: "border-b border-[#eae8f5] pb-6 mb-6 last:border-0",
-                      userPreview: "bg-slate-50 border border-[#eae8f5] p-4 rounded-xl",
-                      userPreviewTextContainer: "ml-3",
-                      userPreviewTitle: "!text-[#110e3d] font-extrabold",
-                      userPreviewSubtitle: "!text-slate-400 font-bold",
-                      formFieldLabel: "!text-slate-700 font-bold text-xs",
-                      formFieldInput: "!bg-slate-50 !border-[#eae8f5] !text-[#1e1b4b] rounded-xl text-xs h-9",
-                      dividerText: "!text-slate-400",
-                      dividerLine: "!bg-slate-200",
-                      identityPreviewEditButton: "!text-[#6366f1] hover:underline",
-                      formFieldSuccessText: "!text-emerald-600",
-                      alertText: "!text-red-500",
-                      alert: "!bg-red-50 !border-red-200",
-                      otpCodeFieldInput: "!bg-slate-50 !border-[#eae8f5] !text-[#1e1b4b]",
-                      navbarTitle: "!text-[#110e3d] !font-extrabold",
-                      navbarSubtitle: "!text-slate-400",
-                      breadcrumbsItem: "!text-slate-500",
-                      breadcrumbsItemActive: "!text-[#110e3d] !font-bold",
-                      breadcrumbsSeparator: "!text-slate-300",
-                      accordionTriggerButton: "!text-slate-700",
-                      accordionContent: "!text-slate-600",
+                      navbar: "hidden md:flex bg-[#09090b] border-r border-zinc-800/80 p-6 rounded-l-2xl shrink-0 gap-1.5",
+                      pageScrollable: "p-4 sm:p-6 md:p-8 w-full !bg-[#0f0e17]",
+                      profileSectionTitleText: "!text-white !font-black !text-xs uppercase !tracking-wider",
+                      profileSectionSubtitleText: "!text-zinc-500 !text-[11px] !font-bold",
+                      headerTitle: "!text-white !font-black !text-base uppercase !tracking-wider",
+                      headerSubtitle: "!text-zinc-500 !text-xs !font-bold",
+                      formButtonPrimary: "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black text-[10px] rounded-xl py-3 px-5 shadow-lg shadow-violet-950/50 hover:shadow-violet-900/50 transition-all duration-200 uppercase tracking-widest",
+                      navbarButton: "text-zinc-400 hover:text-white hover:bg-zinc-800/50 font-black text-[11px] rounded-xl px-4 py-3.5 transition-all duration-200 uppercase tracking-wider",
+                      navbarButtonActive: "text-[#a78bfa] bg-violet-950/30 hover:bg-violet-950/30 font-black shadow-sm border-l-4 border-[#a78bfa] rounded-l-none",
+                      profileSection: "border-b border-zinc-800/80 pb-8 mb-8 last:border-0",
+                      userPreview: "bg-zinc-900/50 border border-zinc-800/60 p-6 rounded-2xl shadow-inner",
+                      userPreviewTextContainer: "ml-4",
+                      userPreviewTitle: "!text-white !font-black !text-sm",
+                      userPreviewSubtitle: "!text-zinc-500 !font-bold !text-xs",
+                      formFieldLabel: "!text-zinc-300 !font-black !text-xs uppercase !tracking-wider",
+                      formFieldInput: "!bg-zinc-950/50 !border-zinc-800 focus:!border-violet-500 focus:!ring-2 focus:!ring-violet-950/50 !text-white rounded-xl text-xs h-10 transition-all duration-200",
+                      dividerText: "!text-zinc-600 !font-bold !text-[10px] uppercase",
+                      dividerLine: "!bg-zinc-800/85",
+                      identityPreviewEditButton: "!text-[#a78bfa] hover:!text-violet-350 !font-black !text-xs transition-colors",
+                      formFieldSuccessText: "!text-emerald-400 !font-bold",
+                      alertText: "!text-red-400 !font-bold",
+                      alert: "!bg-red-950/20 !border-red-900/30 rounded-2xl p-4",
+                      otpCodeFieldInput: "!bg-zinc-950 !border-zinc-800 !text-white rounded-xl h-10",
+                      navbarTitle: "!text-white !font-black !text-xs uppercase !tracking-wider",
+                      navbarSubtitle: "!text-zinc-500 !text-[10px]",
+                      breadcrumbsItem: "!text-zinc-500 !font-bold !text-xs",
+                      breadcrumbsItemActive: "!text-white !font-black !text-xs",
+                      breadcrumbsSeparator: "!text-zinc-700",
+                      accordionTriggerButton: "!text-zinc-200 !font-bold",
+                      accordionContent: "!text-zinc-400",
                     },
                     variables: {
-                      colorPrimary: "#6366f1",
-                      colorBackground: "#ffffff",
-                      colorText: "#1e1b4b",
-                      colorTextSecondary: "#64748b",
-                      colorForeground: "#1e1b4b",
-                      colorMutedForeground: "#64748b",
-                      colorInput: "#f8fafc",
-                      colorInputForeground: "#1e1b4b",
-                      colorNeutral: "#cbd5e1",
+                      colorPrimary: "#a78bfa",
+                      colorBackground: "#0f0e17",
+                      colorText: "#f4f4f5",
+                      colorTextSecondary: "#a1a1aa",
+                      colorForeground: "#f4f4f5",
+                      colorMutedForeground: "#71717a",
+                      colorInput: "#18181b",
+                      colorInputForeground: "#f4f4f5",
+                      colorNeutral: "#27272a",
                       borderRadius: "0.75rem",
                     }
                   }}
@@ -1455,10 +2573,67 @@ export default function Member() {
                   >
                     <div className="space-y-4 pt-1">
                       <div className="flex flex-col mb-4">
-                        <h3 className="text-base font-extrabold text-[#110e3d]">Switch Account</h3>
-                        <p className="text-xs text-slate-400 font-semibold mt-0.5">Keep multiple active sessions and quickly toggle characters</p>
+                        <h3 className="text-base font-extrabold text-white">Switch Account</h3>
+                        <p className="text-xs text-zinc-500 font-semibold mt-0.5">Keep multiple active sessions and quickly toggle characters</p>
                       </div>
                       <DevSwitchAccountCard />
+                    </div>
+                  </UserProfile.Page>
+                  <UserProfile.Page
+                    label={user && (user as any).isSeller ? "Seller Hub" : "Jadi Seller"}
+                    url="seller"
+                    labelIcon={<Store className="w-4.5 h-4.5" />}
+                  >
+                    <div className="space-y-4 pt-1">
+                      <div className="flex flex-col mb-4">
+                        <h3 className="text-base font-extrabold text-white">
+                          {user && (user as any).isSeller ? "Seller Hub" : "Jadi Seller"}
+                        </h3>
+                        <p className="text-xs text-zinc-500 font-semibold mt-0.5">
+                          {user && (user as any).isSeller
+                            ? "Status toko Anda: Aktif"
+                            : "Daftar sebagai penjual resmi untuk mulai menjual produk di Arcadia."}
+                        </p>
+                      </div>
+                      {user && (user as any).isSeller ? (
+                        <div className="rounded-xl bg-zinc-950/40 border border-zinc-800/60 p-6 text-center space-y-4">
+                          <div className="w-12 h-12 rounded-full bg-emerald-950/50 border border-emerald-900/30 flex items-center justify-center mx-auto text-emerald-400">
+                            <Check className="w-6 h-6 animate-pulse" />
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="text-sm font-extrabold text-white">Akun Seller Anda Sudah Aktif</h4>
+                            <p className="text-xs text-zinc-400 leading-relaxed max-w-sm mx-auto">
+                              Anda sudah terdaftar sebagai seller resmi di Arcadia. Silakan kelola produk, harga, dan fitur bisnis lainnya melalui halaman utama Seller Hub.
+                            </p>
+                          </div>
+                          <Button
+                            onClick={() => handleTabChange("seller")}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-all duration-200"
+                          >
+                            Buka Seller Hub
+                          </Button>
+                        </div>
+                      ) : (
+                        <SellerHub
+                          agreed1={sellerAgreed1} setAgreed1={setSellerAgreed1}
+                          agreed2={sellerAgreed2} setAgreed2={setSellerAgreed2}
+                          agreed3={sellerAgreed3} setAgreed3={setSellerAgreed3}
+                          subTab={sellerSubTab} setSubTab={setSellerSubTab}
+                          searchQuery={sellerSearchQuery} setSearchQuery={setSellerSearchQuery}
+                          productModalOpen={sellerProductModalOpen} setProductModalOpen={setSellerProductModalOpen}
+                          editingProduct={sellerEditingProduct} setEditingProduct={setSellerEditingProduct}
+                          prodName={sellerProdName} setProdName={setSellerProdName}
+                          prodDesc={sellerProdDesc} setProdDesc={setSellerProdDesc}
+                          prodPrice={sellerProdPrice} setProdPrice={setSellerProdPrice}
+                          prodImg={sellerProdImg} setProdImg={setSellerProdImg}
+                          prodActive={sellerProdActive} setProdActive={setSellerProdActive}
+                          selectedProduct={sellerSelectedProduct} setSelectedProduct={setSellerSelectedProduct}
+                          bizName={sellerBizName} setBizName={setSellerBizName}
+                          bizDesc={sellerBizDesc} setBizDesc={setSellerBizDesc}
+                          bizAutoReply={sellerBizAutoReply} setBizAutoReply={setSellerBizAutoReply}
+                          hideOnline={sellerHideOnline} setHideOnline={setSellerHideOnline}
+                        />
+                      )}
                     </div>
                   </UserProfile.Page>
                 </UserProfile>
@@ -1514,6 +2689,29 @@ export default function Member() {
               </div>
               <MusicTab />
             </div>
+          )}
+
+          {/* Seller Hub Tab */}
+          {activeTab === "seller" && (
+            <SellerHub
+              agreed1={sellerAgreed1} setAgreed1={setSellerAgreed1}
+              agreed2={sellerAgreed2} setAgreed2={setSellerAgreed2}
+              agreed3={sellerAgreed3} setAgreed3={setSellerAgreed3}
+              subTab={sellerSubTab} setSubTab={setSellerSubTab}
+              searchQuery={sellerSearchQuery} setSearchQuery={setSellerSearchQuery}
+              productModalOpen={sellerProductModalOpen} setProductModalOpen={setSellerProductModalOpen}
+              editingProduct={sellerEditingProduct} setEditingProduct={setSellerEditingProduct}
+              prodName={sellerProdName} setProdName={setSellerProdName}
+              prodDesc={sellerProdDesc} setProdDesc={setSellerProdDesc}
+              prodPrice={sellerProdPrice} setProdPrice={setSellerProdPrice}
+              prodImg={sellerProdImg} setProdImg={setSellerProdImg}
+              prodActive={sellerProdActive} setProdActive={setSellerProdActive}
+              selectedProduct={sellerSelectedProduct} setSelectedProduct={setSellerSelectedProduct}
+              bizName={sellerBizName} setBizName={setSellerBizName}
+              bizDesc={sellerBizDesc} setBizDesc={setSellerBizDesc}
+              bizAutoReply={sellerBizAutoReply} setBizAutoReply={setSellerBizAutoReply}
+              hideOnline={sellerHideOnline} setHideOnline={setSellerHideOnline}
+            />
           )}
         </div>
         )}
@@ -3640,6 +4838,8 @@ function GachaTab() {
         </div>
       </div>
 
+
+
       {/* FULLSCREEN CRATE OPENING ANIMATION OVERLAY */}
       {isSpinning && (
         <div className="fixed inset-0 bg-black/95 z-[99] flex flex-col items-center justify-center p-4">
@@ -3908,7 +5108,7 @@ function GachaTab() {
 
           <DialogFooter className="flex-shrink-0 px-6 py-4 border-t border-purple-500/15 bg-black/40 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
-              <span>{shouldEquipWon ? "âœ“ Auto-Equipped highest tier item." : "Items stored in Inventory."}</span>
+              <span>{shouldEquipWon ? "✓ Auto-Equipped highest tier item." : "Items stored in Inventory."}</span>
             </div>
 
             <div className="flex gap-3 w-full sm:w-auto shrink-0 justify-end">

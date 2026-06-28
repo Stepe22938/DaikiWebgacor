@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk, useAuth } from "@clerk/react";
 import { MultisessionAppSupport } from "@clerk/react/internal";
 import { useSignUp } from "@clerk/react/legacy";
@@ -132,41 +133,41 @@ const clerkAppearance = {
     logoLinkUrl: basePath || "/",
   },
   variables: {
-    colorPrimary: "hsl(270 70% 65%)",
-    colorForeground: "hsl(222 35% 12%)",
-    colorMutedForeground: "hsl(224 12% 48%)",
-    colorDanger: "hsl(0 60% 55%)",
-    colorBackground: "hsla(0 0% 100% / 0.74)",
-    colorInput: "hsla(0 0% 100% / 0.76)",
-    colorInputForeground: "hsl(222 35% 12%)",
-    colorNeutral: "hsl(222 18% 88%)",
+    colorPrimary: "hsl(263 90% 70%)", // vibrant violet
+    colorForeground: "hsl(210 40% 98%)", // near white
+    colorMutedForeground: "hsl(215 20% 65%)", // muted grayish blue
+    colorDanger: "hsl(0 84% 60%)",
+    colorBackground: "rgba(15, 12, 28, 0.65)", // dark glass
+    colorInput: "rgba(25, 20, 45, 0.8)", // dark input background
+    colorInputForeground: "hsl(210 40% 98%)",
+    colorNeutral: "rgba(255, 255, 255, 0.1)",
     fontFamily: "Inter, sans-serif",
-    borderRadius: "0.75rem",
+    borderRadius: "1rem",
   },
   elements: {
     rootBox: "w-full",
     cardBox: "w-full bg-transparent shadow-none border-0",
     card: "!shadow-none !border-0 !bg-transparent !rounded-none",
-    footer: "!shadow-none !border border-white/55 !bg-white/45 !rounded-2xl mt-3 backdrop-blur-xl max-lg:!hidden",
-    headerTitle: "!text-slate-950 font-black max-lg:!hidden",
-    headerSubtitle: "!text-slate-500 max-lg:!hidden",
-    socialButtonsBlockButtonText: "!text-slate-800 !font-semibold !opacity-100",
-    formFieldLabel: "!text-slate-900 font-semibold",
-    footerActionLink: "!text-[#6d28d9] hover:!text-[#4c1d95]",
-    footerActionText: "!text-slate-500",
-    dividerText: "!text-slate-500",
-    identityPreviewEditButton: "!text-[#6d28d9]",
+    footer: "!shadow-none !border border-white/5 !bg-[#0f0c1c]/40 !rounded-2xl mt-3 backdrop-blur-xl max-lg:!hidden",
+    headerTitle: "!text-white font-black max-lg:!hidden",
+    headerSubtitle: "!text-slate-400 max-lg:!hidden",
+    socialButtonsBlockButtonText: "!text-white !font-semibold !opacity-100",
+    formFieldLabel: "!text-slate-300 font-semibold",
+    footerActionLink: "!text-[#a78bfa] hover:!text-[#c084fc]",
+    footerActionText: "!text-slate-400",
+    dividerText: "!text-slate-400",
+    identityPreviewEditButton: "!text-[#a78bfa]",
     formFieldSuccessText: "text-emerald-400",
     alertText: "text-red-400",
     logoBox: "hidden",
     logoImage: "hidden",
-    socialButtonsBlockButton: "!w-full !border !border-white/55 !bg-white/42 hover:!bg-white/58 !text-slate-900 !shadow-[inset_0_1px_0_rgba(255,255,255,0.78),0_14px_38px_rgba(15,23,42,0.10)] !backdrop-blur-2xl",
-    formButtonPrimary: "bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-black shadow-lg shadow-purple-500/25 border-0 max-lg:bg-[#143c69] max-lg:bg-none max-lg:hover:bg-[#0f3158] max-lg:shadow-none",
-    formFieldInput: "!bg-white/42 !border !border-white/60 !text-slate-950 focus:!border-purple-400/70 focus:!bg-white/58 placeholder:!text-slate-500 !shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] !backdrop-blur-xl",
+    socialButtonsBlockButton: "!w-full !border !border-white/10 !bg-white/5 hover:!bg-white/10 !text-white !shadow-lg !backdrop-blur-2xl transition-all duration-200",
+    formButtonPrimary: "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-violet-500/20 border-0",
+    formFieldInput: "!bg-white/5 !border !border-white/10 !text-white focus:!border-violet-500/50 focus:!bg-white/10 placeholder:!text-slate-500 !backdrop-blur-xl transition-all duration-200",
     footerAction: "",
-    dividerLine: "!bg-slate-200/80",
-    alert: "bg-red-950/50 border border-red-500/30",
-    otpCodeFieldInput: "!bg-white/42 !border !border-white/60 !text-slate-950",
+    dividerLine: "!bg-white/10",
+    alert: "bg-red-950/30 border border-red-500/20",
+    otpCodeFieldInput: "!bg-white/5 !border !border-white/10 !text-white",
     formFieldRow: "",
     main: "",
   },
@@ -215,6 +216,135 @@ const AUTH_STYLES = `
   .auth-login-card  { animation: auth-card-in 0.82s cubic-bezier(0.22,1,0.36,1) both; }
   .auth-card-aura   { animation: auth-card-aura 5.6s ease-in-out infinite; }
   .auth-login-logo  { animation: auth-logo-float 4.6s ease-in-out infinite; }
+
+  /* Double Slider Animations */
+  .auth-container {
+    position: relative;
+    width: 850px;
+    max-width: 100%;
+    min-height: 660px;
+    background: #09090b;
+    border: 1px solid rgba(63, 63, 70, 0.4);
+    border-radius: 32px;
+    box-shadow: 0 50px 100px rgba(0, 0, 0, 0.8);
+    overflow: hidden;
+  }
+  
+  .form-container {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    transition: all 0.7s cubic-bezier(0.25, 1, 0.5, 1);
+    overflow-y: auto;
+  }
+  
+  .sign-in-container {
+    left: 0;
+    width: 50%;
+    z-index: 2;
+    pointer-events: auto;
+  }
+  
+  .auth-container.right-panel-active .sign-in-container {
+    transform: translateX(100%);
+    opacity: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  
+  .sign-up-container {
+    left: 0;
+    width: 50%;
+    opacity: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  
+  .auth-container.right-panel-active .sign-up-container {
+    transform: translateX(100%);
+    opacity: 1;
+    z-index: 5;
+    pointer-events: auto;
+    animation: show 0.7s;
+  }
+  
+  @keyframes show {
+    0%, 49.99% {
+      opacity: 0;
+      z-index: 1;
+    }
+    50%, 100% {
+      opacity: 1;
+      z-index: 5;
+    }
+  }
+  
+  .overlay-container {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 50%;
+    height: 100%;
+    overflow: hidden;
+    transition: transform 0.7s cubic-bezier(0.25, 1, 0.5, 1);
+    z-index: 100;
+    border-radius: 0 32px 32px 0;
+  }
+  
+  .auth-container.right-panel-active .overlay-container {
+    transform: translateX(-100%);
+    border-radius: 32px 0 0 32px;
+  }
+  
+  .overlay {
+    background: linear-gradient(135deg, #7c3aed, #4f46e5, #2563eb);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: 0 0;
+    color: #ffffff;
+    position: relative;
+    left: -100%;
+    height: 100%;
+    width: 200%;
+    transform: translateX(0);
+    transition: transform 0.7s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+  
+  .auth-container.right-panel-active .overlay {
+    transform: translateX(50%);
+  }
+  
+  .overlay-panel {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 0 40px;
+    text-align: center;
+    top: 0;
+    height: 100%;
+    width: 50%;
+    transform: translateX(0);
+    transition: transform 0.7s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+  
+  .overlay-left {
+    transform: translateX(-20%);
+  }
+  
+  .auth-container.right-panel-active .overlay-left {
+    transform: translateX(0);
+  }
+  
+  .overlay-right {
+    right: 0;
+    transform: translateX(0);
+  }
+  
+  .auth-container.right-panel-active .overlay-right {
+    transform: translateX(20%);
+  }
   .cl-socialButtonsBlock,
   .cl-socialButtonsBlock > div,
   .cl-socialButtonsBlock > div > div,
@@ -229,10 +359,10 @@ const AUTH_STYLES = `
     min-height: 46px !important;
     justify-content: center !important;
     gap: 12px !important;
-    color: #0f172a !important;
-    background: rgba(255,255,255,0.42) !important;
-    border: 1px solid rgba(255,255,255,0.58) !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.78), 0 14px 38px rgba(15,23,42,0.10) !important;
+    color: #ffffff !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 14px 38px rgba(0,0,0,0.3) !important;
     backdrop-filter: blur(22px) saturate(150%) !important;
     -webkit-backdrop-filter: blur(22px) saturate(150%) !important;
   }
@@ -241,7 +371,7 @@ const AUTH_STYLES = `
   }
   .cl-socialButtonsBlockButton::after {
     display: inline-flex !important;
-    color: #1e293b !important;
+    color: #f1f5f9 !important;
     font-weight: 800 !important;
     opacity: 1 !important;
     visibility: visible !important;
@@ -271,7 +401,7 @@ const AUTH_STYLES = `
       border-radius: 12px !important;
     }
     .cl-socialButtonsBlockButton::after {
-      color: #172033 !important;
+      color: #f1f5f9 !important;
       font-size: 11.5px !important;
       font-weight: 800 !important;
       white-space: nowrap !important;
@@ -282,7 +412,21 @@ const AUTH_STYLES = `
   .auth-mobile-hdr   { animation: auth-mobile-header 0.8s cubic-bezier(0.22,1,0.36,1) 0.05s both; }
 `;
 
-function AuthPageLayout({ children, mode }: { children: React.ReactNode; mode: "sign-in" | "sign-up" }) {
+const slideshowImages = [
+  { src: `${basePath}/lobby.png`, title: "The Arcadia Spawn", desc: "Where all legends begin their journey." },
+  { src: `${basePath}/village.png`, title: "Whispering Woods", desc: "A bustling player-run trading hub." },
+  { src: `${basePath}/dungeon.png`, title: "Underworld Crypts", desc: "Defeat bosses and claim mythic loot." }
+];
+
+const serverFeatures = [
+  { title: "Kingdoms & Lore", desc: "Forge alliances, claim lands, and build empires." },
+  { title: "Dynamic Economy", desc: "Trade custom goods and run player shops." },
+  { title: "RPG Class Skills", desc: "Level up abilities and unlock magic traits." },
+  { title: "Voice & Video Calls", desc: "Chat with your guild directly in the browser." }
+];
+
+function AuthPageLayout({ mode }: { mode: "sign-in" | "sign-up" }) {
+  const [, setLocation] = useLocation();
   const realmSettings = useRealmSettings();
   const realmName = getRealmDisplayName(realmSettings);
   const realmLogoUrl = realmSettings?.realmLogoUrl?.trim();
@@ -290,10 +434,24 @@ function AuthPageLayout({ children, mode }: { children: React.ReactNode; mode: "
   const authAction = mode === "sign-in" ? "Enter" : "Join";
   const authEyebrow = mode === "sign-in" ? "Welcome Back" : "New Legend";
 
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [currentFeature, setCurrentFeature] = useState(0);
+  const { data: stats } = useGetStats();
 
+  useEffect(() => {
+    const slideTimer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % slideshowImages.length);
+    }, 6000);
+    const featureTimer = setInterval(() => {
+      setCurrentFeature((prev) => (prev + 1) % serverFeatures.length);
+    }, 4000);
+    return () => {
+      clearInterval(slideTimer);
+      clearInterval(featureTimer);
+    };
+  }, []);
 
-
-
+  const isSignUp = mode === "sign-up";
 
   // Shared: particles + sparkles + ambient
   const particlesLayer = (
@@ -308,29 +466,29 @@ function AuthPageLayout({ children, mode }: { children: React.ReactNode; mode: "
             width:  `${p.size}px`,
             height: `${p.size}px`,
             background: p.id % 3 === 0
-              ? `rgba(212,175,55,${p.opacity})`
+              ? `rgba(249,115,22,${p.opacity})` // Orange spark
               : p.id % 3 === 1
-              ? `rgba(160,100,255,${p.opacity})`
+              ? `rgba(168,85,247,${p.opacity})` // Purple spark
               : `rgba(255,255,255,${p.opacity * 0.45})`,
             animationDuration: `${p.duration}s`,
             animationDelay:    `${p.delay}s`,
             boxShadow: p.id % 3 === 0
-              ? `0 0 ${p.size * 2}px rgba(212,175,55,0.85)`
-              : `0 0 ${p.size}px rgba(160,100,255,0.65)`,
+              ? `0 0 ${p.size * 2.5}px rgba(249,115,22,0.9)`
+              : `0 0 ${p.size * 2}px rgba(168,85,247,0.7)`,
           }}
         />
       ))}
 
-      {[...Array(12)].map((_, i) => (
+      {[...Array(15)].map((_, i) => (
         <div
           key={`star-${i}`}
-          className="auth-sparkle absolute text-amber-300 select-none"
+          className="auth-sparkle absolute text-violet-300 select-none opacity-40"
           style={{
-            left:              `${4 + (i * 8.3) % 90}%`,
-            top:               `${8 + (i * 11.9) % 82}%`,
-            fontSize:          `${7 + (i % 3) * 5}px`,
-            animationDuration: `${2.2 + (i * 0.5) % 3}s`,
-            animationDelay:    `${(i * 0.55) % 3}s`,
+            left:              `${4 + (i * 7.3) % 92}%`,
+            top:               `${6 + (i * 13.1) % 85}%`,
+            fontSize:          `${6 + (i % 3) * 4}px`,
+            animationDuration: `${1.8 + (i * 0.4) % 2.5}s`,
+            animationDelay:    `${(i * 0.45) % 2.5}s`,
           }}
         >
           {i % 2 === 0 ? "*" : "+"}
@@ -339,129 +497,202 @@ function AuthPageLayout({ children, mode }: { children: React.ReactNode; mode: "
     </div>
   );
 
-
-
-
-
   return (
-    <div className="relative flex min-h-[100dvh] w-full overflow-hidden bg-[#050408]">
+    <div className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-[#05030a] text-white p-4">
       <style dangerouslySetInnerHTML={{ __html: AUTH_STYLES }} />
 
-      <div className="relative hidden min-h-[100dvh] w-full items-center justify-center overflow-hidden px-6 py-10 lg:flex">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(121,73,255,0.18),transparent_34%),radial-gradient(circle_at_18%_80%,rgba(212,175,55,0.08),transparent_28%),linear-gradient(180deg,#050408_0%,#090511_54%,#050408_100%)]" />
-        <div className="pointer-events-none absolute left-1/2 top-1/2 h-[560px] w-[560px] rounded-full bg-purple-500/10 blur-3xl auth-card-aura" />
-        <div className="pointer-events-none absolute left-[calc(50%-330px)] top-[16%] h-52 w-52 rounded-full bg-amber-300/28 blur-3xl" />
-        <div className="pointer-events-none absolute right-[calc(50%-360px)] top-[32%] h-64 w-64 rounded-full bg-violet-500/30 blur-3xl" />
-        <div className="pointer-events-none absolute left-1/2 bottom-[10%] h-44 w-[520px] -translate-x-1/2 rounded-full bg-sky-400/14 blur-3xl" />
-        {particlesLayer}
-
-        <div className="auth-login-card relative z-30 w-full max-w-[500px] rounded-[34px] border border-white/44 bg-white/[0.34] px-12 py-10 shadow-[inset_0_1px_0_rgba(255,255,255,0.78),0_34px_120px_rgba(0,0,0,0.34)] backdrop-blur-[30px]">
-          <div className="pointer-events-none absolute inset-0 rounded-[34px] bg-[linear-gradient(145deg,rgba(255,255,255,0.48),rgba(255,255,255,0.16)_42%,rgba(255,255,255,0.08)),radial-gradient(circle_at_52%_0%,rgba(168,85,247,0.16),transparent_42%)]" />
-          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/90" />
-          <div className="pointer-events-none absolute inset-x-10 bottom-0 h-px bg-white/35" />
-          <div className="relative z-10 flex flex-col items-center">
-            <div className="auth-login-logo relative mb-5 grid h-16 w-16 place-items-center rounded-sm bg-amber-400/5">
-              <div className="absolute inset-0 rounded-full bg-amber-300/20 blur-2xl" />
-              <img src={logoSrc} alt={realmName} className="relative h-12 w-12 object-contain drop-shadow-[0_0_24px_rgba(212,175,55,0.35)]" />
-            </div>
-
-            <p className="text-[11px] font-black uppercase tracking-[0.45em] text-purple-600/80">
-              {authEyebrow}
-            </p>
-            <h1 className="mt-12 text-center text-2xl font-black tracking-tight text-slate-950">
-              {authAction} {realmName}
-            </h1>
-            <p className="mt-2 text-center text-base font-medium text-slate-500">
-              {mode === "sign-in" ? "Sign in to access your player profile" : "Create your player profile"}
-            </p>
-          </div>
-
-          <div className="relative z-10 mt-7">
-            {children}
-          </div>
-        </div>
+      {/* Cinematic Background Slideshow (Matches other pages) */}
+      <div className="absolute inset-0 z-0 bg-black">
+        {slideshowImages.map((slide, idx) => (
+          <div
+            key={idx}
+            className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+              currentSlide === idx ? "opacity-35 scale-105" : "opacity-0 scale-100"
+            } transform`}
+            style={{
+              backgroundImage: `url(${slide.src})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          />
+        ))}
       </div>
 
-      <div className="relative flex min-h-[100dvh] w-full flex-col overflow-hidden bg-[#07101d] px-4 pb-5 pt-6 lg:hidden">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_24%_18%,rgba(125,92,255,0.34),transparent_28%),radial-gradient(circle_at_82%_12%,rgba(77,190,218,0.24),transparent_24%),radial-gradient(circle_at_50%_86%,rgba(212,175,55,0.14),transparent_28%),linear-gradient(180deg,#07101d_0%,#102846_58%,#07101d_100%)]" />
-        <div className="pointer-events-none absolute -left-24 top-24 h-56 w-56 rounded-full bg-sky-300/16 blur-3xl" />
-        <div className="pointer-events-none absolute -right-20 bottom-24 h-64 w-64 rounded-full bg-violet-400/22 blur-3xl" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/70 to-transparent" />
+      {/* Overlays */}
+      <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-[#05030a] via-[#05030a]/40 to-[#05030a]/80" />
+      <div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_50%_50%,rgba(139,92,246,0.15),transparent_50%)]" />
+      {particlesLayer}
 
+      {/* DESKTOP DOUBLE-SLIDER CARD */}
+      <div className={`auth-container relative hidden lg:flex z-30 ${isSignUp ? "right-panel-active" : ""}`}>
+        
+        {/* Sign In Form Container */}
+        <div className="form-container sign-in-container flex flex-col justify-center px-12 py-8">
+          <div className="flex flex-col items-center mb-6">
+            <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 shadow-lg mb-3">
+              <img src={logoSrc} alt={realmName} className="h-6 w-6 object-contain" />
+            </div>
+            <h2 className="text-xl font-black tracking-tight text-white uppercase">Sign In</h2>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-1">Gunakan akun Anda untuk masuk</p>
+          </div>
+          <div className="w-full min-w-0 [&_.cl-cardBox]:!w-full [&_.cl-main]:!gap-3 [&_.cl-socialButtonsBlock]:!gap-2 [&_.cl-socialButtonsBlockButton]:!min-h-10 [&_.cl-socialButtonsBlockButton]:!text-xs [&_.cl-formFieldInput]:!h-10 [&_.cl-formButtonPrimary]:!h-10 [&_.cl-footer]:!hidden">
+            <SignIn
+              routing="path"
+              path={`${basePath}/sign-in`}
+              signUpUrl={`${basePath}/sign-up`}
+              oidcPrompt="login select_account consent"
+              appearance={{
+                elements: {
+                  card: "bg-transparent border-0 shadow-none p-0 w-full",
+                  header: "hidden",
+                  footer: "hidden",
+                  formButtonPrimary: "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black text-xs rounded-xl py-3 px-5 shadow-lg shadow-violet-950/30 transition-all duration-200 uppercase tracking-widest w-full",
+                  formFieldInput: "bg-zinc-900/50 border-zinc-800 focus:border-violet-500 focus:ring-2 focus:ring-violet-950/50 text-white rounded-xl text-xs h-10 transition-all duration-200",
+                  socialButtonsBlockButton: "bg-zinc-900/50 border-zinc-800 hover:bg-zinc-800 text-white rounded-xl transition-all",
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Sign Up Form Container */}
+        <div className="form-container sign-up-container flex flex-col justify-center px-12 py-8">
+          <div className="flex flex-col items-center mb-6">
+            <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 shadow-lg mb-3">
+              <img src={logoSrc} alt={realmName} className="h-6 w-6 object-contain" />
+            </div>
+            <h2 className="text-xl font-black tracking-tight text-white uppercase">Create Account</h2>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-1">Daftar untuk memulai petualangan baru</p>
+          </div>
+          <div className="w-full min-w-0 [&_.cl-cardBox]:!w-full [&_.cl-main]:!gap-3 [&_.cl-socialButtonsBlock]:!gap-2 [&_.cl-socialButtonsBlockButton]:!min-h-10 [&_.cl-socialButtonsBlockButton]:!text-xs [&_.cl-formFieldInput]:!h-10 [&_.cl-formButtonPrimary]:!h-10 [&_.cl-footer]:!hidden">
+            <SignUp
+              routing="path"
+              path={`${basePath}/sign-up`}
+              signInUrl={`${basePath}/sign-in`}
+              oidcPrompt="login select_account consent"
+              appearance={{
+                elements: {
+                  card: "bg-transparent border-0 shadow-none p-0 w-full",
+                  header: "hidden",
+                  footer: "hidden",
+                  formButtonPrimary: "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black text-xs rounded-xl py-3 px-5 shadow-lg shadow-violet-950/30 transition-all duration-200 uppercase tracking-widest w-full",
+                  formFieldInput: "bg-zinc-900/50 border-zinc-800 focus:border-violet-500 focus:ring-2 focus:ring-violet-950/50 text-white rounded-xl text-xs h-10 transition-all duration-200",
+                  socialButtonsBlockButton: "bg-zinc-900/50 border-zinc-800 hover:bg-zinc-800 text-white rounded-xl transition-all",
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Overlay Container */}
+        <div className="overlay-container">
+          <div className="overlay">
+            
+            {/* Overlay Left */}
+            <div className="overlay-panel overlay-left flex flex-col items-center justify-center p-12">
+              <h2 className="text-2xl font-black tracking-tight text-white uppercase">Sudah Punya Akun?</h2>
+              <p className="text-xs text-violet-200 font-semibold mt-3 max-w-[260px] leading-relaxed">
+                Masuk menggunakan akun Anda yang sudah ada untuk melanjutkan permainan di {realmName}
+              </p>
+              <button
+                onClick={() => setLocation("/sign-in")}
+                className="mt-8 px-10 py-3 rounded-full border border-white/55 text-white font-black text-xs uppercase tracking-widest hover:bg-white/10 active:scale-95 transition-all duration-200 cursor-pointer"
+              >
+                Sign In
+              </button>
+            </div>
+
+            {/* Overlay Right */}
+            <div className="overlay-panel overlay-right flex flex-col items-center justify-center p-12">
+              <h2 className="text-2xl font-black tracking-tight text-white uppercase">Halo, Kawan!</h2>
+              <p className="text-xs text-violet-200 font-semibold mt-3 max-w-[260px] leading-relaxed">
+                Daftarkan diri Anda dan mulailah petualangan roleplay yang seru bersama kami di {realmName}
+              </p>
+              <button
+                onClick={() => setLocation("/sign-up")}
+                className="mt-8 px-10 py-3 rounded-full border border-white/55 text-white font-black text-xs uppercase tracking-widest hover:bg-white/10 active:scale-95 transition-all duration-200 cursor-pointer"
+              >
+                Sign Up
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      {/* MOBILE RESPONSIVE LAYOUT (Glassmorphic Dark Card) */}
+      <div className="relative flex min-h-[100dvh] w-full flex-col overflow-hidden bg-[#07050d] px-4 pb-6 pt-6 lg:hidden z-30">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(139,92,246,0.18),transparent_50%),linear-gradient(180deg,#07050d_0%,#0e091a_60%,#07050d_100%)]" />
+        <div className="pointer-events-none absolute -left-20 top-20 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -right-20 bottom-20 h-48 w-48 rounded-full bg-indigo-500/10 blur-3xl" />
+        {particlesLayer}
+
+        {/* Top Header */}
         <div className="relative z-20 flex items-center justify-between">
           <button
             type="button"
             aria-label="Back"
-            className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/8 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-xl"
+            className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 text-white shadow-lg backdrop-blur-xl"
             onClick={() => window.history.back()}
           >
-            <span className="relative block h-5 w-5">
-              <span className="absolute left-0 top-1/2 h-[2px] w-5 -translate-y-1/2 rounded-full bg-current" />
-              <span className="absolute left-0 top-1/2 h-[2px] w-3 origin-left -translate-y-1/2 rotate-45 rounded-full bg-current" />
-              <span className="absolute left-0 top-1/2 h-[2px] w-3 origin-left -translate-y-1/2 -rotate-45 rounded-full bg-current" />
+            <span className="relative block h-4 w-4">
+              <span className="absolute left-0 top-1/2 h-[2px] w-4 -translate-y-1/2 rounded-full bg-current" />
+              <span className="absolute left-0 top-1/2 h-[2px] w-2.5 origin-left -translate-y-1/2 rotate-45 rounded-full bg-current" />
+              <span className="absolute left-0 top-1/2 h-[2px] w-2.5 origin-left -translate-y-1/2 -rotate-45 rounded-full bg-current" />
             </span>
           </button>
-          <div className="rounded-full border border-white/10 bg-white/8 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/70 backdrop-blur-xl">
-            Arcadia
+          <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white/80 backdrop-blur-xl">
+            {realmName}
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-1 flex-col justify-center py-7">
-          <div className="mx-auto mb-5 flex max-w-[350px] flex-col items-center text-center">
-            <div className="relative grid h-16 w-16 place-items-center rounded-2xl border border-white/15 bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/20 to-transparent" />
-              <img src={logoSrc} alt={realmName} className="relative h-11 w-11 object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.26)]" />
+        {/* Card and Forms */}
+        <div className="relative z-10 flex flex-1 flex-col justify-center py-6">
+          <div className="mx-auto mb-5 flex max-w-[320px] flex-col items-center text-center">
+            <div className="relative grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/5 shadow-lg backdrop-blur-2xl">
+              <img src={logoSrc} alt={realmName} className="h-9 w-9 object-contain" />
             </div>
-            <p className="mt-4 text-[11px] font-black uppercase tracking-[0.38em] text-sky-100/70">
+            <p className="mt-3 text-[9px] font-black uppercase tracking-[0.38em] text-violet-400">
               {authEyebrow}
             </p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-white">
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-white">
               {authAction} {realmName}
             </h1>
-            <p className="mt-2 max-w-[280px] text-sm font-medium leading-relaxed text-sky-100/58">
-              {mode === "sign-in" ? "Sign in and continue your story." : "Create your profile and begin your story."}
-            </p>
           </div>
 
-          <div className="auth-login-card relative mx-auto w-full max-w-[370px] overflow-hidden rounded-[32px] border border-white/24 bg-white/[0.22] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.36),0_28px_70px_rgba(0,0,0,0.34)] backdrop-blur-[30px]">
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.34),rgba(255,255,255,0.10)_42%,rgba(255,255,255,0.04)),radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.34),transparent_32%)]" />
-            <div className="relative rounded-[24px] border border-white/60 bg-white/70 px-4 py-5 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-2xl">
-              <div className="min-w-0 [&_.cl-cardBox]:!w-full [&_.cl-main]:!gap-3 [&_.cl-socialButtonsBlock]:!gap-2 [&_.cl-socialButtonsBlockButton]:!min-h-10 [&_.cl-socialButtonsBlockButton]:!text-sm [&_.cl-formFieldInput]:!h-10 [&_.cl-formButtonPrimary]:!h-10 [&_.cl-footer]:!hidden">
-                {children}
+          <div className="auth-login-card relative mx-auto w-full max-w-[370px] overflow-hidden rounded-[28px] border border-white/10 bg-[#0d0a1b]/30 p-3 shadow-2xl backdrop-blur-2xl">
+            <div className="relative rounded-[20px] border border-white/10 bg-[#07050d]/85 px-4 py-5 shadow-lg backdrop-blur-3xl">
+              <div className="min-w-0 [&_.cl-cardBox]:!w-full [&_.cl-main]:!gap-3 [&_.cl-socialButtonsBlock]:!gap-2 [&_.cl-socialButtonsBlockButton]:!min-h-10 [&_.cl-socialButtonsBlockButton]:!text-xs [&_.cl-formFieldInput]:!h-10 [&_.cl-formButtonPrimary]:!h-10 [&_.cl-footer]:!hidden">
+                {isSignUp ? (
+                  <SignUp
+                    routing="path"
+                    path={`${basePath}/sign-up`}
+                    signInUrl={`${basePath}/sign-in`}
+                    oidcPrompt="login select_account consent"
+                  />
+                ) : (
+                  <SignIn
+                    routing="path"
+                    path={`${basePath}/sign-in`}
+                    signUpUrl={`${basePath}/sign-up`}
+                    oidcPrompt="login select_account consent"
+                  />
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
     </div>
   );
 }
 
-
-function SignInPage() {
-  return (
-    <AuthPageLayout mode="sign-in">
-      <SignIn
-        routing="path"
-        path={`${basePath}/sign-in`}
-        signUpUrl={`${basePath}/sign-up`}
-        oidcPrompt="login select_account consent"
-      />
-    </AuthPageLayout>
-  );
-}
-
-function SignUpPage() {
-  return (
-    <AuthPageLayout mode="sign-up">
-      <SignUp
-        routing="path"
-        path={`${basePath}/sign-up`}
-        signInUrl={`${basePath}/sign-in`}
-        oidcPrompt="login select_account consent"
-      />
-    </AuthPageLayout>
-  );
+function AuthPageWrapper() {
+  const [location] = useLocation();
+  const mode = location.includes("sign-up") ? "sign-up" : "sign-in";
+  return <AuthPageLayout mode={mode} />;
 }
 
 function ClerkQueryClientCacheInvalidator() {
@@ -694,10 +925,30 @@ function AddFriendProtected() {
   );
 }
 
+import { setAuthTokenGetter, useGetStats } from "@workspace/api-client-react";
+
+function ClerkTokenHelper() {
+  const { getToken, isSignedIn, isLoaded } = useAuth();
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      setAuthTokenGetter(() => getToken());
+    } else {
+      setAuthTokenGetter(null);
+    }
+    return () => {
+      setAuthTokenGetter(null);
+    };
+  }, [getToken, isSignedIn, isLoaded]);
+
+  return null;
+}
+
 function ClerkProviderWithRoutes() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const realmSettings = useRealmSettings();
   const realmName = getRealmDisplayName(realmSettings);
+  const isAuth = location.startsWith("/sign-in") || location.startsWith("/sign-up");
 
   return (
     <ClerkProvider
@@ -723,29 +974,32 @@ function ClerkProviderWithRoutes() {
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
+      <ClerkTokenHelper />
       <QueryClientProvider client={queryClient}>
         <MultisessionAppSupport>
           <ClerkMissingUsernameAutoCompleter />
           <ClerkQueryClientCacheInvalidator />
-          <Switch>
-            <Route path="/" component={HomeRedirect} />
-            <Route path="/member" component={MemberProtected} />
-            <Route path="/admin" component={AdminProtected} />
-            <Route path="/friends" component={FriendsProtected} />
-            <Route path="/profile/:id" component={ProfileProtected} />
-            <Route path="/messages" component={MessagesProtected} />
-            <Route path="/premium" component={PremiumProtected} />
-            <Route path="/invite/:code">
-              {(params) => <Redirect to={`/member?tab=messages&inviteCode=${params.code}`} />}
-            </Route>
-            <Route path="/join/:code">
-              {(params) => <Redirect to={`/member?tab=messages&inviteCode=${params.code}`} />}
-            </Route>
-            <Route path="/add-friend/:target" component={AddFriendProtected} />
-            <Route path="/sign-in/*?" component={SignInPage} />
-            <Route path="/sign-up/*?" component={SignUpPage} />
-            <Route component={NotFound} />
-          </Switch>
+          {isAuth ? (
+            <AuthPageWrapper />
+          ) : (
+            <Switch>
+              <Route path="/" component={HomeRedirect} />
+              <Route path="/member" component={MemberProtected} />
+              <Route path="/admin" component={AdminProtected} />
+              <Route path="/friends" component={FriendsProtected} />
+              <Route path="/profile/:id" component={ProfileProtected} />
+              <Route path="/messages" component={MessagesProtected} />
+              <Route path="/premium" component={PremiumProtected} />
+              <Route path="/invite/:code">
+                {(params) => <Redirect to={`/member?tab=messages&inviteCode=${params.code}`} />}
+              </Route>
+              <Route path="/join/:code">
+                {(params) => <Redirect to={`/member?tab=messages&inviteCode=${params.code}`} />}
+              </Route>
+              <Route path="/add-friend/:target" component={AddFriendProtected} />
+              <Route component={NotFound} />
+            </Switch>
+          )}
         </MultisessionAppSupport>
       </QueryClientProvider>
     </ClerkProvider>

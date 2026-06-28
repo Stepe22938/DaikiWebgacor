@@ -17,6 +17,11 @@ import { serializeDates } from "../lib/serialize";
 import { getActiveTierForUser } from "../lib/tierBoosts";
 import { ensureAuthUser } from "../lib/userSync";
 
+function containsHtml(str: unknown): boolean {
+  if (typeof str !== "string") return false;
+  return /<[^>]+>/.test(str);
+}
+
 async function attachEquippedCosmetics<T extends { id: number }>(users: T[]): Promise<(T & { equippedBorder: string | null; equippedBadge: string | null; equippedBackground: string | null })[]> {
   if (users.length === 0) return [];
   const userIds = users.map(u => u.id);
@@ -308,6 +313,16 @@ router.patch("/me", async (req, res): Promise<void> => {
     return;
   }
 
+  if (
+    containsHtml(parsed.data.username) ||
+    containsHtml(parsed.data.displayName) ||
+    containsHtml(parsed.data.bio) ||
+    containsHtml(parsed.data.youtubeLiveUrl)
+  ) {
+    res.status(400).json({ error: "HTML tags are not allowed in profile fields." });
+    return;
+  }
+
   const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
   if (!user) {
     res.status(404).json({ error: "User not found" });
@@ -436,8 +451,9 @@ router.get("/users/:id/overview", async (req, res): Promise<void> => {
     .limit(1)
     .then((rows) => rows[0] ?? null) : null;
 
-  const lastSeenAt = targetUser.lastSeenAt;
-  const isOnline = !!lastSeenAt && Date.now() - lastSeenAt.getTime() <= ONLINE_WINDOW_MS;
+  const hideOnline = !!(targetUser as any).hideOnlineStatus;
+  const lastSeenAt = hideOnline ? null : targetUser.lastSeenAt;
+  const isOnline = hideOnline ? false : (!!lastSeenAt && Date.now() - lastSeenAt.getTime() <= ONLINE_WINDOW_MS);
   const userWithCosmetics = await attachEquippedCosmeticsToSingle(targetUser);
 
   res.json(serializeDates({
@@ -448,6 +464,8 @@ router.get("/users/:id/overview", async (req, res): Promise<void> => {
       avatarUrl: userWithCosmetics.avatarUrl,
       role: userWithCosmetics.role,
       bio: userWithCosmetics.bio,
+      isVerified: userWithCosmetics.isVerified,
+      isBusinessVerified: (userWithCosmetics as any).isBusinessVerified,
       lastSeenAt,
       isOnline,
       equippedBorder: userWithCosmetics.equippedBorder,
@@ -555,6 +573,17 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
 
   const body = AdminUpdateUserBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+
+  if (
+    containsHtml(body.data.username) ||
+    containsHtml(body.data.displayName) ||
+    containsHtml(body.data.bio) ||
+    containsHtml(body.data.youtubeLiveUrl) ||
+    containsHtml(body.data.mcUsername)
+  ) {
+    res.status(400).json({ error: "HTML tags are not allowed in profile fields." });
+    return;
+  }
 
   const targetUser = await db.query.usersTable.findFirst({ where: eq(usersTable.id, params.data.id) });
   if (!targetUser) { res.status(404).json({ error: "User not found" }); return; }

@@ -131,6 +131,7 @@ router.get("/bots", async (req, res): Promise<void> => {
       status: botsTable.status,
       category: botsTable.category,
       webhookUrl: botsTable.webhookUrl,
+      userId: botsTable.userId,
       lastHeartbeat: botsTable.lastHeartbeat,
       createdAt: botsTable.createdAt,
     })
@@ -162,6 +163,46 @@ router.get("/bots/system", async (req, res): Promise<void> => {
     .orderBy(botsTable.name);
 
   res.json(bots);
+});
+
+// GET /api/bots/my-invitable-groups - list all groups where the user can invite bots
+router.get("/bots/my-invitable-groups", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  // Find all group conversations the user is a member of
+  const memberships = await db
+    .select({
+      id: conversationsTable.id,
+      name: conversationsTable.name,
+      ownerId: conversationsTable.ownerId,
+    })
+    .from(conversationMembersTable)
+    .innerJoin(conversationsTable, eq(conversationMembersTable.conversationId, conversationsTable.id))
+    .where(
+      and(
+        eq(conversationMembersTable.userId, user.id),
+        eq(conversationsTable.type, "group")
+      )
+    );
+
+  const invitableGroups = [];
+
+  for (const group of memberships) {
+    const isOwner = group.ownerId === user.id;
+    const hasInvitePerm = isOwner || (await hasPermission(group.id, user.id, "inviteBot"));
+    if (hasInvitePerm) {
+      invitableGroups.push({
+        id: group.id,
+        name: group.name || `Group #${group.id}`,
+      });
+    }
+  }
+
+  res.json(invitableGroups);
 });
 
 // POST /api/bots - register a new bot

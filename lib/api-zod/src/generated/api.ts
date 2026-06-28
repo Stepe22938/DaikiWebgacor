@@ -124,7 +124,13 @@ export const GetMeResponse = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional()
 })
 
 
@@ -158,7 +164,13 @@ export const UpdateMeResponse = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional()
 })
 
 
@@ -272,7 +284,13 @@ export const ListMembersResponseItem = zod.object({
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
-  "equippedBackground": zod.string().nullish()
+  "equippedBackground": zod.string().nullish(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional()
 })
 export const ListMembersResponse = zod.array(ListMembersResponseItem)
 
@@ -303,7 +321,13 @@ export const GetPublicProfileResponse = zod.object({
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
-  "equippedBackground": zod.string().nullish()
+  "equippedBackground": zod.string().nullish(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional()
 })
 
 
@@ -692,6 +716,7 @@ export const AdminListConversationsResponseItem = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -729,6 +754,7 @@ export const AdminUpdateConversationResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -839,7 +865,10 @@ export const ListConversationsResponseItem = zod.object({
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
+  "otherUserIsSeller": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -886,6 +915,7 @@ export const CreateOrGetDmResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -917,7 +947,10 @@ export const GetConversationResponse = zod.object({
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
+  "otherUserIsSeller": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -965,6 +998,7 @@ export const UpdateGroupResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),

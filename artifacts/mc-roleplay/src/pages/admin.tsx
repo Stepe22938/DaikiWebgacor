@@ -86,6 +86,15 @@ import {
   Dices,
   Zap,
   BadgeCheck,
+  Trophy,
+  Gavel,
+  Gift,
+  Trash2,
+  Pencil,
+  Crown,
+  CheckCircle2,
+  XCircle,
+  Video,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -3315,6 +3324,8 @@ export default function Admin() {
                   )}
                 </div>
               )}
+
+
             </div>
           )}
 
@@ -4196,6 +4207,8 @@ export default function Admin() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+
     </div>
   );
 }

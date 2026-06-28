@@ -20,6 +20,12 @@ export const usersTable = pgTable("users", {
   voiceJoinedAt: timestamp("voice_joined_at"),
   lastSeenAt: timestamp("last_seen_at"),
   isVerified: boolean("is_verified").notNull().default(false),
+  isBusinessVerified: boolean("is_business_verified").notNull().default(false),
+  isSeller: boolean("is_seller").notNull().default(false),
+  businessAutoReply: text("business_auto_reply"),
+  hideOnlineStatus: boolean("hide_online_status").notNull().default(false),
+  businessName: varchar("business_name", { length: 100 }),
+  businessDescription: text("business_description"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
