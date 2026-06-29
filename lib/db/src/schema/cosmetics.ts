@@ -10,6 +10,9 @@ export const cosmeticsTable = pgTable("cosmetics", {
   rarity: varchar("rarity", { length: 10 }).notNull().default("C"), // 'S' | 'A' | 'B' | 'C' | 'D'
   value: text("value").notNull(), // Raw CSS classes, image URL, or styling config
   description: text("description"),
+  price: integer("price").notNull().default(0), // Price in Tokens
+  isGacha: boolean("is_gacha").notNull().default(true), // Appears in Gacha pool
+  isShop: boolean("is_shop").notNull().default(false), // Appears in Shop
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

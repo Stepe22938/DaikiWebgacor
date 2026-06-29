@@ -16,5 +16,8 @@ export interface OwnedCosmetic {
   value: string;
   /** @nullable */
   description?: string | null;
+  price?: number;
+  isGacha?: boolean;
+  isShop?: boolean;
   isEquipped: boolean;
 }

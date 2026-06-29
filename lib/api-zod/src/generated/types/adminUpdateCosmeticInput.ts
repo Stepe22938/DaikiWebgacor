@@ -14,4 +14,7 @@ export interface AdminUpdateCosmeticInput {
   rarity?: AdminUpdateCosmeticInputRarity;
   value?: string;
   description?: string;
+  price?: number;
+  isGacha?: boolean;
+  isShop?: boolean;
 }

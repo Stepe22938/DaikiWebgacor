@@ -20,5 +20,6 @@ export interface ConversationMemberInfo {
   /** @nullable */
   role?: string | null;
   joinedAt: string;
+  isOnline?: boolean;
   roles?: ConversationMemberInfoRolesItem[];
 }

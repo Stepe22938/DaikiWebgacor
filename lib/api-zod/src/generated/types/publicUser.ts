@@ -33,5 +33,5 @@ export interface PublicUser {
   /** @nullable */
   equippedBackground?: string | null;
   /** @nullable */
-  pinnedAt?: string | null;
+  pinnedAt?: Date | null;
 }

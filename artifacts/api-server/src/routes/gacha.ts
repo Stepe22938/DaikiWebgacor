@@ -8,7 +8,9 @@ import {
   userCosmeticsTable,
   walletTransactionsTable,
   systemSettingsTable,
+  userTierSubscriptionsTable,
 } from "@workspace/db";
+import { syncTierIncludedBoostSlotsForUser, ensureDefaultSharedStoragePool } from "../lib/tierBoosts";
 import { serializeDates } from "../lib/serialize";
 import {
   AdminAdjustWalletBody,
@@ -124,7 +126,7 @@ router.post("/gacha/spin", async (req, res): Promise<void> => {
     return;
   }
 
-  const allCosmetics = await db.select().from(cosmeticsTable);
+  const allCosmetics = await db.select().from(cosmeticsTable).where(eq(cosmeticsTable.isGacha, true));
   if (allCosmetics.length === 0) {
     res.status(400).json({ error: "No cosmetics available to spin. Contact admin." });
     return;
@@ -436,6 +438,9 @@ router.post("/admin/cosmetics", async (req, res): Promise<void> => {
       rarity: parsed.data.rarity,
       value: parsed.data.value,
       description: parsed.data.description || null,
+      price: parsed.data.price ?? 0,
+      isGacha: parsed.data.isGacha ?? true,
+      isShop: parsed.data.isShop ?? false,
     })
     .returning();
 
@@ -462,6 +467,9 @@ router.patch("/admin/cosmetics/:id", async (req, res): Promise<void> => {
   if (parsed.data.rarity !== undefined) updateData.rarity = parsed.data.rarity;
   if (parsed.data.value !== undefined) updateData.value = parsed.data.value;
   if (parsed.data.description !== undefined) updateData.description = parsed.data.description || null;
+  if (parsed.data.price !== undefined) updateData.price = parsed.data.price;
+  if (parsed.data.isGacha !== undefined) updateData.isGacha = parsed.data.isGacha;
+  if (parsed.data.isShop !== undefined) updateData.isShop = parsed.data.isShop;
 
   const [updated] = await db
     .update(cosmeticsTable)
@@ -485,6 +493,193 @@ router.delete("/admin/cosmetics/:id", async (req, res): Promise<void> => {
 
   await db.delete(cosmeticsTable).where(eq(cosmeticsTable.id, id));
   res.status(204).send();
+});
+
+router.post("/cosmetics/:id/buy", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const cosmeticId = parseInt(req.params.id, 10);
+  const cosmetic = await db.query.cosmeticsTable.findFirst({
+    where: eq(cosmeticsTable.id, cosmeticId),
+  });
+
+  if (!cosmetic) {
+    res.status(404).json({ error: "Cosmetic not found" });
+    return;
+  }
+
+  if (cosmetic.type !== "premium" && cosmetic.type !== "premium_plus") {
+    const owned = await db.query.userCosmeticsTable.findFirst({
+      where: and(eq(userCosmeticsTable.userId, user.id), eq(userCosmeticsTable.cosmeticId, cosmeticId)),
+    });
+
+    if (owned) {
+      res.status(400).json({ error: "Cosmetic already owned" });
+      return;
+    }
+  }
+
+  const cost = (cosmetic as any).price ?? 0;
+
+  if (cost <= 0) {
+    res.status(400).json({ error: "Item ini tidak dijual di toko (khusus Gacha)." });
+    return;
+  }
+
+  if (user.diamonds < cost) {
+    res.status(400).json({ error: "Token tidak mencukupi." });
+    return;
+  }
+
+  await db
+    .update(usersTable)
+    .set({ diamonds: user.diamonds - cost })
+    .where(eq(usersTable.id, user.id));
+
+  if (cosmetic.type === "premium" || cosmetic.type === "premium_plus") {
+    const tier = cosmetic.type; // "premium" or "premium_plus"
+    const days = parseInt(cosmetic.value, 10) || 30;
+
+    // Check if there is an active subscription of this tier, ordered by endsAt desc
+    const activeSub = await db.query.userTierSubscriptionsTable.findFirst({
+      where: and(
+        eq(userTierSubscriptionsTable.userId, user.id),
+        eq(userTierSubscriptionsTable.tier, tier),
+        eq(userTierSubscriptionsTable.status, "active")
+      ),
+      orderBy: (t, { desc }) => [desc(t.endsAt)],
+    });
+
+    let newEndsAt = new Date();
+    newEndsAt.setDate(newEndsAt.getDate() + days);
+
+    if (activeSub) {
+      const currentEnds = activeSub.endsAt ? new Date(activeSub.endsAt) : new Date();
+      const baseDate = currentEnds.getTime() > Date.now() ? currentEnds : new Date();
+      newEndsAt = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+
+      await db
+        .update(userTierSubscriptionsTable)
+        .set({ endsAt: newEndsAt, updatedAt: new Date() })
+        .where(eq(userTierSubscriptionsTable.id, activeSub.id));
+    } else {
+      await db.insert(userTierSubscriptionsTable).values({
+        userId: user.id,
+        tier: tier,
+        status: "active",
+        source: "token_shop",
+        startsAt: new Date(),
+        endsAt: newEndsAt,
+        autoRenews: false,
+        notes: `Bought ${days} days of ${tier === "premium_plus" ? "Premium+" : "Premium"} via Token Shop`,
+      });
+    }
+
+    // Update user role if not staff/admin/dev
+    if (!["admin", "staff", "dev", "dev_website"].includes(user.role)) {
+      let finalRole = tier;
+      // If they already have premium_plus, don't downgrade their role to premium
+      if (user.role === "premium_plus" && tier === "premium") {
+        finalRole = "premium_plus";
+      }
+      await db.update(usersTable)
+        .set({ role: finalRole, updatedAt: new Date() })
+        .where(eq(usersTable.id, user.id));
+    }
+
+    // Sync benefits
+    await syncTierIncludedBoostSlotsForUser(user.id);
+    await ensureDefaultSharedStoragePool();
+  } else {
+    await db.insert(userCosmeticsTable).values({
+      userId: user.id,
+      cosmeticId: cosmeticId,
+      isEquipped: false,
+    });
+  }
+
+  await db.insert(walletTransactionsTable).values({
+    userId: user.id,
+    amount: -cost,
+    type: "purchase" as any,
+    description: `Bought ${cosmetic.type === "premium" || cosmetic.type === "premium_plus" ? "Premium" : "cosmetic"}: ${cosmetic.name}`,
+  });
+
+  res.json({ success: true, diamonds: user.diamonds - cost });
+});
+
+router.post("/quests/claim-reward", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const amount = Number(req.body.amount || 100);
+  const questTitle = String(req.body.title || "Quest Reward");
+
+  const updatedUser = await db
+    .update(usersTable)
+    .set({ diamonds: user.diamonds + amount })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+
+  await db.insert(walletTransactionsTable).values({
+    userId: user.id,
+    amount: amount,
+    type: "quest_reward" as any,
+    description: `Claimed token reward for quest: ${questTitle}`,
+  });
+
+  res.json({ success: true, diamonds: updatedUser[0].diamonds });
+});
+
+router.get("/quests", async (req, res): Promise<void> => {
+  const row = await db.query.systemSettingsTable.findFirst({
+    where: eq(systemSettingsTable.key, "quests"),
+  });
+  if (!row) {
+    res.json([
+      { id: 1, title: "Chatter Pro", desc: "Kirim 10 pesan di percakapan apa saja.", target: 10, current: 0, reward: 300, claimed: false, type: "chat" },
+      { id: 2, title: "Explorer", desc: "Gunakan fitur Cari untuk menemukan pesan atau teman.", target: 1, current: 0, reward: 150, claimed: false, type: "search" },
+      { id: 3, title: "Socializer", desc: "Mulai obrolan DM baru dengan teman.", target: 1, current: 0, reward: 250, claimed: false, type: "dm" },
+      { id: 4, title: "Arcadia Watcher", desc: "Tonton video/stream tentang Arcadia selama 15 detik.", target: 1, current: 0, reward: 500, claimed: false, type: "video", isVideoQuest: true }
+    ]);
+    return;
+  }
+  res.json(row.value);
+});
+
+router.post("/admin/quests", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const me = await getDbUser(auth.userId);
+  if (!me || !canManageAdminTools(me.role)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const questsArray = req.body;
+  if (!Array.isArray(questsArray)) {
+    res.status(400).json({ error: "Invalid quests data" });
+    return;
+  }
+
+  await db
+    .insert(systemSettingsTable)
+    .values({
+      key: "quests",
+      value: questsArray,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: systemSettingsTable.key,
+      set: {
+        value: questsArray,
+        updatedAt: new Date(),
+      },
+    });
+
+  res.json({ success: true, quests: questsArray });
 });
 
 export default router;

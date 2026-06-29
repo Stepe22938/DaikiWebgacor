@@ -13,4 +13,6 @@ export const CosmeticType = {
   badge: 'badge',
   border: 'border',
   background: 'background',
+  premium: 'premium',
+  premium_plus: 'premium_plus',
 } as const;

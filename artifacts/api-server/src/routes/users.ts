@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { clerkClient } from "@clerk/express";
-import { asc, eq, sql, and, inArray } from "drizzle-orm";
+import { asc, eq, sql, and, inArray, or, ilike, desc } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -11,6 +11,7 @@ import {
   channelsTable,
   rolesTable,
   memberRolesTable,
+  notificationsTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
@@ -286,6 +287,40 @@ async function syncUserSubscriptionRole(user: typeof usersTable.$inferSelect) {
   }
   return user;
 }
+
+router.get("/users/search", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  if (!q) {
+    res.json([]);
+    return;
+  }
+
+  const matchedUsers = await db
+    .select({
+      id: usersTable.id,
+      username: usersTable.username,
+      displayName: usersTable.displayName,
+      avatarUrl: usersTable.avatarUrl,
+      role: usersTable.role,
+      bio: usersTable.bio,
+    })
+    .from(usersTable)
+    .where(
+      or(
+        ilike(usersTable.username, `%${q}%`),
+        ilike(usersTable.displayName, `%${q}%`)
+      )
+    )
+    .limit(20);
+
+  const usersWithCosmetics = await attachEquippedCosmetics(matchedUsers);
+  res.json(serializeDates(usersWithCosmetics));
+});
 
 router.get("/me", async (req, res): Promise<void> => {
   const auth = getAuth(req);
@@ -684,6 +719,80 @@ router.patch("/me/settings", async (req, res): Promise<void> => {
     .returning();
 
   res.json(UpdateMySettingsResponse.parse({ messagePrivacy: updated.messagePrivacy ?? "friends_only" }));
+});
+
+router.get("/me/notifications", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  try {
+    const notifications = await db
+      .select({
+        id: notificationsTable.id,
+        senderName: sql<string>`coalesce(${usersTable.displayName}, ${usersTable.username})`,
+        senderAvatar: usersTable.avatarUrl,
+        content: notificationsTable.content,
+        timestamp: notificationsTable.createdAt,
+        conversationId: notificationsTable.conversationId,
+        isRead: notificationsTable.isRead,
+      })
+      .from(notificationsTable)
+      .leftJoin(usersTable, eq(notificationsTable.senderId, usersTable.id))
+      .where(and(eq(notificationsTable.userId, user.id), eq(notificationsTable.isRead, false)))
+      .orderBy(desc(notificationsTable.createdAt))
+      .limit(50);
+
+    res.json(serializeDates(notifications));
+  } catch (err) {
+    console.error("Failed to fetch notifications:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/me/notifications/clear", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  try {
+    await db
+      .update(notificationsTable)
+      .set({ isRead: true })
+      .where(eq(notificationsTable.userId, user.id));
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Failed to clear notifications:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/me/notifications/:id/read", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, auth.userId) });
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const notifId = parseInt(req.params.id, 10);
+  if (isNaN(notifId)) { res.status(400).json({ error: "Invalid notification ID" }); return; }
+
+  try {
+    await db
+      .update(notificationsTable)
+      .set({ isRead: true })
+      .where(and(eq(notificationsTable.id, notifId), eq(notificationsTable.userId, user.id)));
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Failed to mark notification as read:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;

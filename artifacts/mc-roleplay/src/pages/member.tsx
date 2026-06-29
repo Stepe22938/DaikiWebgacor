@@ -87,6 +87,8 @@ import {
 } from "recharts";
 
 import MessagesPage from "./messages";
+import FriendsTab from "./friends";
+import ProfileTab from "./profile";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -163,11 +165,39 @@ function SellerHub({
     onSuccess: () => {
       refetchMyOrders();
       toast({ title: "Pesanan berhasil ditandai sebagai dikirim!" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Gagal memproses pesanan", description: err.message, variant: "destructive" });
     }
   });
+
+  const [syncingOrderId, setSyncingOrderId] = useState<number | null>(null);
+
+  const handleSyncOrder = async (orderId: number) => {
+    try {
+      setSyncingOrderId(orderId);
+      const updatedOrder = await customFetch<any>(`/api/business/orders/${orderId}/sync`, {
+        method: "POST"
+      });
+      refetchMyOrders();
+      if (updatedOrder.status === "completed") {
+        toast({
+          title: "Pembayaran terverifikasi!",
+          description: "Pesanan kini berstatus Sudah Dibayar dan masuk ke tab Perlu Dikirim."
+        });
+      } else {
+        toast({
+          title: "Belum terbayar",
+          description: "Pembeli belum menyelesaikan pembayaran di SayaBayar.",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Gagal menyinkronkan pembayaran",
+        description: err.message || "Terjadi kesalahan.",
+        variant: "destructive"
+      });
+    } finally {
+      setSyncingOrderId(null);
+    }
+  };
 
   // Queries
   const { data: marketplaceProducts = [], isLoading: marketLoading } = useQuery({
@@ -781,13 +811,30 @@ function SellerHub({
                                 size="sm"
                                 onClick={() => deliverOrderMutation.mutate(order.id)}
                                 disabled={deliverOrderMutation.isPending}
-                                className="flex-1 text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white h-8.5 rounded-lg"
+                                className="flex-1 text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white h-8.5 rounded-lg cursor-pointer"
                               >
                                 {deliverOrderMutation.isPending ? (
                                   "Memproses..."
                                 ) : (
                                   <>
                                     <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Tandai Dikirim
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                            {order.status === "pending" && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleSyncOrder(order.id)}
+                                disabled={syncingOrderId === order.id}
+                                className="flex-1 text-[10px] font-black uppercase tracking-wider bg-amber-600 hover:bg-amber-700 text-white h-8.5 rounded-lg cursor-pointer"
+                              >
+                                {syncingOrderId === order.id ? (
+                                  "Sinkronisasi..."
+                                ) : (
+                                  <>
+                                    <Activity className="w-3.5 h-3.5 mr-1 animate-spin" /> Sinkronkan Bayar
                                   </>
                                 )}
                               </Button>
@@ -1069,6 +1116,7 @@ export default function Member() {
 
   const [location, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -1113,12 +1161,16 @@ export default function Member() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "credits", "settings", "gacha", "wallet", "membership", "music", "messages", "seller"].includes(tab)) {
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "profile_edit", "credits", "settings", "gacha", "wallet", "membership", "music", "messages", "seller", "guilds"].includes(tab)) {
       setActiveTab(tab);
+      if (tab === "profile") {
+        const idParam = params.get("id");
+        setProfileUserId(idParam ? Number(idParam) : (user?.id ?? null));
+      }
     } else if (!tab) {
       setActiveTab("dashboard");
     }
-  }, [window.location.search]);
+  }, [window.location.search, user]);
 
   useEffect(() => {
     if (activeTab !== "settings") return;
@@ -1142,13 +1194,23 @@ export default function Member() {
 
   const handleTabChange = (tabName: string) => {
     setActiveTab(tabName);
-    setLocation(`/member?tab=${tabName}`);
+    if (tabName === "profile") {
+      setProfileUserId(user?.id ?? null);
+      setLocation(`/member?tab=profile`);
+    } else {
+      setLocation(`/member?tab=${tabName}`);
+    }
     window.location.hash = "";
   };
 
   const handleTabChangeMobile = (tabName: string) => {
     setActiveTab(tabName);
-    setLocation(`/member?tab=${tabName}`);
+    if (tabName === "profile") {
+      setProfileUserId(user?.id ?? null);
+      setLocation(`/member?tab=profile`);
+    } else {
+      setLocation(`/member?tab=${tabName}`);
+    }
     window.location.hash = "";
     setMobileSidebarOpen(false);
   };
@@ -1524,12 +1586,16 @@ export default function Member() {
                 >
                   <MessageSquare className="w-4.5 h-4.5" /> Messages
                 </button>
-                <Link
-                  href="/friends"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                <button
+                  onClick={() => handleTabChange("guilds")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "guilds"
+                      ? "bg-violet-50 text-[#6366f1]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
                 >
-                  <Users className="w-4.5 h-4.5" /> Guilds
-                </Link>
+                  <Users className="w-4.5 h-4.5 text-indigo-500" /> Guilds
+                </button>
               </nav>
             </div>
 
@@ -1567,7 +1633,7 @@ export default function Member() {
                 <button
                   onClick={() => handleTabChange("profile")}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                    activeTab === "profile"
+                    activeTab === "profile" || activeTab === "profile_edit"
                       ? "bg-violet-50 text-[#6366f1]"
                       : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                   }`}
@@ -1746,13 +1812,16 @@ export default function Member() {
                   >
                     <MessageSquare className="w-4.5 h-4.5" /> Messages
                   </button>
-                  <Link
-                    href="/friends"
-                    onClick={() => setMobileSidebarOpen(false)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  <button
+                    onClick={() => handleTabChangeMobile("guilds")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "guilds"
+                        ? "bg-violet-50 text-[#6366f1]"
+                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                    }`}
                   >
-                    <Users className="w-4.5 h-4.5" /> Guilds
-                  </Link>
+                    <Users className="w-4.5 h-4.5 text-indigo-500" /> Guilds
+                  </button>
                 </div>
 
                 {user?.role && ["admin", "staff", "dev", "dev_website"].includes(user.role) && (
@@ -1786,7 +1855,7 @@ export default function Member() {
                   <button
                     onClick={() => handleTabChangeMobile("profile")}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                      activeTab === "profile" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
+                      activeTab === "profile" || activeTab === "profile_edit" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
                     }`}
                   >
                     <User className="w-4.5 h-4.5" /> My Profile
@@ -1891,6 +1960,16 @@ export default function Member() {
         {/* Content Container */}
         {activeTab !== "messages" && (
         <div className={`flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6 overflow-y-auto ${activeTab === "seller" ? "bg-[#09090b]" : ""}`}>
+          {/* Guilds (Friends) Tab */}
+          {activeTab === "guilds" && (
+            <FriendsTab embedded={true} />
+          )}
+
+          {/* Profile Tab */}
+          {activeTab === "profile" && profileUserId !== null && (
+            <ProfileTab id={profileUserId} embedded={true} />
+          )}
+
           {/* Dashboard Tab Overview */}
           {activeTab === "dashboard" && (
             <div className="space-y-6">
@@ -2270,7 +2349,7 @@ export default function Member() {
           )}
 
           {/* Player Profile Tab */}
-          {activeTab === "profile" && (
+          {activeTab === "profile_edit" && (
             <div className="space-y-6 max-w-2xl">
               {/* Edit Profile Form */}
               <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
@@ -3721,6 +3800,7 @@ function ProfileCosmeticsInventory() {
 function GachaTab() {
   const { data: board, isLoading, refetch } = useGetGachaBoard();
   const { data: user, refetch: refetchMe } = useGetMe();
+  const gachaCosmetics = (board?.cosmetics || []).filter((c: any) => c.isGacha);
   const spinGacha = useSpinGacha();
   const equipCosmetic = useEquipCosmetic();
   const { toast } = useToast();
@@ -3867,12 +3947,12 @@ function GachaTab() {
   };
 
   useEffect(() => {
-    if (board && board.cosmetics.length > 0 && !selectedItem) {
-      const sTiers = board.cosmetics.filter((c: any) => c.rarity === "S");
+    if (board && gachaCosmetics.length > 0 && !selectedItem) {
+      const sTiers = gachaCosmetics.filter((c: any) => c.rarity === "S");
       if (sTiers.length > 0) setSelectedItem(sTiers[0]);
-      else setSelectedItem(board.cosmetics[0]);
+      else setSelectedItem(gachaCosmetics[0]);
     }
-  }, [board, selectedItem]);
+  }, [board, selectedItem, gachaCosmetics]);
 
   if (isLoading || !board) {
     return (
@@ -4011,11 +4091,11 @@ function GachaTab() {
   };
 
   const tiers = {
-    S: board.cosmetics.filter((c: any) => c.rarity === "S"),
-    A: board.cosmetics.filter((c: any) => c.rarity === "A"),
-    B: board.cosmetics.filter((c: any) => c.rarity === "B"),
-    C: board.cosmetics.filter((c: any) => c.rarity === "C"),
-    D: board.cosmetics.filter((c: any) => c.rarity === "D"),
+    S: gachaCosmetics.filter((c: any) => c.rarity === "S"),
+    A: gachaCosmetics.filter((c: any) => c.rarity === "A"),
+    B: gachaCosmetics.filter((c: any) => c.rarity === "B"),
+    C: gachaCosmetics.filter((c: any) => c.rarity === "C"),
+    D: gachaCosmetics.filter((c: any) => c.rarity === "D"),
   };
 
   const ownedIds = new Set(board.ownedCosmeticIds || []);
@@ -4290,8 +4370,8 @@ function GachaTab() {
     );
   };
 
-  const totalRewards = board.cosmetics.length;
-  const ownedRewards = board.ownedCosmeticIds.length;
+  const totalRewards = gachaCosmetics.length;
+  const ownedRewards = board.ownedCosmeticIds.filter((id: number) => gachaCosmetics.some((c: any) => c.id === id)).length;
   const remainingRewards = totalRewards - ownedRewards;
 
   return (

@@ -477,10 +477,11 @@ function ProfileShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function Profile() {
+export default function Profile({ id: propId, embedded = false }: { id?: number; embedded?: boolean }) {
   const [, params] = useRoute("/profile/:id");
-  const [location] = useLocation();
-  const id = Number(params?.id ?? location.match(/\/profile\/(\d+)/)?.[1]) || 0;
+  const [location, setLocation] = useLocation();
+  const id = propId ?? (Number(params?.id ?? location.match(/\/profile\/(\d+)/)?.[1]) || 0);
+  const { data: me } = useGetMe();
   const { data: user, isLoading } = useGetPublicProfile(id);
   const { data: badges = [] } = useGetPublicProfileBadges(id);
   const { data: followers = [], isLoading: followersLoading } = useGetPublicProfileFollowers(id);
@@ -570,28 +571,44 @@ export default function Profile() {
     );
   }
 
-  return (
-    <ProfileShell>
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+  const profileContent = (
+    <div className={embedded ? "mx-auto max-w-7xl px-0 py-0" : "mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8"}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
               <Link href="/friends" className="hover:text-[#6d5dfc]">Player Guild</Link>
               <span>/</span>
               <span className="text-[#101828]">Profile Dashboard</span>
             </div>
-            <Button
-              onClick={toggleFollow}
-              variant={user.isFollowing ? "outline" : "default"}
-              className={user.isFollowing ? "rounded-lg border-[#e9ecf5] bg-white text-slate-600" : "rounded-lg bg-[#6d5dfc] text-white hover:bg-[#5847ea]"}
-            >
-              {user.isFollowing ? "Unfollow" : "Follow"}
-            </Button>
+            {me && me.id === user.id ? (
+              <Button
+                onClick={() => {
+                  if (embedded) {
+                    window.location.href = "/member?tab=profile_edit";
+                  } else {
+                    setLocation("/member?tab=profile_edit");
+                  }
+                }}
+                variant="outline"
+                className="rounded-lg border-[#e9ecf5] bg-white text-slate-600 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Settings className="w-4 h-4" /> Edit Profile
+              </Button>
+            ) : (
+              <Button
+                onClick={toggleFollow}
+                variant={user.isFollowing ? "outline" : "default"}
+                className={user.isFollowing ? "rounded-lg border-[#e9ecf5] bg-white text-slate-600" : "rounded-lg bg-[#6d5dfc] text-white hover:bg-[#5847ea]"}
+              >
+                {user.isFollowing ? "Unfollow" : "Follow"}
+              </Button>
+            )}
           </div>
 
           <div className={`mt-6 grid gap-6 ${privilegedProfile ? "xl:grid-cols-[420px_minmax(0,1fr)]" : ""}`}>
           <div className="min-w-0 xl:order-2">
-          <div className="overflow-hidden rounded-lg border border-[#e9ecf5] bg-white shadow-sm">
-            <div className="relative min-h-64">
+          <div className="overflow-hidden rounded-2xl border border-[#e9ecf5] bg-white shadow-sm">
+            {/* Banner */}
+            <div className="relative h-48 sm:h-56 w-full bg-black overflow-hidden">
               {embedUrl ? (
                 <YouTubeVideoBanner embedUrl={embedUrl} thumbnailUrl={thumbnailUrl} />
               ) : user.youtubeLiveUrl ? (
@@ -599,67 +616,56 @@ export default function Profile() {
                   href={user.youtubeLiveUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="relative flex aspect-[16/5] min-h-64 items-center justify-center overflow-hidden bg-[linear-gradient(135deg,_#281c79,_#6d5dfc_48%,_#00a884)]"
+                  className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[linear-gradient(135deg,_#281c79,_#6d5dfc_48%,_#00a884)]"
                 >
                   <span className="rounded-lg bg-white px-4 py-2 text-sm font-extrabold text-[#6d5dfc] shadow-sm">
                     Open YouTube Live
                   </span>
                 </a>
               ) : user.equippedBackground ? (
-                <div className="aspect-[16/5] min-h-64 relative bg-black">
-                  <img src={user.equippedBackground} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                </div>
+                <img src={user.equippedBackground} alt="" className="absolute inset-0 h-full w-full object-cover" />
               ) : (
-                <div className="aspect-[16/5] min-h-64 bg-[linear-gradient(135deg,_#1f2937,_#6d5dfc_52%,_#00a884)]" />
+                <div className="h-full w-full bg-[linear-gradient(135deg,_#1f2937,_#6d5dfc_52%,_#00a884)]" />
               )}
+            </div>
 
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent p-5 sm:p-7">
-                <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="flex min-w-0 items-end gap-4 rounded-xl bg-white/95 p-3 pr-5 shadow-xl shadow-black/15 backdrop-blur sm:max-w-[62%]">
-                    <div className={`rounded-full shrink-0 flex items-center justify-center bg-white p-1 overflow-visible ${user.equippedBorder || ""}`}>
-                      <Avatar className="h-24 w-24 border-4 border-white bg-white shadow-lg">
-                        <AvatarImage src={user.avatarUrl ?? undefined} />
-                        <AvatarFallback className="text-2xl font-black text-[#6d5dfc]">{getInitials(user.displayName || user.username)}</AvatarFallback>
-                      </Avatar>
-                    </div>
-                    <div className="min-w-0 pb-1 text-[#101828]">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h1 className="max-w-full break-words text-3xl font-black leading-tight sm:text-4xl">{user.displayName || user.username}</h1>
-                        {(user as any).isVerified && (
-                          <BadgeCheck className="w-7 h-7 text-blue-400 fill-blue-400/20 shrink-0" />
-                        )}
-                        <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-black uppercase text-[#6d5dfc]">
-                          {ROLE_LABELS[user.role]}
-                        </span>
-                        {user.equippedBadge && (
-                          <span className={`rounded-lg px-2.5 py-1 text-[11px] font-black uppercase border tracking-wider ${user.equippedBadge}`}>
-                            {getCosmeticBadgeName(user.equippedBadge)}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-sm font-bold text-slate-500">
-                        @{user.username} <span className="font-black text-[#6d5dfc]">{user.userTag}</span>
-                      </p>
-                      <ProfileBadges badges={badges} />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 rounded-lg bg-white/12 p-2 text-center text-white backdrop-blur">
-                    <div className="px-3 py-2">
-                      <p className="text-xl font-black">{user.followerCount}</p>
-                      <p className="text-[10px] font-bold uppercase text-white/70">Followers</p>
-                    </div>
-                    <div className="px-3 py-2">
-                      <p className="text-xl font-black">{user.followingCount}</p>
-                      <p className="text-[10px] font-bold uppercase text-white/70">Following</p>
-                    </div>
-                    <div className="px-3 py-2">
-                      <p className="text-xl font-black">{format(new Date(user.createdAt), "MMM")}</p>
-                      <p className="text-[10px] font-bold uppercase text-white/70">Joined</p>
-                    </div>
-                  </div>
+            {/* Profile Details Area */}
+            <div className="px-6 pb-6 relative bg-white rounded-b-2xl">
+              {/* Avatar (Absolute, overlapping the banner) */}
+              <div className="absolute left-6 -top-10">
+                <div className={`rounded-full shrink-0 flex items-center justify-center bg-white p-0.5 shadow-md overflow-visible ${user.equippedBorder || ""}`}>
+                  <Avatar className="h-20 w-20 border-4 border-white bg-white shadow-sm">
+                    <AvatarImage src={user.avatarUrl ?? undefined} />
+                    <AvatarFallback className="text-xl font-black text-[#6d5dfc]">{getInitials(user.displayName || user.username)}</AvatarFallback>
+                  </Avatar>
                 </div>
               </div>
+
+              {/* Text and Details (Pushed to the right of the absolute avatar) */}
+              <div className="pl-24 pt-3 flex flex-col sm:flex-row sm:items-end justify-between mb-2 gap-4">
+                <div className="pb-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-lg sm:text-xl font-black text-[#101828] leading-none">{user.displayName || user.username}</h1>
+                    {(user as any).isVerified && (
+                      <BadgeCheck className="w-4.5 h-4.5 text-blue-500 fill-blue-500/20 shrink-0" />
+                    )}
+                    <span className="rounded-md bg-violet-50 px-2 py-0.5 text-[9px] font-black uppercase text-[#6d5dfc]">
+                      {ROLE_LABELS[user.role]}
+                    </span>
+                    {user.equippedBadge && (
+                      <span className={`rounded-md px-2 py-0.5 text-[9px] font-black uppercase border tracking-wider ${user.equippedBadge}`}>
+                        {getCosmeticBadgeName(user.equippedBadge)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] font-bold text-slate-500">
+                    @{user.username} <span className="font-black text-[#6d5dfc]">{user.userTag}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Badges list */}
+              <ProfileBadges badges={badges} />
             </div>
           </div>
 
@@ -845,6 +851,11 @@ export default function Profile() {
           )}
           </div>
         </div>
-    </ProfileShell>
   );
+
+  if (embedded) {
+    return profileContent;
+  }
+
+  return <ProfileShell>{profileContent}</ProfileShell>;
 }

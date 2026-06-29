@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getAuth } from "../lib/auth";
-import { eq, and, inArray, desc, asc, isNull, sql, ne } from "drizzle-orm";
+import { eq, and, inArray, desc, asc, isNull, sql, ne, ilike } from "drizzle-orm";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import {
   db,
@@ -21,6 +21,7 @@ import {
   messageReactionsTable,
   stickersTable,
   userBlocksTable,
+  notificationsTable,
 } from "@workspace/db";
 import { deleteStickerResources } from "./stickers";
 import { getGroupBoostState } from "../lib/tierBoosts";
@@ -55,6 +56,69 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+
+router.get("/conversations/search-messages", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const currentUser = await getDbUser(auth.userId);
+  if (!currentUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  if (!q) {
+    res.json([]);
+    return;
+  }
+
+  // 1. Get all conversation IDs that the current user is a member of
+  const memberConvs = await db
+    .select({ conversationId: conversationMembersTable.conversationId })
+    .from(conversationMembersTable)
+    .where(eq(conversationMembersTable.userId, currentUser.id));
+
+  const convIds = memberConvs.map((mc) => mc.conversationId);
+  if (convIds.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  // 2. Search messages in those conversations
+  const matchedMessages = await db
+    .select({
+      id: messagesTable.id,
+      conversationId: messagesTable.conversationId,
+      channelId: messagesTable.channelId,
+      senderId: messagesTable.senderId,
+      content: messagesTable.content,
+      imageUrl: messagesTable.imageUrl,
+      attachmentUrl: messagesTable.attachmentUrl,
+      createdAt: messagesTable.createdAt,
+      senderUsername: usersTable.username,
+      senderDisplayName: usersTable.displayName,
+      senderAvatarUrl: usersTable.avatarUrl,
+      conversationName: conversationsTable.name,
+      conversationType: conversationsTable.type,
+    })
+    .from(messagesTable)
+    .innerJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+    .innerJoin(conversationsTable, eq(messagesTable.conversationId, conversationsTable.id))
+    .where(
+      and(
+        inArray(messagesTable.conversationId, convIds),
+        ilike(messagesTable.content, `%${q}%`)
+      )
+    )
+    .orderBy(desc(messagesTable.createdAt))
+    .limit(50);
+
+  res.json(serializeDates(matchedMessages));
+});
 
 async function getDbUser(clerkId: string) {
   return db.query.usersTable.findFirst({ where: eq(usersTable.clerkId, clerkId) });
@@ -238,6 +302,70 @@ async function sendAiSystemMessage(conversationId: number, channelId: number | n
   await db.update(conversationsTable)
     .set({ updatedAt: new Date() })
     .where(eq(conversationsTable.id, conversationId));
+}
+
+async function createNotificationsForMentions(
+  content: string,
+  senderId: number,
+  conversationId: number,
+  messageId: number
+) {
+  if (!content) return;
+
+  const mentionRegex = /@(\w+)(?:\s*#(\d+))?/g;
+  let match;
+
+  while ((match = mentionRegex.exec(content)) !== null) {
+    const username = match[1].toLowerCase();
+    const tagNum = match[2];
+    const userTag = tagNum ? `#${tagNum}` : null;
+
+    try {
+      let targetUsers: any[] = [];
+
+      if (userTag) {
+        const user = await db.query.usersTable.findFirst({
+          where: and(
+            eq(sql`lower(${usersTable.username})`, username),
+            eq(sql`lower(${usersTable.userTag})`, userTag.toLowerCase())
+          ),
+        });
+        if (user) targetUsers.push(user);
+      } else {
+        const users = await db.query.usersTable.findMany({
+          where: eq(sql`lower(${usersTable.username})`, username),
+        });
+        targetUsers = users;
+      }
+
+      for (const targetUser of targetUsers) {
+        if (targetUser.id !== senderId) {
+          const isTargetMember = await isMember(conversationId, targetUser.id);
+          if (isTargetMember) {
+            const existing = await db.query.notificationsTable.findFirst({
+              where: and(
+                eq(notificationsTable.userId, targetUser.id),
+                eq(notificationsTable.messageId, messageId)
+              )
+            });
+
+            if (!existing) {
+              await db.insert(notificationsTable).values({
+                userId: targetUser.id,
+                senderId,
+                conversationId,
+                messageId,
+                content: content.slice(0, 500),
+              });
+              console.log(`[Notification] Created notification for @${targetUser.username}${targetUser.userTag} in conv ${conversationId} from sender ${senderId}`);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[Notification] Error creating notification for @${username}:`, err);
+    }
+  }
 }
 
 async function handleAiAdminCommand(
@@ -1619,6 +1747,28 @@ router.patch("/conversations/:id", async (req, res): Promise<void> => {
   res.json(await buildSummary(updated, user.id));
 });
 
+// POST /api/conversations/:id/read - Mark conversation as read
+router.post("/conversations/:id/read", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const user = await getDbUser(auth.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const id = parseInt(req.params.id as string, 10);
+  if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+
+  await db
+    .update(conversationMembersTable)
+    .set({ lastReadAt: new Date() })
+    .where(and(
+      eq(conversationMembersTable.conversationId, id),
+      eq(conversationMembersTable.userId, user.id)
+    ));
+
+  res.json({ success: true });
+});
+
 router.get("/admin/conversations", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -1809,10 +1959,35 @@ async function populateMessageDetails(userId: number, rows: any[], bordersMap: M
     }
   }
 
+  // 3.5 Fetch conversation members for read receipts
+  const conversationId = rows[0].conversationId;
+  const conversationMembers = await db
+    .select({
+      userId: conversationMembersTable.userId,
+      lastReadAt: conversationMembersTable.lastReadAt,
+    })
+    .from(conversationMembersTable)
+    .where(eq(conversationMembersTable.conversationId, conversationId));
+
   // 4. Map & serialize rows
   return rows.map((r) => {
     const serialized = serializeDates(r);
     const parent = r.replyToMessageId ? parentMessagesMap.get(r.replyToMessageId) : null;
+    
+    // Find other members in the conversation
+    const otherMembers = conversationMembers.filter((m) => m.userId !== r.senderId);
+    
+    // Check who has read this message and when
+    const readDetails = otherMembers
+      .filter((m) => m.lastReadAt && new Date(m.lastReadAt).getTime() >= new Date(r.createdAt).getTime())
+      .map((m) => ({
+        userId: m.userId,
+        readAt: m.lastReadAt ? new Date(m.lastReadAt).toISOString() : null,
+      }));
+    const readBy = readDetails.map((d) => d.userId);
+      
+    // Message is read if all other members have read it
+    const isRead = otherMembers.length > 0 && readBy.length === otherMembers.length;
     
     return {
       ...serialized,
@@ -1833,6 +2008,11 @@ async function populateMessageDetails(userId: number, rows: any[], bordersMap: M
       replyToMessageSenderUsername: parent?.senderUsername ?? null,
       starred: starredSet.has(r.id),
       reactions: reactionsMap.get(r.id) ?? [],
+      
+      // Read receipts
+      readBy,
+      readDetails,
+      isRead,
     };
   });
 }
@@ -1998,6 +2178,11 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
     .update(conversationsTable)
     .set({ updatedAt: new Date() })
     .where(eq(conversationsTable.id, id));
+
+  // Create notifications for mentions in background
+  createNotificationsForMentions(parsed.data.content ?? "", user.id, id, msg.id).catch((err) => {
+    console.error("[Notification] Failed to create mention notifications:", err);
+  });
 
   // ── Business Auto-Reply (DM only) ─────────────────────────────────────────
   if (conv.type === "dm") {
@@ -2902,6 +3087,11 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
 
   await db.update(conversationsTable).set({ updatedAt: new Date() }).where(eq(conversationsTable.id, id));
 
+  // Create notifications for mentions in background
+  createNotificationsForMentions(parsed.data.content ?? "", user.id, id, msg.id).catch((err) => {
+    console.error("[Notification] Failed to create mention notifications:", err);
+  });
+
   // ── Auto-Moderation (background, non-blocking) ──────────────────────────
   {
     const isGroupOwner = conv.ownerId === user.id;
@@ -3092,6 +3282,8 @@ router.get("/conversations/:id/members", async (req, res): Promise<void> => {
         avatarUrl: usersTable.avatarUrl,
         role: usersTable.role,
         joinedAt: conversationMembersTable.joinedAt,
+        lastSeenAt: usersTable.lastSeenAt,
+        hideOnline: usersTable.hideOnlineStatus,
       })
       .from(conversationMembersTable)
       .innerJoin(usersTable, eq(conversationMembersTable.userId, usersTable.id))
@@ -3105,8 +3297,19 @@ router.get("/conversations/:id/members", async (req, res): Promise<void> => {
       const key = normalizeMemberName(row.username);
       const next = (mentionNameCounts.get(key) ?? 0) + 1;
       mentionNameCounts.set(key, next);
+
+      const isOnline = row.hideOnline ? false : (!!row.lastSeenAt && Date.now() - new Date(row.lastSeenAt).getTime() <= 5 * 60 * 1000);
+
       return {
-        ...row,
+        id: row.id,
+        userId: row.userId,
+        username: row.username,
+        userTag: row.userTag,
+        displayName: row.displayName,
+        avatarUrl: row.avatarUrl,
+        role: row.role,
+        joinedAt: row.joinedAt,
+        isOnline,
         mentionTag: `#${String(next).padStart(3, "0")}`,
       };
     });

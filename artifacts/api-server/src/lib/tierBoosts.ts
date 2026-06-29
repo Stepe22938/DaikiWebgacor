@@ -110,10 +110,29 @@ export async function getActiveTierForUser(userId: number, at = new Date()) {
       sql`${userTierSubscriptionsTable.startsAt} <= ${at}`,
       or(isNull(userTierSubscriptionsTable.endsAt), sql`${userTierSubscriptionsTable.endsAt} > ${at}`),
       isNull(userTierSubscriptionsTable.revokedAt),
-    ))
-    .orderBy(asc(userTierSubscriptionsTable.startsAt));
+    ));
 
-  return rows.at(-1) ?? null;
+  if (rows.length === 0) return null;
+
+  // Filter to the highest tier available: premium_plus > premium > free
+  const hasPremiumPlus = rows.some(r => r.tier === "premium_plus");
+  const targetTier = hasPremiumPlus ? "premium_plus" : "premium";
+  const tierRows = rows.filter(r => r.tier === targetTier);
+
+  if (tierRows.length === 0) return null;
+
+  // Find the one that expires latest (null endsAt means lifetime, which is latest)
+  let bestRow = tierRows[0];
+  for (const row of tierRows) {
+    if (row.endsAt === null) {
+      return row; // Lifetime wins immediately
+    }
+    if (bestRow.endsAt !== null && row.endsAt.getTime() > bestRow.endsAt.getTime()) {
+      bestRow = row;
+    }
+  }
+
+  return bestRow;
 }
 
 export async function getUserUploadPolicy(userId: number) {

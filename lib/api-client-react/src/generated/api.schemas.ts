@@ -9,6 +9,17 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface Notification {
+  id: number;
+  senderName: string;
+  /** @nullable */
+  senderAvatar?: string | null;
+  content: string;
+  timestamp: string;
+  conversationId: number;
+  isRead: boolean;
+}
+
 export type UserRole = typeof UserRole[keyof typeof UserRole];
 
 
@@ -365,6 +376,8 @@ export interface ConversationSummary {
   /** @nullable */
   bannerUrl?: string | null;
   /** @nullable */
+  bgVideoUrl?: string | null;
+  /** @nullable */
   description?: string | null;
   /** @nullable */
   ownerId?: number | null;
@@ -392,12 +405,6 @@ export interface ConversationSummary {
   createdAt: string;
   /** @nullable */
   inviteCode?: string | null;
-  /** @nullable */
-  pinnedAt?: string | null;
-  /** @nullable */
-  archivedAt?: string | null;
-  /** @nullable */
-  bgVideoUrl?: string | null;
 }
 
 export interface MessageReactionSummary {
@@ -485,6 +492,7 @@ export interface ConversationMemberInfo {
   /** @nullable */
   role?: string | null;
   joinedAt: string;
+  isOnline?: boolean;
   roles?: ConversationMemberInfoRolesItem[];
 }
 
@@ -537,6 +545,8 @@ export interface UpdateGroupInput {
   iconUrl?: string | null;
   /** @nullable */
   bannerUrl?: string | null;
+  /** @nullable */
+  bgVideoUrl?: string | null;
   /** @nullable */
   inviteCode?: string | null;
 }
@@ -1011,6 +1021,8 @@ export const CosmeticType = {
   badge: 'badge',
   border: 'border',
   background: 'background',
+  premium: 'premium',
+  premium_plus: 'premium_plus',
 } as const;
 
 export type CosmeticRarity = typeof CosmeticRarity[keyof typeof CosmeticRarity];
@@ -1032,6 +1044,9 @@ export interface Cosmetic {
   value: string;
   /** @nullable */
   description?: string | null;
+  price?: number;
+  isGacha?: boolean;
+  isShop?: boolean;
   createdAt: string;
 }
 
@@ -1042,6 +1057,8 @@ export const OwnedCosmeticType = {
   badge: 'badge',
   border: 'border',
   background: 'background',
+  premium: 'premium',
+  premium_plus: 'premium_plus',
 } as const;
 
 export type OwnedCosmeticRarity = typeof OwnedCosmeticRarity[keyof typeof OwnedCosmeticRarity];
@@ -1063,6 +1080,9 @@ export interface OwnedCosmetic {
   value: string;
   /** @nullable */
   description?: string | null;
+  price?: number;
+  isGacha?: boolean;
+  isShop?: boolean;
   isEquipped: boolean;
 }
 
@@ -1151,6 +1171,8 @@ export const AdminCreateCosmeticInputType = {
   badge: 'badge',
   border: 'border',
   background: 'background',
+  premium: 'premium',
+  premium_plus: 'premium_plus',
 } as const;
 
 export type AdminCreateCosmeticInputRarity = typeof AdminCreateCosmeticInputRarity[keyof typeof AdminCreateCosmeticInputRarity];
@@ -1172,6 +1194,9 @@ export interface AdminCreateCosmeticInput {
   /** @minLength 1 */
   value: string;
   description?: string;
+  price?: number;
+  isGacha?: boolean;
+  isShop?: boolean;
 }
 
 export type AdminUpdateCosmeticInputType = typeof AdminUpdateCosmeticInputType[keyof typeof AdminUpdateCosmeticInputType];
@@ -1181,6 +1206,8 @@ export const AdminUpdateCosmeticInputType = {
   badge: 'badge',
   border: 'border',
   background: 'background',
+  premium: 'premium',
+  premium_plus: 'premium_plus',
 } as const;
 
 export type AdminUpdateCosmeticInputRarity = typeof AdminUpdateCosmeticInputRarity[keyof typeof AdminUpdateCosmeticInputRarity];
@@ -1200,5 +1227,16 @@ export interface AdminUpdateCosmeticInput {
   rarity?: AdminUpdateCosmeticInputRarity;
   value?: string;
   description?: string;
+  price?: number;
+  isGacha?: boolean;
+  isShop?: boolean;
 }
+
+export type ClearMeNotifications200 = {
+  success?: boolean;
+};
+
+export type ReadMeNotification200 = {
+  success?: boolean;
+};
 

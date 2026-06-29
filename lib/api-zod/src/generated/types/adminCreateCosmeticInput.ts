@@ -16,4 +16,7 @@ export interface AdminCreateCosmeticInput {
   /** @minLength 1 */
   value: string;
   description?: string;
+  price?: number;
+  isGacha?: boolean;
+  isShop?: boolean;
 }

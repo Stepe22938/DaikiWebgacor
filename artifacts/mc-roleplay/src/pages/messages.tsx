@@ -33,7 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +73,7 @@ import {
   Activity,
   Copy,
   Check,
+  CheckCheck,
   ArrowUpRight,
   MessageSquare,
   Users,
@@ -126,6 +127,7 @@ import {
   ArchiveX,
   Ban,
   ShoppingBag,
+  Trophy,
   Bell,
 } from "lucide-react";
 
@@ -165,6 +167,39 @@ type UploadedAttachment = {
 function extractYouTubeId(url: string): string | null {
   const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|live\/))([\w-]{11})/);
   return m ? m[1] : null;
+}
+
+function getEmbeddableUrl(url: string): string {
+  if (!url) return "";
+  
+  // YouTube
+  const ytId = extractYouTubeId(url);
+  if (ytId) {
+    return `https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1`;
+  }
+  
+  // Twitch
+  if (url.includes("twitch.tv")) {
+    const parent = window.location.hostname;
+    const videoMatch = url.match(/twitch\.tv\/videos\/(\d+)/);
+    if (videoMatch) {
+      return `https://player.twitch.tv/?video=${videoMatch[1]}&parent=${parent}&autoplay=true&muted=true`;
+    }
+    const channelMatch = url.match(/twitch\.tv\/([\w_]+)/);
+    if (channelMatch && channelMatch[1] !== "videos") {
+      return `https://player.twitch.tv/?channel=${channelMatch[1]}&parent=${parent}&autoplay=true&muted=true`;
+    }
+  }
+  
+  // TikTok
+  if (url.includes("tiktok.com")) {
+    const tikTokMatch = url.match(/tiktok\.com\/@[\w.-]+\/video\/(\d+)/) || url.match(/tiktok\.com\/v\/(\d+)/);
+    if (tikTokMatch) {
+      return `https://www.tiktok.com/embed/v2/${tikTokMatch[1]}`;
+    }
+  }
+  
+  return url;
 }
 
 function formatFileSize(bytes?: number | null) {
@@ -228,10 +263,37 @@ const STANDARD_EMOJIS = [
   { char: "🐶", name: "dog" }
 ];
 
+function parseMentions(text: string): (string | React.ReactNode)[] {
+  const mentionRegex = /@(\w+)(?:\s*#\d+)?/g;
+  const result: (string | React.ReactNode)[] = [];
+  let lastIdx = 0;
+  let match;
+  while ((match = mentionRegex.exec(text)) !== null) {
+    const matchIndex = match.index;
+    const fullMention = match[0];
+    if (matchIndex > lastIdx) {
+      result.push(text.substring(lastIdx, matchIndex));
+    }
+    result.push(
+      <span
+        key={`mention-${matchIndex}-${fullMention}`}
+        className="bg-[#5865F2] text-white px-1.5 py-0.5 rounded font-extrabold text-[11px] inline-block align-middle select-all mx-0.5 shadow-sm"
+      >
+        {fullMention}
+      </span>
+    );
+    lastIdx = mentionRegex.lastIndex;
+  }
+  if (lastIdx < text.length) {
+    result.push(text.substring(lastIdx));
+  }
+  return result;
+}
+
 function renderMessageTextWithEmojis(content: string, customEmojis: any[] = [], currentConversationId: number | null = null) {
   if (!content) return null;
   const regex = /:([a-zA-Z0-9_]{1,40}):/g;
-  const parts = [];
+  const emojiParts = [];
   let lastIndex = 0;
   let match;
 
@@ -250,12 +312,12 @@ function renderMessageTextWithEmojis(content: string, customEmojis: any[] = [], 
     const emojiName = match[1].toLowerCase();
 
     if (matchIndex > lastIndex) {
-      parts.push(content.substring(lastIndex, matchIndex));
+      emojiParts.push(content.substring(lastIndex, matchIndex));
     }
 
     const customEmoji = emojiMap.get(emojiName);
     if (customEmoji) {
-      parts.push(
+      emojiParts.push(
         <img
           key={`emoji-${matchIndex}`}
           src={customEmoji.assetUrl}
@@ -273,16 +335,26 @@ function renderMessageTextWithEmojis(content: string, customEmojis: any[] = [], 
         />
       );
     } else {
-      parts.push(match[0]);
+      emojiParts.push(match[0]);
     }
     lastIndex = regex.lastIndex;
   }
 
   if (lastIndex < content.length) {
-    parts.push(content.substring(lastIndex));
+    emojiParts.push(content.substring(lastIndex));
   }
 
-  return parts.length > 0 ? parts : content;
+  // Now, parse mentions on all string parts in emojiParts
+  const finalParts: (string | React.ReactNode)[] = [];
+  for (const part of emojiParts) {
+    if (typeof part === "string") {
+      finalParts.push(...parseMentions(part));
+    } else {
+      finalParts.push(part);
+    }
+  }
+
+  return finalParts.length > 0 ? finalParts : content;
 }
 
 function parseMusicCommandFromMsg(msg: any): { title: string; artist: string } | null {
@@ -1315,6 +1387,7 @@ function MessageBubble({
   customEmojis = [],
   currentConversationId = null,
   onPlayMusic,
+  isAnyOtherMemberOnline = false,
 }: {
   msg: Message;
   isOwn: boolean;
@@ -1331,6 +1404,7 @@ function MessageBubble({
   customEmojis?: any[];
   currentConversationId?: number | null;
   onPlayMusic?: (title: string, artist: string) => void;
+  isAnyOtherMemberOnline?: boolean;
 }) {
   const isWebhook = !!(msg as any).webhookName;
   const name = (msg as any).webhookName ?? msg.senderDisplayName ?? msg.senderUsername ?? "Unknown";
@@ -1584,7 +1658,11 @@ function MessageBubble({
                 {msg.starred && <Star className="w-2.5 h-2.5 fill-current text-amber-400 shrink-0" />}
                 <span>{format(new Date(msg.createdAt), "HH:mm")}</span>
                 {isOwn && (
-                  <span className={`text-[11px] font-bold select-none leading-none ${isGroup ? "text-[#5865F2]" : "text-[#34b7f1]"}`}>✓✓</span>
+                  <span className={`text-[11px] font-bold select-none leading-none ${
+                    (msg as any).isRead
+                      ? isGroup ? "text-[#5865F2]" : "text-[#34b7f1]"
+                      : "text-slate-400 dark:text-slate-500"
+                  }`}>✓✓</span>
                 )}
               </span>
             </div>
@@ -1944,6 +2022,132 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [groupMemberIds, setGroupMemberIds] = useState<number[]>([]);
   const [dmSearch, setDmSearch] = useState("");
   const [memberSearch, setMemberSearch] = useState("");
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [globalSearchType, setGlobalSearchType] = useState<"all" | "users" | "messages">("all");
+
+  const [activeView, setActiveView] = useState<"chat" | "shop" | "quests">("chat");
+  const [questProgress, setQuestProgress] = useState<Record<number, { current: number; claimed: boolean }>>({});
+
+  // Load progress when user changes
+  useEffect(() => {
+    if (!me?.id) return;
+    try {
+      const stored = localStorage.getItem(`arcadia-quest-progress-v2-${me.id}`);
+      if (stored) {
+        setQuestProgress(JSON.parse(stored));
+      } else {
+        setQuestProgress({});
+      }
+    } catch {
+      setQuestProgress({});
+    }
+  }, [me?.id]);
+
+  // Save progress when it changes
+  useEffect(() => {
+    if (!me?.id) return;
+    localStorage.setItem(`arcadia-quest-progress-v2-${me.id}`, JSON.stringify(questProgress));
+  }, [questProgress, me?.id]);
+
+  const { data: dbQuests, isLoading: questsLoading } = useQuery<any[]>({
+    queryKey: ["/api/quests"],
+    queryFn: () => customFetch<any[]>("/api/quests"),
+  });
+
+  const quests = dbQuests?.map((q: any) => {
+    const prog = questProgress[q.id] || { current: 0, claimed: false };
+    return {
+      ...q,
+      current: prog.current,
+      claimed: prog.claimed,
+    };
+  }) || [];
+
+  useEffect(() => {
+    if (selectedId !== null) {
+      setActiveView("chat");
+    }
+  }, [selectedId]);
+
+  const triggerQuestProgress = (questId: number, amount = 1) => {
+    const questDef = dbQuests?.find((q: any) => q.id === questId);
+    if (!questDef) return;
+
+    setQuestProgress((prev) => {
+      const prog = prev[questId] || { current: 0, claimed: false };
+      if (prog.claimed) return prev;
+      const nextVal = Math.min(questDef.target, prog.current + amount);
+      return {
+        ...prev,
+        [questId]: { ...prog, current: nextVal }
+      };
+    });
+  };
+
+  const { data: gachaBoard } = useQuery<any>({
+    queryKey: ["/api/gacha/board", "shop-tab"],
+    queryFn: () => customFetch<any>("/api/gacha/board"),
+    enabled: activeView === "shop",
+  });
+
+  const buyCosmeticMutation = useMutation({
+    mutationFn: (cosmeticId: number) => customFetch<any>(`/api/cosmetics/${cosmeticId}/buy`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gacha/board", "shop-tab"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cosmetics", "owned"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/membership"] });
+      toast({ title: "Pembelian Berhasil!", description: "Pembelian telah berhasil diproses." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal Membeli", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
+    }
+  });
+
+  const claimQuestMutation = useMutation({
+    mutationFn: (quest: any) => customFetch<any>("/api/quests/claim-reward", {
+      method: "POST",
+      body: JSON.stringify({ amount: quest.reward, title: quest.title }),
+      headers: { "Content-Type": "application/json" }
+    }),
+    onSuccess: (res: any, quest: any) => {
+      setQuestProgress((prev) => ({
+        ...prev,
+        [quest.id]: { ...(prev[quest.id] || { current: quest.target, claimed: false }), claimed: true }
+      }));
+      queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      toast({ title: "Hadiah Diklaim!", description: `Anda mendapatkan ${quest.reward} Tokens.` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal Mengklaim", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
+    }
+  });
+
+  // Video Quest Modal State
+  const [showVideoQuestModal, setShowVideoQuestModal] = useState(false);
+  const [activeVideoQuest, setActiveVideoQuest] = useState<any | null>(null);
+  const [videoWatchTimer, setVideoWatchTimer] = useState(15);
+  const [videoWatchCompleted, setVideoWatchCompleted] = useState(false);
+
+  useEffect(() => {
+    let interval: any;
+    if (showVideoQuestModal && activeVideoQuest && videoWatchTimer > 0 && !videoWatchCompleted) {
+      interval = setInterval(() => {
+        setVideoWatchTimer((prev) => {
+          if (prev <= 1) {
+            setVideoWatchCompleted(true);
+            triggerQuestProgress(activeVideoQuest.id);
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [showVideoQuestModal, activeVideoQuest, videoWatchTimer, videoWatchCompleted]);
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
   const [pinnedModalOpen, setPinnedModalOpen] = useState(false);
   const [starredOpen, setStarredOpen] = useState(false);
@@ -2560,6 +2764,33 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const isGroup = selectedConv?.type === "group";
   const [selectedCatalogProduct, setSelectedCatalogProduct] = useState<any | null>(null);
   const [buyingProduct, setBuyingProduct] = useState(false);
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
+  const [showMessageInfo, setShowMessageInfo] = useState<any | null>(null);
+  const [debouncedSidebarSearchQuery, setDebouncedSidebarSearchQuery] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSidebarSearchQuery(sidebarSearchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [sidebarSearchQuery]);
+
+  const { data: sidebarSearchedUsers = [], isFetching: sidebarSearchingUsers } = useQuery<any[]>({
+    queryKey: ["/api/users/search", "sidebar", debouncedSidebarSearchQuery],
+    queryFn: () => {
+      if (!debouncedSidebarSearchQuery.trim()) return Promise.resolve([]);
+      return customFetch<any[]>(`/api/users/search?q=${encodeURIComponent(debouncedSidebarSearchQuery)}`);
+    },
+    enabled: !!debouncedSidebarSearchQuery.trim(),
+  });
+
+  const { data: sidebarSearchedMessages = [], isFetching: sidebarSearchingMessages } = useQuery<any[]>({
+    queryKey: ["/api/conversations/search-messages", "sidebar", debouncedSidebarSearchQuery],
+    queryFn: () => {
+      if (!debouncedSidebarSearchQuery.trim()) return Promise.resolve([]);
+      return customFetch<any[]>(`/api/conversations/search-messages?q=${encodeURIComponent(debouncedSidebarSearchQuery)}`);
+    },
+    enabled: !!debouncedSidebarSearchQuery.trim(),
+  });
 
   const { data: myPurchases = [], refetch: refetchMyPurchases } = useQuery({
     queryKey: ["/api/business/purchases"],
@@ -2588,6 +2819,38 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       setBuyingProduct(false);
     }
   };
+
+  const [syncingOrderId, setSyncingOrderId] = useState<number | null>(null);
+
+  const handleSyncOrder = async (orderId: number) => {
+    try {
+      setSyncingOrderId(orderId);
+      const updatedOrder = await customFetch<any>(`/api/business/orders/${orderId}/sync`, {
+        method: "POST"
+      });
+      refetchMyPurchases();
+      if (updatedOrder.status === "completed") {
+        toast({
+          title: "Pembayaran terverifikasi!",
+          description: "Pesanan Anda kini berstatus Sudah Dibayar."
+        });
+      } else {
+        toast({
+          title: "Belum terbayar",
+          description: "Silakan selesaikan pembayaran terlebih dahulu di SayaBayar.",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Gagal menyinkronkan pembayaran",
+        description: err.message || "Terjadi kesalahan.",
+        variant: "destructive"
+      });
+    } finally {
+      setSyncingOrderId(null);
+    }
+  };
+
   const otherUserIdForCatalog = selectedConv?.type === "dm" && (selectedConv as any).otherUserIsSeller ? selectedConv.otherUserId : null;
   const { data: sellerCatalogProducts = [] } = useQuery<any[]>({
     queryKey: ["/api/business/products/seller", otherUserIdForCatalog],
@@ -2694,6 +2957,25 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const activeMessagesError = isGroup ? groupMessagesError : dmMessagesError;
   const refetchActiveMessages = isGroup ? refetchGroupMessages : refetchDmMessages;
 
+  // Mark conversation as read when selected or when new messages arrive
+  useEffect(() => {
+    if (!selectedId) return;
+    
+    const markAsRead = async () => {
+      try {
+        await fetch(`/api/conversations/${selectedId}/read`, { method: "POST" });
+      } catch (err) {
+        console.error("Failed to mark conversation as read:", err);
+      }
+    };
+    
+    markAsRead();
+    
+    // Also mark as read every 3 seconds to keep it updated as they receive new messages
+    const interval = setInterval(markAsRead, 3000);
+    return () => clearInterval(interval);
+  }, [selectedId, activeMessages.length]);
+
   const { data: friends = [] } = useQuery<any[]>({
     queryKey: ["/api/me/friends", "messages-page"],
     queryFn: ({ signal }) =>
@@ -2704,12 +2986,108 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     retry: 1,
   });
 
+  // Global Search Debounce & Queries
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(globalSearchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [globalSearchQuery]);
+
+  const { data: searchedUsers = [], isFetching: searchingUsers } = useQuery<any[]>({
+    queryKey: ["/api/users/search", debouncedSearchQuery],
+    queryFn: () => {
+      if (!debouncedSearchQuery.trim()) return Promise.resolve([]);
+      return customFetch<any[]>(`/api/users/search?q=${encodeURIComponent(debouncedSearchQuery)}`);
+    },
+    enabled: !!debouncedSearchQuery.trim() && (globalSearchType === "all" || globalSearchType === "users"),
+  });
+
+  const { data: searchedMessages = [], isFetching: searchingMessages } = useQuery<any[]>({
+    queryKey: ["/api/conversations/search-messages", debouncedSearchQuery],
+    queryFn: () => {
+      if (!debouncedSearchQuery.trim()) return Promise.resolve([]);
+      return customFetch<any[]>(`/api/conversations/search-messages?q=${encodeURIComponent(debouncedSearchQuery)}`);
+    },
+    enabled: !!debouncedSearchQuery.trim() && (globalSearchType === "all" || globalSearchType === "messages"),
+  });
+
   const { data: members = [] } = useListConversationMembers(selectedId ?? 0, {
     query: {
       ...getListConversationMembersQueryOptions(selectedId ?? 0),
       enabled: selectedId !== null,
     },
   });
+
+  interface McNotification {
+    id: number;
+    senderName: string;
+    senderAvatar?: string | null;
+    content: string;
+    timestamp: string;
+    conversationId: number;
+    isRead: boolean;
+  }
+
+  const { data: dbNotifications = [], refetch: refetchDbNotifications } = useQuery<McNotification[]>({
+    queryKey: ["me-notifications"],
+    queryFn: async ({ signal }) => {
+      return customFetch<McNotification[]>("/api/me/notifications", { signal });
+    },
+    refetchInterval: 5000,
+    enabled: meReady,
+  });
+
+  const clearNotificationsMutation = useMutation({
+    mutationFn: async () => {
+      return customFetch<any>("/api/me/notifications/clear", { method: "POST" });
+    },
+    onSuccess: () => {
+      refetchDbNotifications();
+    },
+  });
+
+  const readNotificationMutation = useMutation({
+    mutationFn: async ({ id }: { id: number }) => {
+      return customFetch<any>(`/api/me/notifications/${id}/read`, { method: "POST" });
+    },
+    onSuccess: () => {
+      refetchDbNotifications();
+    },
+  });
+
+  const alertedNotificationIds = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!me || !dbNotifications || dbNotifications.length === 0) return;
+
+    let hasNew = false;
+    for (const notif of dbNotifications) {
+      if (!alertedNotificationIds.current.has(notif.id)) {
+        alertedNotificationIds.current.add(notif.id);
+        hasNew = true;
+      }
+    }
+
+    if (hasNew) {
+      toast({
+        title: "Kamu di-ping!",
+        description: `Mention baru dari ${dbNotifications[0].senderName}`,
+        className: "bg-blue-600 text-white border-blue-500",
+      });
+
+      try {
+        const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-84.wav");
+        audio.volume = 0.5;
+        audio.play().catch(() => {});
+      } catch {}
+    }
+  }, [dbNotifications, me, toast]);
+
+  const isAnyOtherMemberOnline = useMemo(() => {
+    if (!me || !members || members.length === 0) return false;
+    return members.some((m: any) => m.userId !== me.id && m.isOnline);
+  }, [members, me]);
 
   // Fetch channels for the selected group
   const { data: channels = [] } = useQuery<Channel[]>({
@@ -3591,6 +3969,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         await sendMessage.mutateAsync({ id: selectedId, data: payload });
         await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${selectedId}/messages`] });
       }
+      dbQuests?.filter((q: any) => q.type === "chat")?.forEach((q: any) => triggerQuestProgress(q.id));
       setMessageText("");
       setAttachedImageUrl(null);
       setAttachedFile(null);
@@ -4068,6 +4447,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       setSelectedId(conv.id);
       setShowNewDm(false);
       setDmSearch("");
+      dbQuests?.filter((q: any) => q.type === "dm")?.forEach((q: any) => triggerQuestProgress(q.id));
       await queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Could not start DM";
@@ -5321,7 +5701,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+                        className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white cursor-pointer"
                         onClick={() => setShowNewDm(true)}
                       >
                         + DM
@@ -5329,185 +5709,348 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
-                        onClick={() => { setNewGroupMode("create"); setShowNewGroup(true); }}
+                        className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white flex items-center gap-1 cursor-pointer"
+                        onClick={() => {
+                          if (embedded) {
+                            window.location.href = "/member?tab=guilds";
+                          } else {
+                            setLocation("/member?tab=guilds");
+                          }
+                        }}
                       >
-                        + Group
+                        <Users className="w-3.5 h-3.5 text-indigo-400" />
+                        Guilds
                       </Button>
+                    </div>
+                  </div>
+
+                  {/* Search Input Box */}
+                  <div className="px-3.5 py-2 border-b border-[#1f2023] bg-[#2b2d31] shrink-0">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={sidebarSearchQuery}
+                        onChange={(e) => setSidebarSearchQuery(e.target.value)}
+                        placeholder="Cari pesan atau teman..."
+                        className="w-full h-8.5 pl-9 pr-3.5 bg-[#1e1f22] text-[#dcddde] placeholder:text-slate-500 text-xs font-medium rounded-xl border border-[#1f2023] focus:border-[#5865F2]/50 focus:outline-none transition-all"
+                      />
                     </div>
                   </div>
 
                   {/* Scrollable list of chats */}
                   <ScrollArea className="flex-1 min-h-0">
                     <div className="p-2 space-y-1">
-                      {/* Stories Horizontal Row */}
-                      <div className="px-2 py-2.5 border-b border-[#1f2023] mb-2 shrink-0">
-                        <div className="flex items-center justify-between mb-2 px-1">
-                          <span className="text-[9px] font-black text-[#949BA4] uppercase tracking-wider">Status / Cerita</span>
-                          {activeStories.length > 0 && (
-                            <span className="text-[9px] font-bold text-[#5865F2] hover:underline cursor-pointer" onClick={() => {
-                              const firstUnreadUserIdx = activeStories.findIndex(u => u.statuses.some((s: any) => !readStatuses.has(s.id)));
-                              if (firstUnreadUserIdx !== -1) {
-                                setActiveStoriesUserIndex(firstUnreadUserIdx);
-                                setActiveStoriesIndex(0);
-                                setViewerPlaying(true);
-                              } else {
-                                setActiveStoriesUserIndex(0);
-                                setActiveStoriesIndex(0);
-                                setViewerPlaying(true);
-                              }
-                            }}>
-                              Putar Semua
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
-                          {/* Add/View Own Story Circle */}
+                      {sidebarSearchQuery.trim() ? (
+                        <div className="space-y-4 pt-1">
+                          {/* 1. Filtering Existing Chats */}
                           {(() => {
-                            const ownStoryEntry = activeStories.find(u => u.userId === me?.id);
-                            const hasOwnStories = ownStoryEntry && ownStoryEntry.statuses.length > 0;
-                            const hasUnreadOwn = hasOwnStories && ownStoryEntry.statuses.some((s: any) => !readStatuses.has(s.id));
+                            const filteredConvs = conversations.filter((c) => {
+                              const name = c.type === "dm"
+                                ? (c.otherDisplayName || c.otherUsername || "")
+                                : (c.name || "");
+                              return name.toLowerCase().includes(sidebarSearchQuery.toLowerCase());
+                            });
+                            const activeConvs = filteredConvs.filter((c) => !(c as any).archivedAt && c.type !== "group");
+                            
+                            if (activeConvs.length === 0) return null;
                             
                             return (
-                              <div className="flex flex-col items-center shrink-0 w-12 group">
-                                <div className="relative">
-                                  <button
-                                    type="button"
+                              <div className="space-y-1">
+                                <span className="px-3 text-[9px] font-black text-[#949BA4] uppercase tracking-wider block">Percakapan</span>
+                                {activeConvs.map((c) => (
+                                  <ConvItem
+                                    key={c.id}
+                                    conv={c}
+                                    selected={selectedId === c.id}
+                                    dark
                                     onClick={() => {
-                                      if (hasOwnStories) {
-                                        const idx = activeStories.findIndex(u => u.userId === me?.id);
-                                        setActiveStoriesUserIndex(idx);
-                                        setActiveStoriesIndex(0);
-                                        setViewerPlaying(true);
-                                      } else {
-                                        setShowCreateStatus(true);
-                                      }
+                                      setSelectedId(c.id);
+                                      setSidebarSearchQuery("");
                                     }}
-                                    className={`relative w-10 h-10 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
-                                      hasOwnStories 
-                                        ? (hasUnreadOwn ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600') 
-                                        : 'border border-dashed border-[#4f545c] bg-[#1e1f22]'
-                                    }`}
-                                  >
-                                    <Avatar className="w-full h-full border border-[#2b2d31]">
-                                      <AvatarImage src={me?.avatarUrl || undefined} />
-                                      <AvatarFallback className="text-[9px] font-black bg-[#35373c] text-white">
-                                        {me?.displayName?.substring(0, 2).toUpperCase() || me?.username?.substring(0, 2).toUpperCase() || "ME"}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                  </button>
-                                  <button 
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setShowCreateStatus(true);
-                                    }}
-                                    className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#5865F2] hover:bg-[#4752C4] rounded-full flex items-center justify-center text-white border border-[#2b2d31] shadow"
-                                  >
-                                    <Plus className="w-2.5 h-2.5" />
-                                  </button>
-                                </div>
-                                <span className="text-[8px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
-                                  Cerita Anda
-                                </span>
+                                    onPin={(id) => pinConvMutation.mutate(id)}
+                                    onUnpin={(id) => unpinConvMutation.mutate(id)}
+                                    onArchive={(id) => archiveConvMutation.mutate(id)}
+                                    onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
+                                  />
+                                ))}
                               </div>
                             );
                           })()}
 
-                          {/* Other Users' Stories Circles */}
-                          {activeStories
-                            .filter(u => u.userId !== me?.id)
-                            .map((u, i) => {
-                              const hasUnread = u.statuses.some((s: any) => !readStatuses.has(s.id));
-                              const actualIdxInActiveStories = activeStories.findIndex(story => story.userId === u.userId);
-                              
-                              return (
-                                <div 
-                                  key={u.userId} 
-                                  className="flex flex-col items-center shrink-0 w-12 cursor-pointer group"
+                          {/* 2. Global Users Search Results */}
+                          {sidebarSearchedUsers.length > 0 && (
+                            <div className="space-y-1">
+                              <span className="px-3 text-[9px] font-black text-[#949BA4] uppercase tracking-wider block">Pengguna Baru</span>
+                              {sidebarSearchedUsers.map((u) => (
+                                <button
+                                  key={u.id}
+                                  type="button"
                                   onClick={() => {
-                                    setActiveStoriesUserIndex(actualIdxInActiveStories);
+                                    handleStartDm(u.id);
+                                    setSidebarSearchQuery("");
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl text-left transition-colors cursor-pointer border-0 bg-transparent text-[#DCDDDE] hover:bg-[#35373C]"
+                                >
+                                  <Avatar className="w-7 h-7 shrink-0">
+                                    <AvatarImage src={u.avatarUrl ?? undefined} />
+                                    <AvatarFallback className="text-[10px] bg-[#35373c] text-white font-bold">
+                                      {getInitials(u.displayName ?? u.username)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-black truncate text-white">{u.displayName || u.username}</p>
+                                    <p className="text-[9px] text-[#949BA4] truncate">@{u.username}</p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* 3. Global Messages Search Results */}
+                          {sidebarSearchedMessages.length > 0 && (
+                            <div className="space-y-1">
+                              <span className="px-3 text-[9px] font-black text-[#949BA4] uppercase tracking-wider block">Isi Pesan</span>
+                              {sidebarSearchedMessages.map((msg) => {
+                                const msgDate = new Date(msg.createdAt);
+                                const formattedDate = format(msgDate, "dd MMM");
+                                const convLabel = msg.conversationType === "group" 
+                                  ? `Grup: ${msg.conversationName}` 
+                                  : `${msg.senderDisplayName || msg.senderUsername}`;
+                                
+                                return (
+                                  <button
+                                    key={msg.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedId(msg.conversationId);
+                                      if (msg.conversationType === "group" && msg.channelId) {
+                                        setSelectedChannelId(msg.channelId);
+                                      }
+                                      setSidebarSearchQuery("");
+                                    }}
+                                    className="w-full flex flex-col gap-1 px-3 py-2 rounded-xl text-left transition-colors cursor-pointer border-0 bg-[#2b2d31]/40 text-[#DCDDDE] hover:bg-[#35373C]"
+                                  >
+                                    <div className="flex items-center justify-between w-full">
+                                      <span className="text-[10px] font-black text-indigo-400 truncate max-w-[70%]">{convLabel}</span>
+                                      <span className="text-[9px] text-[#949BA4] shrink-0">{formattedDate}</span>
+                                    </div>
+                                    <p className="text-[11px] text-[#B5BAC1] line-clamp-2 leading-snug break-all">
+                                      {msg.content}
+                                    </p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* 4. No Results Case */}
+                          {!sidebarSearchingUsers && !sidebarSearchingMessages && 
+                           sidebarSearchedUsers.length === 0 && sidebarSearchedMessages.length === 0 &&
+                           conversations.filter((c) => {
+                             const name = c.type === "dm"
+                               ? (c.otherDisplayName || c.otherUsername || "")
+                               : (c.name || "");
+                             return name.toLowerCase().includes(sidebarSearchQuery.toLowerCase());
+                           }).length === 0 && (
+                             <div className="text-center text-xs py-12 font-bold px-4 leading-relaxed text-[#949BA4]">
+                               Tidak ada percakapan atau pesan yang cocok.
+                             </div>
+                           )}
+                        </div>
+                      ) : (
+                        <>
+                          {/* Shop & Quests Navigation Links */}
+                          <div className="space-y-0.5 mb-2 px-1">
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedId(null); setActiveView("shop"); }}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 cursor-pointer border-0 ${
+                                activeView === "shop" 
+                                  ? "bg-[#404249] text-white" 
+                                  : "text-[#B5BAC1] hover:text-[#DCDDDE] hover:bg-[#35373C] bg-transparent"
+                              }`}
+                            >
+                              <ShoppingBag className="w-4 h-4 shrink-0 text-amber-500" />
+                              <span className="text-xs font-black tracking-wide">Shop</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedId(null); setActiveView("quests"); }}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 cursor-pointer border-0 ${
+                                activeView === "quests" 
+                                  ? "bg-[#404249] text-white" 
+                                  : "text-[#B5BAC1] hover:text-[#DCDDDE] hover:bg-[#35373C] bg-transparent"
+                              }`}
+                            >
+                              <Trophy className="w-4 h-4 shrink-0 text-yellow-500" />
+                              <span className="text-xs font-black tracking-wide">Quests</span>
+                            </button>
+                          </div>
+
+                          {/* Divider */}
+                          <div className="h-[1px] bg-[#1f2023]/60 my-1 mx-2" />
+
+                          {/* Stories Horizontal Row */}
+                          <div className="px-2 py-2.5 border-b border-[#1f2023] mb-2 shrink-0">
+                            <div className="flex items-center justify-between mb-2 px-1">
+                              <span className="text-[9px] font-black text-[#949BA4] uppercase tracking-wider">Status / Cerita</span>
+                              {activeStories.length > 0 && (
+                                <span className="text-[9px] font-bold text-[#5865F2] hover:underline cursor-pointer" onClick={() => {
+                                  const firstUnreadUserIdx = activeStories.findIndex(u => u.statuses.some((s: any) => !readStatuses.has(s.id)));
+                                  if (firstUnreadUserIdx !== -1) {
+                                    setActiveStoriesUserIndex(firstUnreadUserIdx);
                                     setActiveStoriesIndex(0);
                                     setViewerPlaying(true);
-                                  }}
-                                >
-                                  <div className={`w-10 h-10 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
-                                    hasUnread ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600'
-                                  }`}>
-                                    <Avatar className="w-full h-full border border-[#2b2d31]">
-                                      <AvatarImage src={u.avatarUrl || undefined} />
-                                      <AvatarFallback className="text-[9px] font-black bg-[#35373c] text-white">
-                                        {u.displayName?.substring(0, 2).toUpperCase() || u.username?.substring(0, 2).toUpperCase()}
-                                      </AvatarFallback>
-                                    </Avatar>
+                                  } else {
+                                    setActiveStoriesUserIndex(0);
+                                    setActiveStoriesIndex(0);
+                                    setViewerPlaying(true);
+                                  }
+                                }}>
+                                  Putar Semua
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+                              {/* Add/View Own Story Circle */}
+                              {(() => {
+                                const ownStoryEntry = activeStories.find(u => u.userId === me?.id);
+                                const hasOwnStories = ownStoryEntry && ownStoryEntry.statuses.length > 0;
+                                const hasUnreadOwn = hasOwnStories && ownStoryEntry.statuses.some((s: any) => !readStatuses.has(s.id));
+                                
+                                return (
+                                  <div className="flex flex-col items-center shrink-0 w-12 group">
+                                    <div className="relative">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (hasOwnStories) {
+                                            const idx = activeStories.findIndex(u => u.userId === me?.id);
+                                            setActiveStoriesUserIndex(idx);
+                                            setActiveStoriesIndex(0);
+                                            setViewerPlaying(true);
+                                          } else {
+                                            setShowCreateStatus(true);
+                                          }
+                                        }}
+                                        className={`relative w-10 h-10 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
+                                          hasOwnStories 
+                                            ? (hasUnreadOwn ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600') 
+                                            : 'border border-dashed border-[#4f545c] bg-[#1e1f22]'
+                                        }`}
+                                      >
+                                        <Avatar className="w-full h-full border border-[#2b2d31]">
+                                          <AvatarImage src={me?.avatarUrl || undefined} />
+                                          <AvatarFallback className="text-[9px] font-black bg-[#35373c] text-white">
+                                            {me?.displayName?.substring(0, 2).toUpperCase() || me?.username?.substring(0, 2).toUpperCase() || "ME"}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                      </button>
+                                      <button 
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setShowCreateStatus(true);
+                                        }}
+                                        className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#5865F2] hover:bg-[#4752C4] rounded-full flex items-center justify-center text-white border border-[#2b2d31] shadow"
+                                      >
+                                        <Plus className="w-2.5 h-2.5" />
+                                      </button>
+                                    </div>
+                                    <span className="text-[8px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
+                                      Cerita Anda
+                                    </span>
                                   </div>
-                                  <span className="text-[8px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
-                                    {u.displayName || u.username}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
+                                );
+                              })()}
 
-                      {meLoading || convsLoading ? (
-                        Array.from({ length: 5 }).map((_, i) => (
-                          <div key={i} className="flex items-center gap-3 px-3 py-2.5">
-                            <Skeleton className="w-9 h-9 rounded-xl" />
-                            <div className="flex-1">
-                              <Skeleton className="h-3 w-28 mb-1" />
-                              <Skeleton className="h-2.5 w-20" />
+                              {/* Other Users' Stories Circles */}
+                              {activeStories
+                                .filter(u => u.userId !== me?.id)
+                                .map((u, i) => {
+                                  const hasUnread = u.statuses.some((s: any) => !readStatuses.has(s.id));
+                                  const actualIdxInActiveStories = activeStories.findIndex(story => story.userId === u.userId);
+                                  
+                                  return (
+                                    <div 
+                                      key={u.userId} 
+                                      className="flex flex-col items-center shrink-0 w-12 cursor-pointer group"
+                                      onClick={() => {
+                                        setActiveStoriesUserIndex(actualIdxInActiveStories);
+                                        setActiveStoriesIndex(0);
+                                        setViewerPlaying(true);
+                                      }}
+                                    >
+                                      <div className={`w-10 h-10 rounded-full p-[2px] transition-transform duration-200 group-hover:scale-105 ${
+                                        hasUnread ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500' : 'bg-neutral-600'
+                                      }`}>
+                                        <Avatar className="w-full h-full border border-[#2b2d31]">
+                                          <AvatarImage src={u.avatarUrl || undefined} />
+                                          <AvatarFallback className="text-[9px] font-black bg-[#35373c] text-white">
+                                            {u.displayName?.substring(0, 2).toUpperCase() || u.username?.substring(0, 2).toUpperCase()}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                      </div>
+                                      <span className="text-[8px] font-bold text-[#DCDDDE] mt-1 truncate w-full text-center">
+                                        {u.displayName || u.username}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
                             </div>
                           </div>
-                        ))
-                      ) : convsError ? (
-                        <div className="px-3 py-4 space-y-3">
-                          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-xs font-semibold leading-relaxed text-red-100">
-                            Gagal memuat chat list.
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full rounded-xl border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
-                            onClick={() => void refetchConversations()}
-                          >
-                            Coba Lagi
-                          </Button>
-                        </div>
-                      ) : conversations.length === 0 ? (
-                        <div className="text-center text-xs py-12 font-bold px-4 leading-relaxed text-[#949BA4]">
-                          No conversations yet.<br />
-                          Start a DM with a friend!
-                        </div>
-                      ) : (() => {
-                        const activeConvs = conversations.filter((c) => !(c as any).archivedAt && c.type !== "group");
-                        const archivedConvs = conversations.filter((c) => !!(c as any).archivedAt && c.type !== "group");
-                        return (
-                          <>
-                            {activeConvs.map((c) => (
-                              <ConvItem
-                                key={c.id}
-                                conv={c}
-                                selected={selectedId === c.id}
-                                dark
-                                onClick={() => setSelectedId(c.id)}
-                                onPin={(id) => pinConvMutation.mutate(id)}
-                                onUnpin={(id) => unpinConvMutation.mutate(id)}
-                                onArchive={(id) => archiveConvMutation.mutate(id)}
-                                onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
-                              />
-                            ))}
-                            {archivedConvs.length > 0 && (
+
+                          {meLoading || convsLoading ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                              <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                                <Skeleton className="w-9 h-9 rounded-xl" />
+                                <div className="flex-1">
+                                  <Skeleton className="h-3 w-28 mb-1" />
+                                  <Skeleton className="h-2.5 w-20" />
+                                </div>
+                              </div>
+                            ))
+                          ) : convsError ? (
+                            <div className="px-3 py-4 space-y-3">
+                              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-xs font-semibold leading-relaxed text-red-100">
+                                Gagal memuat chat list.
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full rounded-xl border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white"
+                                onClick={() => void refetchConversations()}
+                              >
+                                Coba Lagi
+                              </Button>
+                            </div>
+                          ) : conversations.length === 0 ? (
+                            <div className="text-center text-xs py-12 font-bold px-4 leading-relaxed text-[#949BA4]">
+                              No conversations yet.<br />
+                              Start a DM with a friend!
+                            </div>
+                          ) : (() => {
+                            const filteredConvs = conversations.filter((c) => {
+                              const name = c.type === "dm"
+                                ? (c.otherDisplayName || c.otherUsername || "")
+                                : (c.name || "");
+                              return name.toLowerCase().includes(sidebarSearchQuery.toLowerCase());
+                            });
+                            const activeConvs = filteredConvs.filter((c) => !(c as any).archivedAt && c.type !== "group");
+                            const archivedConvs = filteredConvs.filter((c) => !!(c as any).archivedAt && c.type !== "group");
+                            
+                            if (filteredConvs.length === 0 && sidebarSearchQuery) {
+                              return (
+                                <div className="text-center text-xs py-12 font-bold px-4 leading-relaxed text-[#949BA4]">
+                                  Tidak ada percakapan yang cocok.
+                                </div>
+                              );
+                            }
+
+                            return (
                               <>
-                                <button
-                                  onClick={() => setShowArchived((v) => !v)}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-[#949BA4] hover:text-[#DCDDDE] transition-colors"
-                                >
-                                  <Archive className="w-3.5 h-3.5" />
-                                  Diarsipkan ({archivedConvs.length})
-                                  <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${showArchived ? "rotate-180" : ""}`} />
-                                </button>
-                                {showArchived && archivedConvs.map((c) => (
+                                {activeConvs.map((c) => (
                                   <ConvItem
                                     key={c.id}
                                     conv={c}
@@ -5520,11 +6063,36 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                                     onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
                                   />
                                 ))}
+                                {archivedConvs.length > 0 && (
+                                  <>
+                                    <button
+                                      onClick={() => setShowArchived((v) => !v)}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-[#949BA4] hover:text-[#DCDDDE] transition-colors"
+                                    >
+                                      <Archive className="w-3.5 h-3.5" />
+                                      Diarsipkan ({archivedConvs.length})
+                                      <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${showArchived ? "rotate-180" : ""}`} />
+                                    </button>
+                                    {showArchived && archivedConvs.map((c) => (
+                                      <ConvItem
+                                        key={c.id}
+                                        conv={c}
+                                        selected={selectedId === c.id}
+                                        dark
+                                        onClick={() => setSelectedId(c.id)}
+                                        onPin={(id) => pinConvMutation.mutate(id)}
+                                        onUnpin={(id) => unpinConvMutation.mutate(id)}
+                                        onArchive={(id) => archiveConvMutation.mutate(id)}
+                                        onUnarchive={(id) => unarchiveConvMutation.mutate(id)}
+                                      />
+                                    ))}
+                                  </>
+                                )}
                               </>
-                            )}
-                          </>
-                        );
-                      })()}
+                            );
+                          })()}
+                        </>
+                      )}
                     </div>
                   </ScrollArea>
                 </>
@@ -5553,20 +6121,79 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 
                 <div className="flex items-center gap-0.5 text-[#B5BAC1] shrink-0">
                   {/* Notification Bell */}
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button 
-                          type="button"
-                          className="p-1.5 rounded-md hover:bg-[#35373c] hover:text-white transition-colors relative"
-                        >
-                          <Bell className="w-4 h-4" />
-                          <div className="absolute top-1 right-1 w-2 h-2 bg-[#f23f43] rounded-full" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent className="bg-[#111214] text-white border-0 text-xs">Notifications</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button 
+                        type="button"
+                        className="p-1.5 rounded-md hover:bg-[#35373c] hover:text-white transition-colors relative cursor-pointer border-0 bg-transparent text-[#B5BAC1]"
+                      >
+                        <Bell className="w-4 h-4" />
+                        {dbNotifications.length > 0 && (
+                          <div className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-[#f23f43] text-white text-[8px] font-extrabold rounded-full flex items-center justify-center px-0.5 animate-pulse">
+                            {dbNotifications.length}
+                          </div>
+                        )}
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="bg-[#18191c] border-[#3F4147] text-[#DCDDDE] w-80 max-h-96 overflow-y-auto p-0 rounded-xl shadow-2xl z-50"
+                    >
+                      <div className="p-3 border-b border-[#3F4147] flex items-center justify-between">
+                        <span className="text-[10px] font-black text-white uppercase tracking-wider">Mentions & Pings</span>
+                        {dbNotifications.length > 0 && (
+                          <button
+                            onClick={() => {
+                              clearNotificationsMutation.mutate();
+                            }}
+                            className="text-[10px] font-extrabold text-blue-400 hover:underline border-0 bg-transparent cursor-pointer"
+                          >
+                            Hapus Semua
+                          </button>
+                        )}
+                      </div>
+                      
+                      {dbNotifications.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-slate-500 font-bold">
+                          Tidak ada ping atau mention baru.
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-[#3F4147]/40">
+                          {dbNotifications.map((n) => (
+                            <div 
+                              key={`notif-${n.id}`}
+                              onClick={() => {
+                                setSelectedId(n.conversationId);
+                                readNotificationMutation.mutate({ id: n.id });
+                              }}
+                              className="p-3 hover:bg-[#35373c]/30 transition-colors flex gap-3 text-xs cursor-pointer"
+                            >
+                              <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 overflow-hidden">
+                                {n.senderAvatar ? (
+                                  <img src={n.senderAvatar} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center font-bold bg-purple-600 text-white">
+                                    {n.senderName.slice(0, 1).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-extrabold text-white">{n.senderName}</span>
+                                  <span className="text-[9px] text-slate-500 font-bold">
+                                    {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <p className="text-slate-300 text-[11px] line-clamp-2 leading-snug font-medium break-all">
+                                  {n.content}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
                   {/* Settings / Premium Hub Link (Dropdown Menu) */}
                   <DropdownMenu>
@@ -5604,8 +6231,283 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
           </div>
 
           {/* Active Chat Screen Console */}
-          <div className={`${selectedConv ? "flex" : "hidden md:flex"} flex-1 flex-col ${isGroupView ? "bg-[#18191C]" : "bg-[#efe7dd]"} overflow-hidden min-h-0`}>
-            {selectedConv === null ? (
+          <div className={`${(selectedConv || activeView !== "chat") ? "flex" : "hidden md:flex"} flex-1 flex-col ${isGroupView || activeView !== "chat" ? "bg-[#18191C]" : "bg-[#efe7dd]"} overflow-hidden min-h-0`}>
+            {activeView === "shop" ? (
+              <div className="flex-1 flex flex-col bg-[#313338] text-[#DCDDDE] overflow-hidden animate-in fade-in-50 duration-200">
+                {/* Shop Header */}
+                <div className="p-6 border-b border-[#1f2023] bg-[#2b2d31] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <ShoppingBag className="w-6 h-6 text-amber-500" />
+                      <h1 className="text-xl font-black text-white tracking-wide">Shop</h1>
+                    </div>
+                    <p className="text-xs text-[#949BA4] mt-1 font-semibold">Beli bingkai avatar, latar belakang profil, dan lencana eksklusif.</p>
+                  </div>
+                  <div className="bg-[#1e1f22] px-4 py-2.5 rounded-xl border border-[#3F4147]/40 flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-black text-[#949BA4] uppercase tracking-wider">Saldo Anda:</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm font-black text-white">{me?.diamonds ?? 0}</span>
+                      <span className="text-xs">🪙</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Shop Items Grid */}
+                <ScrollArea className="flex-1 p-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pb-8">
+                    {(() => {
+                      const buyableItems = (gachaBoard?.cosmetics || []).filter((c: any) => c.isShop && (c.price ?? 0) > 0);
+                      if (buyableItems.length === 0) {
+                        return (
+                          <div className="col-span-full text-center py-16 text-[#949BA4] font-semibold bg-[#2b2d31]/30 border border-[#3F4147]/20 rounded-2xl">
+                            Belum ada item yang dijual di Toko saat ini.
+                          </div>
+                        );
+                      }
+                      return buyableItems.map((c: any) => {
+                        const isOwned = gachaBoard.ownedCosmeticIds?.includes(c.id);
+                        const cost = c.price ?? 0;
+                        const isAffordable = (me?.diamonds ?? 0) >= cost;
+
+                        const getRarityBadgeColor = (r: string) => {
+                          if (r === "S") return "bg-rose-500/20 text-rose-400 border-rose-500/40";
+                          if (r === "A") return "bg-amber-500/20 text-amber-400 border-amber-500/40";
+                          if (r === "B") return "bg-purple-500/20 text-purple-400 border-purple-500/40";
+                          if (r === "C") return "bg-blue-500/20 text-blue-400 border-blue-500/40";
+                          return "bg-slate-500/20 text-slate-400 border-slate-500/40";
+                        };
+
+                        return (
+                          <div 
+                            key={c.id} 
+                            className="bg-[#2b2d31] rounded-2xl border border-[#1f2023]/80 p-4 flex flex-col gap-4 hover:border-[#3f4147] transition-all duration-200 shadow-lg group/card"
+                          >
+                            {/* Item Rarity & Type */}
+                            <div className="flex items-center justify-between">
+                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded border ${getRarityBadgeColor(c.rarity)}`}>
+                                Rarity {c.rarity}
+                              </span>
+                              <span className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">
+                                {c.type}
+                              </span>
+                            </div>
+
+                            {/* Interactive Cosmetic Preview */}
+                            <div className="h-28 bg-[#1e1f22] rounded-xl flex items-center justify-center relative overflow-hidden border border-[#1f2023]/60 shadow-inner">
+                              {c.type === "border" ? (
+                                <div className={`w-16 h-16 rounded-full flex items-center justify-center p-0.5 border ${c.value}`}>
+                                  <Avatar className="w-full h-full">
+                                    <AvatarImage src={me?.avatarUrl ?? undefined} />
+                                    <AvatarFallback className="text-xs bg-slate-800 text-white font-bold">U</AvatarFallback>
+                                  </Avatar>
+                                </div>
+                              ) : c.type === "background" ? (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center">
+                                  <div className="absolute inset-0 bg-cover bg-center opacity-50" style={{ backgroundImage: `url(${c.value})` }} />
+                                  <div className="absolute inset-0 bg-black/40 z-0" />
+                                  <span className="text-[10px] font-black text-slate-300 uppercase relative z-10">Latar Belakang</span>
+                                  <span className="text-xs font-bold text-white truncate max-w-full relative z-10 px-2 mt-0.5">{c.name}</span>
+                                </div>
+                              ) : (c.type === "premium" || c.type === "premium_plus") ? (
+                                <div className="flex flex-col items-center gap-1 z-10">
+                                  <span className={`text-3xl filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.35)] animate-bounce duration-1000 ${c.type === "premium_plus" ? "text-pink-500" : "text-amber-400"}`}>
+                                    👑
+                                  </span>
+                                  <span className={`text-[10px] font-black uppercase tracking-widest mt-1 ${c.type === "premium_plus" ? "text-pink-400" : "text-amber-400"}`}>
+                                    {c.value} Hari {c.type === "premium_plus" ? "Premium+" : "Premium"}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-center gap-2">
+                                  <span className={`px-2.5 py-0.5 rounded text-[10px] font-black uppercase border tracking-wider ${c.value}`}>
+                                    {c.name}
+                                  </span>
+                                  <span className="text-[9px] font-black text-[#949BA4] uppercase tracking-widest">Badge</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Name & Description */}
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-extrabold text-white truncate">{c.name}</h3>
+                              <p className="text-[10px] text-[#949BA4] font-semibold mt-1 line-clamp-2 min-h-[2.5rem]">
+                                {c.description || "Tingkatkan estetika profilmu agar terlihat semakin premium."}
+                              </p>
+                            </div>
+
+                            {/* Purchase Actions */}
+                            <div className="mt-auto pt-2 flex items-center justify-between gap-2 border-t border-[#1f2023]/40">
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm font-black text-white">{cost}</span>
+                                <span className="text-xs">🪙</span>
+                              </div>
+
+                              {isOwned ? (
+                                <Button 
+                                  disabled 
+                                  size="sm" 
+                                  className="bg-[#23a55a]/20 text-[#23a55a] rounded-xl font-bold text-xs border border-[#23a55a]/30"
+                                >
+                                  Dimiliki
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  disabled={!isAffordable || buyCosmeticMutation.isPending}
+                                  onClick={() => buyCosmeticMutation.mutate(c.id)}
+                                  className={`rounded-xl font-bold text-xs shadow-md ${
+                                    isAffordable 
+                                      ? "bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-indigo-900/10 cursor-pointer" 
+                                      : "bg-slate-700 text-slate-500 cursor-not-allowed"
+                                  }`}
+                                >
+                                  {buyCosmeticMutation.isPending ? "Proses..." : "Beli"}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </ScrollArea>
+              </div>
+            ) : activeView === "quests" ? (
+              <div className="flex-1 flex flex-col bg-[#313338] text-[#DCDDDE] overflow-hidden animate-in fade-in-50 duration-200">
+                {/* Quests Header */}
+                <div className="p-6 border-b border-[#1f2023] bg-[#2b2d31] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-6 h-6 text-yellow-500" />
+                      <h1 className="text-xl font-black text-white tracking-wide">Quests</h1>
+                    </div>
+                    <p className="text-xs text-[#949BA4] mt-1 font-semibold">Selesaikan misi di bawah untuk mendapatkan Token tambahan.</p>
+                  </div>
+                </div>
+
+                {/* Quests List */}
+                <ScrollArea className="flex-1 p-6">
+                  {questsLoading ? (
+                    <div className="space-y-4 max-w-3xl mx-auto">
+                      <Skeleton className="h-24 w-full rounded-2xl" />
+                      <Skeleton className="h-24 w-full rounded-2xl" />
+                    </div>
+                  ) : quests.length === 0 ? (
+                    <div className="text-center py-16 text-[#949BA4] bg-[#2b2d31] border border-[#1f2023] rounded-2xl max-w-3xl mx-auto">
+                      Belum ada misi yang tersedia.
+                    </div>
+                  ) : (
+                    <div className="space-y-4 max-w-3xl mx-auto">
+                      {quests.map((q: any) => {
+                        const isCompleted = q.current >= q.target;
+                        const progressPercent = Math.round((q.current / q.target) * 100);
+
+                        return (
+                          <div 
+                            key={q.id} 
+                            className="bg-[#2b2d31] rounded-2xl border border-[#1f2023]/80 p-5 flex flex-col sm:flex-row sm:items-center gap-5 hover:border-[#3f4147] transition-all duration-200 shadow-lg"
+                          >
+                            {/* Left: Quest Icon */}
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                              isCompleted 
+                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" 
+                                : "bg-[#1e1f22] text-yellow-500 border border-[#1f2023]"
+                            }`}>
+                              {q.type === "chat" ? (
+                                <MessageSquare className="w-6 h-6" />
+                              ) : q.type === "search" ? (
+                                <Search className="w-6 h-6" />
+                              ) : q.type === "dm" ? (
+                                <Plus className="w-6 h-6" />
+                              ) : (
+                                <Video className="w-6 h-6 text-rose-400" />
+                              )}
+                            </div>
+
+                            {/* Middle: Details & Progress */}
+                            <div className="flex-1 min-w-0 space-y-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-sm font-extrabold text-white">{q.title}</h3>
+                                {q.claimed && (
+                                  <span className="text-[9px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    Klaim Selesai
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-[#949BA4] font-semibold leading-relaxed">{q.desc}</p>
+                              
+                              {/* Progress bar */}
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1 h-2 bg-[#1e1f22] rounded-full overflow-hidden border border-[#1f2023]/30">
+                                  <div 
+                                    className={`h-full rounded-full transition-all duration-500 ${
+                                      isCompleted ? "bg-emerald-500" : "bg-yellow-500"
+                                    }`} 
+                                    style={{ width: `${progressPercent}%` }} 
+                                  />
+                                </div>
+                                <span className="text-[10px] font-black text-[#949BA4] tracking-wide shrink-0">
+                                  {q.current} / {q.target}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Right: Reward & Actions */}
+                            <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-4 shrink-0 border-t sm:border-t-0 border-[#1f2023]/40 pt-4 sm:pt-0">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Hadiah:</span>
+                                <span className="text-xs font-black text-white">{q.reward}</span>
+                                <span className="text-xs">🪙</span>
+                              </div>
+
+                              {q.claimed ? (
+                                <Button 
+                                  disabled 
+                                  size="sm" 
+                                  className="bg-slate-700 text-slate-500 rounded-xl font-bold text-xs"
+                                >
+                                  Selesai
+                                </Button>
+                              ) : isCompleted ? (
+                                <Button
+                                  size="sm"
+                                  disabled={claimQuestMutation.isPending}
+                                  onClick={() => claimQuestMutation.mutate(q)}
+                                  className="bg-[#23a55a] hover:bg-[#1a7f45] text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-950/20 cursor-pointer"
+                                >
+                                  {claimQuestMutation.isPending ? "Klaim..." : "Klaim Hadiah"}
+                                </Button>
+                              ) : q.type === "video" ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setActiveVideoQuest(q);
+                                    setVideoWatchTimer(q.duration || 15);
+                                    setVideoWatchCompleted(false);
+                                    setShowVideoQuestModal(true);
+                                  }}
+                                  className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl font-bold text-xs shadow-md shadow-indigo-950/20 cursor-pointer animate-pulse"
+                                >
+                                  Mulai Nonton
+                                </Button>
+                              ) : (
+                                <Button
+                                  disabled
+                                  size="sm"
+                                  className="bg-slate-750 text-slate-500 rounded-xl font-bold text-xs"
+                                >
+                                  Belum Selesai
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            ) : selectedConv === null ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-3">
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-inner ${isGroupView ? "bg-[#2B2D31] text-[#5865F2]" : "bg-violet-50 text-[#6366f1]"}`}>
                   <MessageSquare className="w-8 h-8" />
@@ -5698,6 +6600,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   <div className="flex items-center gap-0.5 sm:gap-2 shrink-0">
                     {selectedConv.type === "dm" && selectedConv.otherUserId && (
                       <>
+                        {(selectedConv as any).otherUserIsSeller && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-9 w-9 rounded-full text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors cursor-pointer"
+                            onClick={() => setShowInfoPanel(true)}
+                            title="Buka Katalog Toko"
+                          >
+                            <ShoppingBag className="h-5 w-5 text-emerald-500" />
+                          </Button>
+                        )}
                         <Button
                           size="icon"
                           variant="ghost"
@@ -5940,6 +6853,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                               me={me}
                               customEmojis={emojiLibrary?.emojis}
                               currentConversationId={selectedId}
+                              isAnyOtherMemberOnline={isAnyOtherMemberOnline}
                             />
                           </div>
                         );
@@ -7043,6 +7957,78 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         </DialogContent>
       </Dialog>
 
+      {/* Video Quest Modal */}
+      <Dialog open={showVideoQuestModal} onOpenChange={setShowVideoQuestModal}>
+        <DialogContent className={`max-w-xl flex flex-col p-6 rounded-2xl ${isGroupView ? "bg-[#313338] text-white border-[#3F4147]" : "bg-white border-[#eae8f5] text-slate-800"}`}>
+          <DialogHeader className="mb-2 shrink-0">
+            <DialogTitle className="text-base font-black flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-yellow-500" />
+              Tonton Video: {activeVideoQuest?.title}
+            </DialogTitle>
+            <DialogDescription className={`text-xs ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
+              Selesaikan misi menonton video/stream ini untuk mendapatkan reward Token.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Embedded Player */}
+          {activeVideoQuest && (
+            <div className="space-y-4">
+              <div className="aspect-video bg-[#1e1f22] rounded-xl overflow-hidden border border-[#1f2023]/60 shadow-inner flex items-center justify-center relative">
+                {activeVideoQuest.videoUrl ? (
+                  <iframe 
+                    width="100%" 
+                    height="100%" 
+                    src={getEmbeddableUrl(activeVideoQuest.videoUrl)} 
+                    title="Video Player" 
+                    frameBorder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                    allowFullScreen 
+                    className="absolute inset-0 w-full h-full"
+                  ></iframe>
+                ) : (
+                  <div className="text-center p-4">
+                    <p className="text-xs text-rose-500 font-bold">Error: Video URL tidak valid atau tidak disediakan oleh admin.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Status & Countdown */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#2b2d31]/40 p-4 rounded-xl border border-[#3f4147]/20 mt-2">
+                <div className="flex items-center gap-2">
+                  {videoWatchCompleted ? (
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">✓</span>
+                  ) : (
+                    <span className="animate-spin h-4 w-4 border-2 border-yellow-500 border-t-transparent rounded-full" />
+                  )}
+                  <p className="text-xs font-bold text-[#DCDDDE]">
+                    {videoWatchCompleted 
+                      ? "Misi Selesai! Kamu sekarang dapat menutup modal ini." 
+                      : `Sedang Menonton... Sisa waktu: ${videoWatchTimer} detik`
+                    }
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Hadiah:</span>
+                  <span className="text-xs font-black text-white">{activeVideoQuest.reward}</span>
+                  <span className="text-xs">🪙</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="mt-4 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowVideoQuestModal(false)}
+              className="rounded-xl font-bold text-xs h-9"
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Starred Messages Modal */}
       <Dialog open={starredOpen} onOpenChange={setStarredOpen}>
         <DialogContent className={`max-w-md max-h-[80vh] flex flex-col p-6 rounded-2xl ${isGroupView ? "bg-[#313338] text-white border-[#3F4147]" : "bg-white border-[#eae8f5]"}`}>
@@ -7239,6 +8225,184 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       </Dialog>
 
       {/* ── Dialog Modals ────────────────────────────────────────────────── */}
+      {/* GLOBAL SEARCH MODAL */}
+      <Dialog open={showGlobalSearch} onOpenChange={(open) => { setShowGlobalSearch(open); if (!open) { setGlobalSearchQuery(""); } }}>
+        <DialogContent className={`max-w-lg rounded-2xl p-5 flex flex-col h-[80vh] max-h-[580px] ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147] text-white animate-in zoom-in-95 duration-200" : "bg-white border border-[#eae8f5] text-slate-900 animate-in zoom-in-95 duration-200"}`}>
+          <DialogHeader className="shrink-0">
+            <DialogTitle className={`text-sm font-extrabold ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>Cari Pengguna & Pesan</DialogTitle>
+          </DialogHeader>
+
+          {/* Search Input */}
+          <div className="relative my-2 shrink-0">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#949ba4]" />
+            <Input
+              type="text"
+              placeholder="Cari username, nama tampilan, atau isi pesan..."
+              value={globalSearchQuery}
+              onChange={(e) => setGlobalSearchQuery(e.target.value)}
+              className={`pl-10 text-xs font-semibold rounded-xl ${
+                isGroupView 
+                  ? "bg-[#2B2D31] border-[#3F4147] text-white focus-visible:ring-violet-500" 
+                  : "bg-slate-50 border-[#eae8f5] text-slate-800 focus-visible:ring-violet-500"
+              }`}
+            />
+            {globalSearchQuery && (
+              <button
+                onClick={() => setGlobalSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-200 cursor-pointer border-0 bg-transparent"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          {/* Tabs for Filtering */}
+          <div className={`grid grid-cols-3 gap-1 p-1 mb-2 rounded-xl shrink-0 ${isGroupView ? "bg-[#2B2D31]" : "bg-slate-100"}`}>
+            {(["all", "users", "messages"] as const).map((type) => {
+              const label = type === "all" ? "Semua" : type === "users" ? "Pengguna" : "Pesan";
+              const isActive = globalSearchType === type;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setGlobalSearchType(type)}
+                  className={`text-xs font-bold rounded-lg py-2 transition-all cursor-pointer border-0 ${
+                    isActive 
+                      ? isGroupView
+                        ? "bg-[#1E1F22] text-white shadow-sm"
+                        : "bg-white text-[#6366f1] shadow-sm"
+                      : "text-slate-400 hover:text-slate-600 bg-transparent"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search Results Area */}
+          <ScrollArea className="flex-1 pr-1 min-h-0">
+            {!debouncedSearchQuery.trim() ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Search className={`w-8 h-8 mb-2 ${isGroupView ? "text-slate-600" : "text-slate-300"}`} />
+                <p className={`text-xs font-bold ${isGroupView ? "text-slate-400" : "text-slate-400"}`}>
+                  Ketik sesuatu untuk mulai mencari...
+                </p>
+              </div>
+            ) : (searchingUsers || searchingMessages) ? (
+              <div className="space-y-3 py-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 px-2">
+                    <Skeleton className="w-8 h-8 rounded-full" />
+                    <div className="flex-1 space-y-1">
+                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-2 w-32" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (searchedUsers.length === 0 && searchedMessages.length === 0) ? (
+              <div className="text-center py-16 text-xs font-semibold text-slate-400">
+                Tidak ada hasil ditemukan untuk "{debouncedSearchQuery}"
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* USERS RESULTS */}
+                {(globalSearchType === "all" || globalSearchType === "users") && searchedUsers.length > 0 && (
+                  <div className="space-y-1">
+                    <p className={`text-[10px] font-black uppercase tracking-wider px-2 mb-1 ${isGroupView ? "text-slate-400" : "text-slate-400"}`}>
+                      Pengguna ({searchedUsers.length})
+                    </p>
+                    {searchedUsers.map((u) => (
+                      <button
+                        key={u.id}
+                        onClick={() => handleStartDm(u.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-colors cursor-pointer ${
+                          isGroupView ? "hover:bg-[#2B2D31] text-white" : "hover:bg-slate-50 text-slate-800"
+                        }`}
+                      >
+                        <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${u.equippedBorder ? u.equippedBorder : isGroupView ? "border border-[#3F4147]" : "border border-[#eae8f5]"}`}>
+                          <Avatar className="w-8 h-8 shrink-0">
+                            <AvatarImage src={u.avatarUrl ?? undefined} />
+                            <AvatarFallback className={`text-xs font-bold ${isGroupView ? "bg-[#35373c] text-white" : "bg-slate-100 text-[#6366f1]"}`}>
+                              {getInitials(u.displayName ?? u.username)}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-extrabold truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>{u.displayName ?? u.username}</p>
+                          <p className={`text-[10px] font-semibold truncate ${isGroupView ? "text-slate-400" : "text-slate-400"}`}>
+                            @{u.username}
+                          </p>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg ${isGroupView ? "bg-[#5865F2]/20 text-[#5865F2] hover:bg-[#5865F2]/30" : "bg-violet-50 text-[#6366f1] hover:bg-violet-100"}`}>
+                          Chat
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* MESSAGES RESULTS */}
+                {(globalSearchType === "all" || globalSearchType === "messages") && searchedMessages.length > 0 && (
+                  <div className="space-y-1">
+                    <p className={`text-[10px] font-black uppercase tracking-wider px-2 mb-1 ${isGroupView ? "text-slate-400" : "text-slate-400"}`}>
+                      Pesan ({searchedMessages.length})
+                    </p>
+                    {searchedMessages.map((msg) => {
+                      const msgDate = new Date(msg.createdAt);
+                      const formattedDate = format(msgDate, "dd MMM yyyy, HH:mm");
+                      const convLabel = msg.conversationType === "group" 
+                        ? `Grup: ${msg.conversationName}` 
+                        : `DM dengan ${msg.senderDisplayName || msg.senderUsername}`;
+
+                      return (
+                        <button
+                          key={msg.id}
+                          onClick={() => {
+                            setSelectedId(msg.conversationId);
+                            if (msg.conversationType === "group" && msg.channelId) {
+                              setSelectedChannelId(msg.channelId);
+                            }
+                            setShowGlobalSearch(false);
+                          }}
+                          className={`w-full flex flex-col gap-1.5 p-3 rounded-xl text-left transition-colors cursor-pointer border ${
+                            isGroupView 
+                              ? "bg-[#2B2D31]/30 border-[#3F4147]/50 hover:bg-[#2B2D31] hover:border-[#3F4147] text-white" 
+                              : "bg-slate-50/50 border-slate-100 hover:bg-slate-50 hover:border-slate-200 text-slate-800"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Avatar className="w-5 h-5 shrink-0">
+                              <AvatarImage src={msg.senderAvatarUrl ?? undefined} />
+                              <AvatarFallback className="text-[9px] font-bold">
+                                {getInitials(msg.senderDisplayName ?? msg.senderUsername ?? "?")}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className={`text-xs font-extrabold truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>
+                              {msg.senderDisplayName || msg.senderUsername}
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-semibold ml-auto shrink-0">
+                              {formattedDate}
+                            </span>
+                          </div>
+                          <p className={`text-xs font-medium [overflow-wrap:anywhere] line-clamp-2 ${isGroupView ? "text-slate-300" : "text-slate-600"}`}>
+                            {msg.content}
+                          </p>
+                          <div className={`text-[9px] font-bold uppercase tracking-wide mt-1 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`}>
+                            {convLabel}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showNewDm} onOpenChange={setShowNewDm}>
         <DialogContent className="max-w-sm bg-white border border-[#eae8f5] rounded-2xl p-5">
           <DialogHeader>
@@ -10049,14 +11213,23 @@ setInterval(() => {
                             Sudah Dibayar & Sedang Diproses
                           </Button>
                         ) : activePurchase?.status === "pending" ? (
-                          <a
-                            href={activePurchase.paymentUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full flex items-center justify-center rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs h-11 shadow-lg shadow-amber-500/10 transition-colors"
-                          >
-                            Lanjutkan Pembayaran
-                          </a>
+                          <div className="flex flex-col gap-2 w-full">
+                            <a
+                              href={activePurchase.paymentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full flex items-center justify-center rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs h-11 shadow-lg shadow-amber-500/10 transition-colors"
+                            >
+                              Lanjutkan Pembayaran
+                            </a>
+                            <Button
+                              onClick={() => handleSyncOrder(activePurchase.id)}
+                              disabled={syncingOrderId === activePurchase.id}
+                              className="w-full rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-black text-xs h-11 cursor-pointer"
+                            >
+                              {syncingOrderId === activePurchase.id ? "Memverifikasi..." : "Cek Status Pembayaran"}
+                            </Button>
+                          </div>
                         ) : (
                           <Button
                             onClick={() => handleBuyProduct(selectedCatalogProduct.id)}
@@ -10398,6 +11571,166 @@ setInterval(() => {
         </DialogContent>
       </Dialog>
 
+      {/* Message Info Dialog */}
+      <Dialog open={!!showMessageInfo} onOpenChange={(open) => { if (!open) setShowMessageInfo(null); }}>
+        <DialogContent className="max-w-md rounded-2xl p-0 overflow-hidden bg-[#111b21] border border-[#222d34] text-white flex flex-col h-[80vh] max-h-[580px] gap-0 animate-in zoom-in-95 duration-200">
+          {showMessageInfo && (() => {
+            const msg = showMessageInfo;
+            const isOwn = msg.senderId === me?.id;
+            const conversation = conversations.find(c => c.id === msg.conversationId);
+            const isGroup = conversation?.type === "group";
+            
+            // Get all other members in this conversation
+            const otherMembers = members.filter((m: any) => m.id !== msg.senderId);
+            
+            const msgReadBy = (msg as any).readBy || [];
+            const msgReadDetails = (msg as any).readDetails || [];
+            
+            const readMembers = otherMembers
+              .filter((m: any) => msgReadBy.includes(m.id))
+              .map((m: any) => {
+                const detail = msgReadDetails.find((d: any) => d.userId === m.id);
+                return {
+                  ...m,
+                  readTime: detail?.readAt ? format(new Date(detail.readAt), "HH:mm") : "Baru saja"
+                };
+              });
+              
+            const deliveredMembers = otherMembers
+              .filter((m: any) => !msgReadBy.includes(m.id))
+              .map((m: any) => {
+                return {
+                  ...m,
+                  deliveredTime: format(new Date(msg.createdAt), "HH:mm")
+                };
+              });
+
+            return (
+              <>
+                <DialogHeader className="px-5 py-4 flex flex-row items-center gap-3 shrink-0 border-b border-[#222d34] bg-[#202c33] space-y-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowMessageInfo(null)}
+                    className="text-[#aebac1] hover:text-white transition-colors cursor-pointer border-0 bg-transparent p-1 -ml-1 rounded-full"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                  <DialogTitle className="text-base font-bold text-[#e9edef] select-none">Info pesan</DialogTitle>
+                </DialogHeader>
+
+                <div className="flex-1 flex flex-col min-h-0">
+                  {/* Message Preview Bubble */}
+                  <div 
+                    className="p-6 flex bg-[#0b141a] relative overflow-hidden shrink-0 border-b border-[#222d34]/40"
+                    style={{
+                      backgroundImage: `url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')`,
+                      backgroundSize: "cover",
+                      backgroundBlendMode: "overlay",
+                      backgroundColor: "#0b141a",
+                      justifyContent: isOwn ? "flex-end" : "flex-start"
+                    }}
+                  >
+                    <div 
+                      className={`max-w-[85%] text-[#e9edef] rounded-xl px-3.5 py-2 shadow relative ${
+                        isOwn 
+                          ? "bg-[#005c4b] rounded-tr-none" 
+                          : "bg-[#202c33] rounded-tl-none"
+                      }`}
+                    >
+                      {msg.imageUrl && (
+                        <img src={msg.imageUrl} alt="" className="rounded-lg max-h-40 object-cover mb-1.5" />
+                      )}
+                      {msg.content && <p className="text-sm whitespace-pre-wrap pr-12 break-all">{msg.content}</p>}
+                      <div className="absolute bottom-1 right-2 flex items-center gap-1">
+                        <span className="text-[9px] text-[#8696a0] font-medium">
+                          {format(new Date(msg.createdAt), "HH:mm")}
+                        </span>
+                        <CheckCheck className={`w-3.5 h-3.5 ${isOwn && (msg as any).isRead ? "text-[#53bdeb]" : "text-[#8696a0]"}`} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Read / Delivered Status Lists */}
+                  <div className="flex-1 overflow-y-auto bg-[#111b21] p-5 space-y-6">
+                    {/* Read Section */}
+                    {readMembers.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-[#53bdeb] font-bold text-xs uppercase tracking-wider border-b border-[#222d34] pb-2">
+                          <CheckCheck className="w-4 h-4 text-[#53bdeb]" />
+                          <span>Dibaca Oleh</span>
+                        </div>
+                        <div className="space-y-3">
+                          {readMembers.map((m) => (
+                            <div key={m.id} className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="w-9 h-9 border border-[#222d34]">
+                                  <AvatarImage src={m.avatarUrl ?? undefined} />
+                                  <AvatarFallback className="text-[10px] bg-[#2a3942] text-[#d1d7db] font-bold">
+                                    {getInitials(m.displayName ?? m.username)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="text-xs font-bold text-[#e9edef]">{m.displayName || m.username}</p>
+                                  <p className="text-[10px] text-[#8696a0]">@{m.username}</p>
+                                </div>
+                              </div>
+                              <span className="text-[10px] text-[#8696a0] font-medium">
+                                {m.readTime}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-[#53bdeb] font-bold text-xs uppercase tracking-wider border-b border-[#222d34] pb-2">
+                          <CheckCheck className="w-4 h-4 text-[#53bdeb]" />
+                          <span>Dibaca Oleh</span>
+                        </div>
+                        <div className="text-center py-6 text-xs text-[#8696a0]">
+                          Belum dibaca oleh siapa pun.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Delivered Section */}
+                    {deliveredMembers.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-[#8696a0] font-bold text-xs uppercase tracking-wider border-b border-[#222d34] pb-2">
+                          <CheckCheck className="w-4 h-4 text-[#8696a0]" />
+                          <span>Terkirim Ke</span>
+                        </div>
+                        <div className="space-y-3">
+                          {deliveredMembers.map((m) => (
+                            <div key={m.id} className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="w-9 h-9 border border-[#222d34]">
+                                  <AvatarImage src={m.avatarUrl ?? undefined} />
+                                  <AvatarFallback className="text-[10px] bg-[#2a3942] text-[#d1d7db] font-bold">
+                                    {getInitials(m.displayName ?? m.username)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="text-xs font-bold text-[#e9edef]">{m.displayName || m.username}</p>
+                                  <p className="text-[10px] text-[#8696a0]">@{m.username}</p>
+                                </div>
+                              </div>
+                              <span className="text-[10px] text-[#8696a0] font-medium">
+                                {m.deliveredTime}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {contextMenu && (() => {
         const menuWidth = 240;
         const menuHeight = 350;
@@ -10456,16 +11789,13 @@ setInterval(() => {
             <div className="flex flex-col py-1">
               <button
                 onClick={() => {
-                  toast({
-                    title: "Detail Pesan",
-                    description: `Dikirim oleh @${msg.senderUsername || "unknown"} pada ${format(new Date(msg.createdAt), "dd MMM yyyy HH:mm")}`,
-                  });
+                  setShowMessageInfo(msg);
                   setContextMenu(null);
                 }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#182229] transition-colors text-left text-[#d1d7db] cursor-pointer"
               >
                 <Info className="w-4 h-4 text-slate-400 shrink-0" />
-                <span>Detail Pesan</span>
+                <span>Info Pesan</span>
               </button>
 
               <button

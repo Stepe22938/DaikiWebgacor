@@ -244,7 +244,7 @@ function FriendCard({
   );
 }
 
-export default function Friends() {
+export default function Friends({ embedded = false }: { embedded?: boolean }) {
   const { data: me, isLoading: meLoading } = useGetMe();
   const { user: clerkUser } = useUser();
   const { data: members, isLoading: membersLoading } = useListMembers();
@@ -368,6 +368,299 @@ export default function Friends() {
     return (
       <div className="p-8 text-slate-500 font-bold bg-[#f4f3f8] min-h-screen flex items-center justify-center">
         Loading Guild Portal...
+      </div>
+    );
+  }
+
+  if (embedded) {
+    return (
+      <div className="flex-1 space-y-6">
+        <div className="flex flex-col">
+          <h1 className="text-xl font-black text-[#110e3d]">Player Guild</h1>
+          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+            Find other adventurers and follow their journey
+            {me && (
+              <span className="ml-2 text-[#6366f1] font-semibold">
+                ({following?.length ?? 0} following · {followers?.length ?? 0} followers)
+              </span>
+            )}
+          </p>
+        </div>
+
+        {me && (
+          <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-xs font-black text-[#110e3d] uppercase tracking-wider flex items-center gap-1.5">
+                🤝 Share Your Invite Link
+              </h3>
+              <p className="text-xs font-bold text-slate-400">Let others scan your barcode or visit your link to instantly add you as a friend!</p>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <code className="text-[10px] font-mono bg-slate-50 text-slate-600 px-2.5 py-1 rounded-lg border border-slate-100 max-w-xs truncate">
+                  {window.location.origin}/add-friend/{me.username}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/add-friend/${me.username}`);
+                    toast({ title: "Copied!", description: "Add friend link copied to clipboard." });
+                  }}
+                  className="h-7 px-2.5 text-[10px] font-bold rounded-lg border-[#eae8f5] text-slate-500 hover:text-slate-700 hover:bg-slate-50 flex items-center gap-1 cursor-pointer h-7"
+                >
+                  <Copy className="w-3 h-3" /> Copy Link
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setFriendQrUrl(`${window.location.origin}/add-friend/${me.username}`);
+                    setShowFriendQr(true);
+                  }}
+                  className="h-7 px-2.5 text-[10px] font-bold rounded-lg border-[#eae8f5] text-slate-500 hover:text-slate-700 hover:bg-slate-50 flex items-center gap-1 cursor-pointer h-7"
+                >
+                  <QrCode className="w-3 h-3" /> Show QR
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        <Tabs defaultValue="explore" className="space-y-6">
+          <TabsList className="bg-white border border-[#eae8f5] p-1 rounded-xl shadow-sm h-11 flex flex-wrap gap-0.5">
+            <TabsTrigger value="explore" className="rounded-lg text-xs font-bold text-slate-500 data-[state=active]:bg-violet-50 data-[state=active]:text-[#6366f1]">Explore</TabsTrigger>
+            <TabsTrigger value="friends" className="rounded-lg text-xs font-bold text-slate-500 data-[state=active]:bg-violet-50 data-[state=active]:text-[#6366f1]">Teman ({friends.length})</TabsTrigger>
+            <TabsTrigger value="following" className="rounded-lg text-xs font-bold text-slate-500 data-[state=active]:bg-violet-50 data-[state=active]:text-[#6366f1]">Following ({following?.length ?? 0})</TabsTrigger>
+            <TabsTrigger value="followers" className="rounded-lg text-xs font-bold text-slate-500 data-[state=active]:bg-violet-50 data-[state=active]:text-[#6366f1]">Followers ({followers?.length ?? 0})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="explore" className="space-y-4 outline-none">
+            <Input
+              placeholder="Search players by name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="bg-white border-[#eae8f5] focus-visible:ring-violet-500 rounded-xl text-slate-700 font-semibold"
+            />
+            {membersLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-2xl" />)}
+              </div>
+            ) : filteredMembers?.length === 0 ? (
+              <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
+                {search ? "No players found." : "No other players yet. Spread the word!"}
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {filteredMembers?.map((user) => (
+                  <UserCard key={user.id} user={user} onFollowToggle={handleFollowToggle} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="friends" className="space-y-4 outline-none">
+            {friendsLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-2xl" />)}
+              </div>
+            ) : friends.length === 0 ? (
+              <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
+                Belum ada teman. Follow seseorang dan minta mereka follow balik!
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Pinned friends */}
+                {friends.filter(f => !!f.pinnedAt).length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 px-1">
+                      <Pin className="w-3 h-3 text-violet-400 fill-violet-400" />
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Disematkan</span>
+                    </div>
+                    <div className="grid gap-3">
+                      {friends.filter(f => !!f.pinnedAt).map(user => (
+                        <div key={user.id} className="relative">
+                          <FriendCard
+                            user={user as PublicUser}
+                            onPin={handlePin}
+                            onBlock={setBlockConfirmUser}
+                            pinLoading={pinLoading === user.id}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Unpinned friends */}
+                {friends.filter(f => !f.pinnedAt).length > 0 && (
+                  <div className="space-y-2">
+                    {friends.filter(f => !!f.pinnedAt).length > 0 && (
+                      <div className="flex items-center gap-2 px-1">
+                        <Users className="w-3 h-3 text-slate-400" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Semua Teman</span>
+                      </div>
+                    )}
+                    <div className="grid gap-3">
+                      {friends.filter(f => !f.pinnedAt).map(user => (
+                        <div key={user.id} className="relative">
+                          <FriendCard
+                            user={user as PublicUser}
+                            onPin={handlePin}
+                            onBlock={setBlockConfirmUser}
+                            pinLoading={pinLoading === user.id}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Blocked section (collapsible) */}
+                {blockedUsers.length > 0 && (
+                  <div className="border border-red-100 bg-red-50/40 rounded-2xl overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-3 text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
+                      onClick={() => setBlockedExpanded(v => !v)}
+                    >
+                      <span className="flex items-center gap-2"><Ban className="w-3.5 h-3.5" /> Diblokir ({blockedUsers.length})</span>
+                      {blockedExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                    {blockedExpanded && (
+                      <div className="px-4 pb-4 space-y-2">
+                        {blockedUsers.map(bu => (
+                          <div key={bu.id} className="flex items-center gap-3 bg-white border border-red-100 rounded-xl px-3 py-2.5">
+                            <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
+                              {bu.avatarUrl
+                                ? <img src={bu.avatarUrl} alt={bu.username} className="w-full h-full object-cover" />
+                                : <UserX className="w-4 h-4 text-slate-400" />
+                              }
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-600 truncate">{bu.displayName || bu.username}</p>
+                              <p className="text-[10px] text-slate-400">@{bu.username}{bu.userTag}</p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleUnblock(bu.userId, bu.displayName || bu.username)}
+                              className="h-7 px-2.5 rounded-lg text-[10px] font-bold border-red-200 text-red-500 hover:bg-red-50 transition-all"
+                            >
+                              Batal Blokir
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="following" className="space-y-4 outline-none">
+            {followingLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-2xl" />)}
+              </div>
+            ) : following?.length === 0 ? (
+              <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
+                You're not following anyone yet. Go explore players!
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {following?.map((user) => (
+                  <UserCard key={user.id} user={user} onFollowToggle={handleFollowToggle} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="followers" className="space-y-4 outline-none">
+            {followersLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-2xl" />)}
+              </div>
+            ) : followers?.length === 0 ? (
+              <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
+                No one is following you yet. Keep adventuring!
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {followers?.map((user) => (
+                  <UserCard key={user.id} user={user} onFollowToggle={handleFollowToggle} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* Block Confirmation Dialog */}
+        <AlertDialog open={!!blockConfirmUser} onOpenChange={(open) => { if (!open) setBlockConfirmUser(null); }}>
+          <AlertDialogContent className="max-w-sm rounded-2xl bg-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-sm font-black text-[#110e3d] flex items-center gap-2">
+                <Ban className="w-4 h-4 text-red-500" /> Blokir Pengguna?
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-xs text-slate-500 font-semibold">
+                Kamu tidak akan melihat pesan dari <strong>{blockConfirmUser?.displayName || blockConfirmUser?.username}</strong>.
+                Mereka tidak akan dikeluarkan dari grup bersama, tapi pesannya akan tersembunyi.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="rounded-xl text-xs font-bold border-[#eae8f5]">Batal</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => blockConfirmUser && handleBlock(blockConfirmUser)}
+                className="bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold"
+              >
+                Ya, Blokir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* QR Code Dialog */}
+        <Dialog open={showFriendQr} onOpenChange={setShowFriendQr}>
+          <DialogContent className="max-w-xs bg-white border border-[#eae8f5] rounded-3xl p-5 text-center flex flex-col items-center">
+            <DialogHeader className="w-full">
+              <DialogTitle className="text-sm font-extrabold text-[#110e3d]">
+                📱 My Add Friend QR Code
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-400 font-bold">
+                Let other players scan this code to follow you!
+              </DialogDescription>
+            </DialogHeader>
+
+            {friendQrUrl && (
+              <div className="mt-4 p-4 bg-white rounded-3xl border border-violet-100 shadow-xl flex items-center justify-center">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=6366f1&data=${encodeURIComponent(friendQrUrl)}`}
+                  alt="My QR Code"
+                  className="w-44 h-44"
+                />
+              </div>
+            )}
+
+            <div className="mt-4 w-full flex gap-2">
+              <Button
+                onClick={() => {
+                  if (friendQrUrl) {
+                    navigator.clipboard.writeText(friendQrUrl);
+                    toast({ title: "Copied!", description: "Add friend link copied." });
+                  }
+                }}
+                className="flex-1 bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold h-9"
+              >
+                Copy Link
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowFriendQr(false)}
+                className="flex-1 rounded-xl border-[#eae8f5] text-slate-500 hover:text-slate-700 text-xs font-bold h-9"
+              >
+                Close
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }

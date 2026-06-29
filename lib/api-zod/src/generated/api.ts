@@ -19,15 +19,22 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary Get gacha board metadata and user state
  */
+export const getGachaBoardResponseCosmeticsItemPriceDefault = 0;
+export const getGachaBoardResponseCosmeticsItemIsGachaDefault = true;
+export const getGachaBoardResponseCosmeticsItemIsShopDefault = false;
+
 export const GetGachaBoardResponse = zod.object({
   "diamonds": zod.number(),
   "cosmetics": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "type": zod.enum(['badge', 'border', 'background']),
+  "type": zod.enum(['badge', 'border', 'background', 'premium', 'premium_plus']),
   "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
   "value": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.number().default(getGachaBoardResponseCosmeticsItemPriceDefault),
+  "isGacha": zod.boolean().default(getGachaBoardResponseCosmeticsItemIsGachaDefault),
+  "isShop": zod.boolean().default(getGachaBoardResponseCosmeticsItemIsShopDefault),
   "createdAt": zod.string()
 })),
   "ownedCosmeticIds": zod.array(zod.number())
@@ -49,15 +56,22 @@ export const SpinGachaBody = zod.object({
   "count": zod.union([zod.literal(1),zod.literal(10),zod.literal(25),zod.literal(50)])
 })
 
+export const spinGachaResponseResultsItemCosmeticPriceDefault = 0;
+export const spinGachaResponseResultsItemCosmeticIsGachaDefault = true;
+export const spinGachaResponseResultsItemCosmeticIsShopDefault = false;
+
 export const SpinGachaResponse = zod.object({
   "results": zod.array(zod.object({
   "cosmetic": zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "type": zod.enum(['badge', 'border', 'background']),
+  "type": zod.enum(['badge', 'border', 'background', 'premium', 'premium_plus']),
   "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
   "value": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.number().default(spinGachaResponseResultsItemCosmeticPriceDefault),
+  "isGacha": zod.boolean().default(spinGachaResponseResultsItemCosmeticIsGachaDefault),
+  "isShop": zod.boolean().default(spinGachaResponseResultsItemCosmeticIsShopDefault),
   "createdAt": zod.string()
 }),
   "isDuplicate": zod.boolean(),
@@ -72,13 +86,20 @@ export const SpinGachaResponse = zod.object({
 /**
  * @summary Get owned cosmetics
  */
+export const listOwnedCosmeticsResponsePriceDefault = 0;
+export const listOwnedCosmeticsResponseIsGachaDefault = true;
+export const listOwnedCosmeticsResponseIsShopDefault = false;
+
 export const ListOwnedCosmeticsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "type": zod.enum(['badge', 'border', 'background']),
+  "type": zod.enum(['badge', 'border', 'background', 'premium', 'premium_plus']),
   "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
   "value": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.number().default(listOwnedCosmeticsResponsePriceDefault),
+  "isGacha": zod.boolean().default(listOwnedCosmeticsResponseIsGachaDefault),
+  "isShop": zod.boolean().default(listOwnedCosmeticsResponseIsShopDefault),
   "isEquipped": zod.boolean()
 })
 export const ListOwnedCosmeticsResponse = zod.array(ListOwnedCosmeticsResponseItem)
@@ -121,16 +142,15 @@ export const GetMeResponse = zod.object({
   "mcUsername": zod.string().nullish(),
   "diamonds": zod.number(),
   "isVerified": zod.boolean().optional(),
-  "equippedBorder": zod.string().nullish(),
-  "equippedBadge": zod.string().nullish(),
-  "equippedBackground": zod.string().nullish(),
-  "createdAt": zod.string(),
   "isSeller": zod.boolean().optional(),
-  "isBusinessVerified": zod.boolean().optional(),
   "businessName": zod.string().nullish(),
   "businessDescription": zod.string().nullish(),
   "businessAutoReply": zod.string().nullish(),
-  "hideOnlineStatus": zod.boolean().optional()
+  "hideOnlineStatus": zod.boolean().optional(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish(),
+  "createdAt": zod.string()
 })
 
 
@@ -161,16 +181,50 @@ export const UpdateMeResponse = zod.object({
   "mcUsername": zod.string().nullish(),
   "diamonds": zod.number(),
   "isVerified": zod.boolean().optional(),
-  "equippedBorder": zod.string().nullish(),
-  "equippedBadge": zod.string().nullish(),
-  "equippedBackground": zod.string().nullish(),
-  "createdAt": zod.string(),
   "isSeller": zod.boolean().optional(),
-  "isBusinessVerified": zod.boolean().optional(),
   "businessName": zod.string().nullish(),
   "businessDescription": zod.string().nullish(),
   "businessAutoReply": zod.string().nullish(),
-  "hideOnlineStatus": zod.boolean().optional()
+  "hideOnlineStatus": zod.boolean().optional(),
+  "equippedBorder": zod.string().nullish(),
+  "equippedBadge": zod.string().nullish(),
+  "equippedBackground": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get unread notifications for the current user
+ */
+export const GetMeNotificationsResponseItem = zod.object({
+  "id": zod.number(),
+  "senderName": zod.string(),
+  "senderAvatar": zod.string().nullish(),
+  "content": zod.string(),
+  "timestamp": zod.string(),
+  "conversationId": zod.number(),
+  "isRead": zod.boolean()
+})
+export const GetMeNotificationsResponse = zod.array(GetMeNotificationsResponseItem)
+
+
+/**
+ * @summary Mark all notifications as read for the current user
+ */
+export const ClearMeNotificationsResponse = zod.object({
+  "success": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Mark a specific notification as read
+ */
+export const ReadMeNotificationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ReadMeNotificationResponse = zod.object({
+  "success": zod.boolean().optional()
 })
 
 
@@ -285,12 +339,7 @@ export const ListMembersResponseItem = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
-  "isSeller": zod.boolean().optional(),
-  "isBusinessVerified": zod.boolean().optional(),
-  "businessName": zod.string().nullish(),
-  "businessDescription": zod.string().nullish(),
-  "businessAutoReply": zod.string().nullish(),
-  "hideOnlineStatus": zod.boolean().optional()
+  "pinnedAt": zod.coerce.date().nullish()
 })
 export const ListMembersResponse = zod.array(ListMembersResponseItem)
 
@@ -322,12 +371,7 @@ export const GetPublicProfileResponse = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
-  "isSeller": zod.boolean().optional(),
-  "isBusinessVerified": zod.boolean().optional(),
-  "businessName": zod.string().nullish(),
-  "businessDescription": zod.string().nullish(),
-  "businessAutoReply": zod.string().nullish(),
-  "hideOnlineStatus": zod.boolean().optional()
+  "pinnedAt": zod.coerce.date().nullish()
 })
 
 
@@ -357,7 +401,8 @@ export const GetPublicProfileFollowersResponseItem = zod.object({
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
-  "equippedBackground": zod.string().nullish()
+  "equippedBackground": zod.string().nullish(),
+  "pinnedAt": zod.coerce.date().nullish()
 })
 export const GetPublicProfileFollowersResponse = zod.array(GetPublicProfileFollowersResponseItem)
 
@@ -388,7 +433,8 @@ export const GetPublicProfileFollowingResponseItem = zod.object({
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
-  "equippedBackground": zod.string().nullish()
+  "equippedBackground": zod.string().nullish(),
+  "pinnedAt": zod.coerce.date().nullish()
 })
 export const GetPublicProfileFollowingResponse = zod.array(GetPublicProfileFollowingResponseItem)
 
@@ -450,7 +496,8 @@ export const GetMyFollowingResponseItem = zod.object({
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
-  "equippedBackground": zod.string().nullish()
+  "equippedBackground": zod.string().nullish(),
+  "pinnedAt": zod.coerce.date().nullish()
 })
 export const GetMyFollowingResponse = zod.array(GetMyFollowingResponseItem)
 
@@ -477,7 +524,8 @@ export const GetMyFollowersResponseItem = zod.object({
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
-  "equippedBackground": zod.string().nullish()
+  "equippedBackground": zod.string().nullish(),
+  "pinnedAt": zod.coerce.date().nullish()
 })
 export const GetMyFollowersResponse = zod.array(GetMyFollowersResponseItem)
 
@@ -705,6 +753,7 @@ export const AdminListConversationsResponseItem = zod.object({
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
   "bannerUrl": zod.string().nullish(),
+  "bgVideoUrl": zod.string().nullish(),
   "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
@@ -716,6 +765,8 @@ export const AdminListConversationsResponseItem = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserIsSeller": zod.boolean().optional(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
   "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
@@ -743,6 +794,7 @@ export const AdminUpdateConversationResponse = zod.object({
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
   "bannerUrl": zod.string().nullish(),
+  "bgVideoUrl": zod.string().nullish(),
   "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
@@ -754,7 +806,6 @@ export const AdminUpdateConversationResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
-  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -852,12 +903,10 @@ export const ListConversationsResponseItem = zod.object({
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
   "bannerUrl": zod.string().nullish(),
+  "bgVideoUrl": zod.string().nullish(),
   "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
-  "pinnedAt": zod.string().nullish(),
-  "archivedAt": zod.string().nullish(),
-  "bgVideoUrl": zod.string().nullish(),
   "isVerified": zod.boolean().optional(),
   "otherUserId": zod.number().nullish(),
   "otherUsername": zod.string().nullish(),
@@ -865,9 +914,9 @@ export const ListConversationsResponseItem = zod.object({
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
-  "otherUserIsBusinessVerified": zod.boolean().optional(),
-  "otherUserIsSeller": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserIsSeller": zod.boolean().optional(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
   "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
@@ -904,6 +953,7 @@ export const CreateOrGetDmResponse = zod.object({
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
   "bannerUrl": zod.string().nullish(),
+  "bgVideoUrl": zod.string().nullish(),
   "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
@@ -915,7 +965,6 @@ export const CreateOrGetDmResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
-  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -937,6 +986,7 @@ export const GetConversationResponse = zod.object({
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
   "bannerUrl": zod.string().nullish(),
+  "bgVideoUrl": zod.string().nullish(),
   "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
@@ -947,9 +997,9 @@ export const GetConversationResponse = zod.object({
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
-  "otherUserIsBusinessVerified": zod.boolean().optional(),
-  "otherUserIsSeller": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserIsSeller": zod.boolean().optional(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
   "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
@@ -987,6 +1037,7 @@ export const UpdateGroupResponse = zod.object({
   "name": zod.string().nullish(),
   "iconUrl": zod.string().nullish(),
   "bannerUrl": zod.string().nullish(),
+  "bgVideoUrl": zod.string().nullish(),
   "description": zod.string().nullish(),
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
@@ -998,7 +1049,6 @@ export const UpdateGroupResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
-  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -1054,8 +1104,6 @@ export const ListMessagesResponseItem = zod.object({
   "senderIsVerified": zod.boolean().optional(),
   "senderEquippedBorder": zod.string().nullish(),
   "starred": zod.boolean().optional(),
-  "messageType": zod.string().optional(),
-  "systemMeta": zod.string().nullish(),
   "reactions": zod.array(zod.object({
   "emoji": zod.string(),
   "count": zod.number(),
@@ -1349,6 +1397,7 @@ export const ListConversationMembersResponseItem = zod.object({
   "avatarUrl": zod.string().nullish(),
   "role": zod.string().nullish(),
   "joinedAt": zod.string(),
+  "isOnline": zod.boolean().optional(),
   "roles": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -1445,7 +1494,7 @@ export const GetMyFriendsResponseItem = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
-  "pinnedAt": zod.string().nullish()
+  "pinnedAt": zod.coerce.date().nullish()
 })
 export const GetMyFriendsResponse = zod.array(GetMyFriendsResponseItem)
 
@@ -2073,14 +2122,19 @@ export const UpdateAdminGachaSettingsResponse = zod.object({
  */
 
 
-
+export const adminCreateCosmeticBodyPriceDefault = 0;
+export const adminCreateCosmeticBodyIsGachaDefault = true;
+export const adminCreateCosmeticBodyIsShopDefault = false;
 
 export const AdminCreateCosmeticBody = zod.object({
   "name": zod.string().min(1),
-  "type": zod.enum(['badge', 'border', 'background']),
+  "type": zod.enum(['badge', 'border', 'background', 'premium', 'premium_plus']),
   "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
   "value": zod.string().min(1),
-  "description": zod.string().optional()
+  "description": zod.string().optional(),
+  "price": zod.number().default(adminCreateCosmeticBodyPriceDefault),
+  "isGacha": zod.boolean().default(adminCreateCosmeticBodyIsGachaDefault),
+  "isShop": zod.boolean().default(adminCreateCosmeticBodyIsShopDefault)
 })
 
 
@@ -2093,19 +2147,29 @@ export const AdminUpdateCosmeticParams = zod.object({
 
 export const AdminUpdateCosmeticBody = zod.object({
   "name": zod.string().optional(),
-  "type": zod.enum(['badge', 'border', 'background']).optional(),
+  "type": zod.enum(['badge', 'border', 'background', 'premium', 'premium_plus']).optional(),
   "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']).optional(),
   "value": zod.string().optional(),
-  "description": zod.string().optional()
+  "description": zod.string().optional(),
+  "price": zod.number().optional(),
+  "isGacha": zod.boolean().optional(),
+  "isShop": zod.boolean().optional()
 })
+
+export const adminUpdateCosmeticResponsePriceDefault = 0;
+export const adminUpdateCosmeticResponseIsGachaDefault = true;
+export const adminUpdateCosmeticResponseIsShopDefault = false;
 
 export const AdminUpdateCosmeticResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "type": zod.enum(['badge', 'border', 'background']),
+  "type": zod.enum(['badge', 'border', 'background', 'premium', 'premium_plus']),
   "rarity": zod.enum(['S', 'A', 'B', 'C', 'D']),
   "value": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.number().default(adminUpdateCosmeticResponsePriceDefault),
+  "isGacha": zod.boolean().default(adminUpdateCosmeticResponseIsGachaDefault),
+  "isShop": zod.boolean().default(adminUpdateCosmeticResponseIsShopDefault),
   "createdAt": zod.string()
 })
 

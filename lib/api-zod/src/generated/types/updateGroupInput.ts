@@ -22,5 +22,7 @@ export interface UpdateGroupInput {
   /** @nullable */
   bannerUrl?: string | null;
   /** @nullable */
+  bgVideoUrl?: string | null;
+  /** @nullable */
   inviteCode?: string | null;
 }

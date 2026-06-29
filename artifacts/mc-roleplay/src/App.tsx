@@ -864,7 +864,7 @@ function FriendsProtected() {
   return (
     <>
       <Show when="signed-in">
-        <Friends />
+        <Redirect to="/member?tab=guilds" />
       </Show>
       <Show when="signed-out">
         <Redirect to="/" />
@@ -873,11 +873,11 @@ function FriendsProtected() {
   );
 }
 
-function ProfileProtected() {
+function ProfileProtected({ params }: { params: { id: string } }) {
   return (
     <>
       <Show when="signed-in">
-        <Profile />
+        <Redirect to={`/member?tab=profile&id=${params.id}`} />
       </Show>
       <Show when="signed-out">
         <Redirect to="/" />

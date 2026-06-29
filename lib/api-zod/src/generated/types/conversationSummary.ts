@@ -17,6 +17,8 @@ export interface ConversationSummary {
   /** @nullable */
   bannerUrl?: string | null;
   /** @nullable */
+  bgVideoUrl?: string | null;
+  /** @nullable */
   description?: string | null;
   /** @nullable */
   ownerId?: number | null;

@@ -23,6 +23,7 @@ export const conversationMembersTable = pgTable("conversation_members", {
   joinedAt: timestamp("joined_at").notNull().defaultNow(),
   pinnedAt: timestamp("pinned_at"),
   archivedAt: timestamp("archived_at"),
+  lastReadAt: timestamp("last_read_at").notNull().defaultNow(),
 }, (t) => [unique().on(t.conversationId, t.userId)]);
 
 export type Conversation = typeof conversationsTable.$inferSelect;

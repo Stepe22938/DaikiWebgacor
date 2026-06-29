@@ -16,5 +16,8 @@ export interface Cosmetic {
   value: string;
   /** @nullable */
   description?: string | null;
+  price?: number;
+  isGacha?: boolean;
+  isShop?: boolean;
   createdAt: string;
 }

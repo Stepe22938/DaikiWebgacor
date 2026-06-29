@@ -95,6 +95,7 @@ import {
   CheckCircle2,
   XCircle,
   Video,
+  ShoppingBag,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -363,7 +364,7 @@ export default function Admin() {
   const adminUpdateConv = useAdminUpdateConversation();
 
   // Gacha & Wallet Sub-tab State
-  const [gachaSubTab, setGachaSubTab] = useState<"settings" | "registry" | "wallets">("settings");
+  const [gachaSubTab, setGachaSubTab] = useState<"settings" | "registry" | "wallets" | "quests" | "shop">("settings");
 
   // Gacha Settings Hooks & Mutation
   const { data: adminGachaSettings, isLoading: adminGachaSettingsLoading } = useGetAdminGachaSettings({
@@ -414,12 +415,15 @@ export default function Admin() {
   }, [adminGachaSettings, hasInitializedGachaSettings]);
 
   // Cosmetic Registry Form State
-  const emptyCosmetic: { name: string; type: "badge" | "border" | "background"; rarity: "S" | "A" | "B" | "C" | "D"; value: string; description: string } = {
+  const emptyCosmetic: { name: string; type: "badge" | "border" | "background" | "premium" | "premium_plus"; rarity: "S" | "A" | "B" | "C" | "D"; value: string; description: string; price: number; isGacha: boolean; isShop: boolean } = {
     name: "",
     type: "border",
     rarity: "S",
     value: "",
     description: "",
+    price: 0,
+    isGacha: true,
+    isShop: false,
   };
   const [cosmeticForm, setCosmeticForm] = useState(emptyCosmetic);
   const [editingCosmeticId, setEditingCosmeticId] = useState<number | null>(null);
@@ -432,8 +436,20 @@ export default function Admin() {
   const [walletAdjustmentAmount, setWalletAdjustmentAmount] = useState("");
   const [walletAdjustmentReason, setWalletAdjustmentReason] = useState("");
 
+
+
   const openNewCosmetic = () => {
     setCosmeticForm(emptyCosmetic);
+    setEditingCosmeticId(null);
+    setCosmeticDialogOpen(true);
+  };
+
+  const openNewShopItem = () => {
+    setCosmeticForm({
+      ...emptyCosmetic,
+      isGacha: false,
+      isShop: true,
+    });
     setEditingCosmeticId(null);
     setCosmeticDialogOpen(true);
   };
@@ -445,6 +461,9 @@ export default function Admin() {
       rarity: c.rarity,
       value: c.value,
       description: c.description ?? "",
+      price: c.price ?? 0,
+      isGacha: c.isGacha ?? true,
+      isShop: c.isShop ?? false,
     });
     setEditingCosmeticId(c.id);
     setCosmeticDialogOpen(true);
@@ -467,6 +486,9 @@ export default function Admin() {
         rarity: cosmeticForm.rarity,
         value: cosmeticForm.value.trim(),
         description: cosmeticForm.description.trim() || undefined,
+        price: cosmeticForm.price,
+        isGacha: cosmeticForm.isGacha,
+        isShop: cosmeticForm.isShop,
       };
 
       if (editingCosmeticId !== null) {
@@ -796,6 +818,86 @@ export default function Admin() {
   const [location, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState(defaultTab === "developments" ? "dashboard" : defaultTab);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Quests management state
+  const { data: adminQuests, isLoading: adminQuestsLoading, refetch: refetchAdminQuests } = useQuery<any[]>({
+    queryKey: ["/api/quests", "admin"],
+    queryFn: () => customFetch<any[]>("/api/quests"),
+    enabled: activeTab === "gacha",
+  });
+
+  const [localQuests, setLocalQuests] = useState<any[]>([]);
+  useEffect(() => {
+    if (adminQuests) {
+      setLocalQuests(adminQuests);
+    }
+  }, [adminQuests]);
+
+  const saveQuestsMutation = useMutation({
+    mutationFn: (questsArray: any[]) => customFetch<any>("/api/admin/quests", {
+      method: "POST",
+      body: JSON.stringify(questsArray),
+      headers: { "Content-Type": "application/json" }
+    }),
+    onSuccess: () => {
+      toast({ title: "Misi Disimpan!", description: "Daftar misi berhasil diperbarui di database." });
+      queryClient.invalidateQueries({ queryKey: ["/api/quests"] });
+      refetchAdminQuests();
+    },
+    onError: (err: any) => {
+      toast({ title: "Gagal Menyimpan", description: err?.message || "Terjadi kesalahan.", variant: "destructive" });
+    }
+  });
+
+  // Quest Dialog Form State
+  const emptyQuestForm = {
+    title: "",
+    desc: "",
+    target: 1,
+    reward: 100,
+    type: "chat" as "chat" | "search" | "dm" | "video",
+    videoUrl: "",
+    duration: 15,
+  };
+  const [questForm, setQuestForm] = useState(emptyQuestForm);
+  const [editingQuestId, setEditingQuestId] = useState<number | null>(null);
+  const [questDialogOpen, setQuestDialogOpen] = useState(false);
+
+  const handleSaveQuest = () => {
+    if (!questForm.title.trim()) {
+      toast({ title: "Error", description: "Title is required.", variant: "destructive" });
+      return;
+    }
+
+    let newQuests: any[];
+    if (editingQuestId !== null) {
+      newQuests = localQuests.map((q) => 
+        q.id === editingQuestId 
+          ? { ...q, title: questForm.title.trim(), desc: questForm.desc.trim(), target: questForm.target, reward: questForm.reward, type: questForm.type, videoUrl: questForm.type === "video" ? questForm.videoUrl.trim() : "", duration: questForm.type === "video" ? questForm.duration : undefined }
+          : q
+      );
+      toast({ title: "Misi Diperbarui" });
+    } else {
+      const nextId = Math.max(...localQuests.map((q) => q.id), 0) + 1;
+      newQuests = [
+        ...localQuests,
+        { id: nextId, title: questForm.title.trim(), desc: questForm.desc.trim(), target: questForm.target, reward: questForm.reward, type: questForm.type, videoUrl: questForm.type === "video" ? questForm.videoUrl.trim() : "", duration: questForm.type === "video" ? questForm.duration : undefined, claimed: false }
+      ];
+      toast({ title: "Misi Ditambahkan" });
+    }
+
+    setLocalQuests(newQuests);
+    saveQuestsMutation.mutate(newQuests);
+    setQuestDialogOpen(false);
+  };
+
+  const handleDeleteQuest = (id: number) => {
+    if (confirm("Hapus misi ini?")) {
+      const newQuests = localQuests.filter((q) => q.id !== id);
+      setLocalQuests(newQuests);
+      saveQuestsMutation.mutate(newQuests);
+    }
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2954,6 +3056,26 @@ export default function Admin() {
                 >
                   <Wallet className="w-4 h-4" /> Member Wallet Auditor
                 </button>
+                <button
+                  onClick={() => setGachaSubTab("quests" as any)}
+                  className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+                    gachaSubTab === "quests"
+                      ? "border-[#6366f1] text-[#6366f1]"
+                      : "border-transparent text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  <Trophy className="w-4 h-4" /> Quest Manager
+                </button>
+                <button
+                  onClick={() => setGachaSubTab("shop")}
+                  className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+                    gachaSubTab === "shop"
+                      ? "border-[#6366f1] text-[#6366f1]"
+                      : "border-transparent text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  <ShoppingBag className="w-4 h-4" /> Shop Manager
+                </button>
               </div>
 
               {/* Gacha Settings Inner Tab */}
@@ -3174,7 +3296,7 @@ export default function Admin() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {gachaBoard.cosmetics.map((cosmetic: any) => (
+                            {gachaBoard.cosmetics.filter((c: any) => c.isGacha).map((cosmetic: any) => (
                               <TableRow key={cosmetic.id} className="border-[#eae8f5] hover:bg-slate-50/50">
                                 <TableCell className="py-2.5">
                                   {cosmetic.type === "border" ? (
@@ -3196,19 +3318,126 @@ export default function Admin() {
                                 <TableCell className="font-extrabold text-xs text-[#110e3d]">{cosmetic.name}</TableCell>
                                 <TableCell className="text-xs text-slate-500 font-bold capitalize">{cosmetic.type}</TableCell>
                                 <TableCell>
-                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                    cosmetic.rarity === "S"
-                                      ? "bg-gradient-to-r from-red-500 to-amber-500 text-white shadow-sm"
-                                      : cosmetic.rarity === "A"
-                                      ? "bg-purple-100 text-purple-700"
-                                      : cosmetic.rarity === "B"
-                                      ? "bg-blue-100 text-blue-700"
-                                      : cosmetic.rarity === "C"
-                                      ? "bg-green-100 text-green-700"
-                                      : "bg-slate-100 text-slate-600"
-                                  }`}>
-                                    {cosmetic.rarity} Tier
-                                  </span>
+                                  <div className="flex flex-col gap-1">
+                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full w-fit ${
+                                      cosmetic.rarity === "S"
+                                        ? "bg-gradient-to-r from-red-500 to-amber-500 text-white shadow-sm"
+                                        : cosmetic.rarity === "A"
+                                        ? "bg-purple-100 text-purple-700"
+                                        : cosmetic.rarity === "B"
+                                        ? "bg-blue-100 text-blue-700"
+                                        : cosmetic.rarity === "C"
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-slate-100 text-slate-600"
+                                    }`}>
+                                      {cosmetic.rarity} Tier
+                                    </span>
+                                    <span className="text-[10px] font-extrabold text-emerald-600">
+                                      {cosmetic.price > 0 ? `${cosmetic.price} 🪙` : "Gacha Only"}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-xs text-slate-500 font-mono truncate max-w-[180px]" title={cosmetic.value}>
+                                  {cosmetic.value}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-1.5">
+                                    <Button size="sm" variant="outline" className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-[10px] font-bold rounded-xl h-7 px-3" onClick={() => openEditCosmetic(cosmetic)}>Edit</Button>
+                                    <Button size="sm" variant="outline" className="border-red-100 text-red-500 hover:bg-red-55 hover:border-red-200 text-[10px] font-bold rounded-xl h-7 px-3" onClick={() => setDeletingCosmeticId(cosmetic.id)}>Delete</Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Shop Manager Tab */}
+              {gachaSubTab === "shop" && (
+                <div className="space-y-4 animate-in fade-in-50 duration-200">
+                  <div className="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[#110e3d]">Shop Manager</h4>
+                      <p className="text-[10px] text-slate-400 font-bold mt-0.5">Maintain the list of items available in the Token Shop.</p>
+                    </div>
+                    <Button onClick={openNewShopItem} className="bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs h-9 px-4 shadow-md shadow-violet-500/5">
+                      + Register Shop Item
+                    </Button>
+                  </div>
+
+                  {gachaBoardLoading ? (
+                    <Skeleton className="h-48 w-full rounded-2xl" />
+                  ) : !gachaBoard?.cosmetics || gachaBoard.cosmetics.filter((c: any) => c.isShop).length === 0 ? (
+                    <div className="text-center py-16 text-slate-400 bg-white border border-[#eae8f5] rounded-2xl">
+                      No shop items registered. Click "+ Register Shop Item" to add.
+                    </div>
+                  ) : (
+                    <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader className="bg-[#f8f7fa]">
+                            <TableRow className="border-[#eae8f5]">
+                              <TableHead className="text-xs font-black text-[#110e3d] w-16">Preview</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d]">Name</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d] w-32">Type</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d] w-24">Rarity</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d] max-w-xs">Value / CSS Class</TableHead>
+                              <TableHead className="text-right text-xs font-black text-[#110e3d] w-40">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {gachaBoard.cosmetics.filter((c: any) => c.isShop).map((cosmetic: any) => (
+                              <TableRow key={cosmetic.id} className="border-[#eae8f5] hover:bg-slate-50/50">
+                                <TableCell className="py-2.5">
+                                  {cosmetic.type === "border" ? (
+                                    <div className="relative p-1 inline-block">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-slate-900 border border-slate-700 overflow-hidden ${cosmetic.value}`}>
+                                        <span className="text-[7px] text-slate-500 font-bold uppercase select-none">Pvw</span>
+                                      </div>
+                                    </div>
+                                  ) : cosmetic.type === "badge" ? (
+                                    <span className={`text-[9px] px-2 py-0.5 rounded font-black select-none ${cosmetic.value}`}>
+                                      Tag
+                                    </span>
+                                  ) : (cosmetic.type === "premium" || cosmetic.type === "premium_plus") ? (
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[9px] border ${
+                                      cosmetic.type === "premium_plus"
+                                        ? "bg-pink-500/15 border-pink-200 text-pink-500"
+                                        : "bg-amber-500/15 border-amber-200 text-amber-500"
+                                    }`}>
+                                      👑 {cosmetic.value}d
+                                    </div>
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shadow-sm">
+                                      <img src={cosmetic.value} alt="" className="w-full h-full object-cover animate-fade-in" onError={(e) => { (e.target as any).src = "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=100"; }} />
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell className="font-extrabold text-xs text-[#110e3d]">{cosmetic.name}</TableCell>
+                                <TableCell className="text-xs text-slate-500 font-bold capitalize">{cosmetic.type}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col gap-1">
+                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full w-fit ${
+                                      cosmetic.rarity === "S"
+                                        ? "bg-gradient-to-r from-red-500 to-amber-500 text-white shadow-sm"
+                                        : cosmetic.rarity === "A"
+                                        ? "bg-purple-100 text-purple-700"
+                                        : cosmetic.rarity === "B"
+                                        ? "bg-blue-100 text-blue-700"
+                                        : cosmetic.rarity === "C"
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-slate-100 text-slate-600"
+                                    }`}>
+                                      {cosmetic.rarity} Tier
+                                    </span>
+                                    <span className="text-[10px] font-extrabold text-emerald-600">
+                                      {cosmetic.price} 🪙
+                                    </span>
+                                  </div>
                                 </TableCell>
                                 <TableCell className="text-xs text-slate-500 font-mono truncate max-w-[180px]" title={cosmetic.value}>
                                   {cosmetic.value}
@@ -3320,6 +3549,121 @@ export default function Admin() {
                             ))}
                         </TableBody>
                       </Table>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Quest Manager Tab */}
+              {gachaSubTab === "quests" && (
+                <div className="space-y-4 animate-in fade-in-50 duration-200">
+                  <div className="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[#110e3d]">Quest Manager</h4>
+                      <p className="text-[10px] text-slate-400 font-bold mt-0.5">Kelola daftar misi harian, target pencapaian, dan hadiah Token untuk pengguna.</p>
+                    </div>
+                    <Button 
+                      onClick={() => {
+                        setQuestForm(emptyQuestForm);
+                        setEditingQuestId(null);
+                        setQuestDialogOpen(true);
+                      }}
+                      className="bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs h-9 px-4 shadow-md shadow-violet-500/5"
+                    >
+                      + Tambah Misi
+                    </Button>
+                  </div>
+
+                  {adminQuestsLoading ? (
+                    <Skeleton className="h-48 w-full rounded-2xl" />
+                  ) : localQuests.length === 0 ? (
+                    <div className="text-center py-16 text-slate-400 bg-white border border-[#eae8f5] rounded-2xl">
+                      Belum ada misi yang terdaftar. Klik "+ Tambah Misi" untuk membuat misi baru.
+                    </div>
+                  ) : (
+                    <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader className="bg-[#f8f7fa]">
+                            <TableRow className="border-[#eae8f5]">
+                              <TableHead className="text-xs font-black text-[#110e3d] w-12">ID</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d]">Judul Misi</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d]">Tipe</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d] w-24 text-center">Target</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d] w-24 text-center">Hadiah</TableHead>
+                              <TableHead className="text-xs font-black text-[#110e3d] max-w-xs">Video URL (Misi Video)</TableHead>
+                              <TableHead className="text-right text-xs font-black text-[#110e3d] w-40">Aksi</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {localQuests.map((q: any) => (
+                              <TableRow key={q.id} className="border-[#eae8f5] hover:bg-slate-50/50">
+                                <TableCell className="text-xs text-slate-400 font-bold">#{q.id}</TableCell>
+                                <TableCell>
+                                  <div>
+                                    <span className="font-extrabold text-xs text-[#110e3d]">{q.title}</span>
+                                    <p className="text-[10px] text-slate-400 font-semibold">{q.desc}</p>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                    q.type === "chat" ? "bg-blue-100 text-blue-700" :
+                                    q.type === "search" ? "bg-purple-100 text-purple-700" :
+                                    q.type === "dm" ? "bg-amber-100 text-amber-700" :
+                                    "bg-rose-100 text-rose-700"
+                                  }`}>
+                                    {q.type === "chat" ? "Kirim Pesan" :
+                                     q.type === "search" ? "Cari Obrolan" :
+                                     q.type === "dm" ? "Mulai DM" :
+                                     "Nonton Video"}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-xs text-slate-600 font-bold text-center">{q.target}</TableCell>
+                                <TableCell className="text-xs text-emerald-600 font-black text-center">{q.reward} 🪙</TableCell>
+                                <TableCell className="text-xs text-slate-400 font-mono truncate max-w-[200px]" title={q.videoUrl}>
+                                  {q.videoUrl ? (
+                                    <span>{q.videoUrl} <span className="text-rose-500 font-bold">({q.duration || 15}s)</span></span>
+                                  ) : (
+                                    <span className="text-slate-300 italic">—</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-1.5">
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline" 
+                                      className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-[10px] font-bold rounded-xl h-7 px-3"
+                                      onClick={() => {
+                                        setQuestForm({
+                                          title: q.title,
+                                          desc: q.desc || "",
+                                          target: q.target,
+                                          reward: q.reward,
+                                          type: q.type,
+                                          videoUrl: q.videoUrl || "",
+                                          duration: q.duration || 15,
+                                        });
+                                        setEditingQuestId(q.id);
+                                        setQuestDialogOpen(true);
+                                      }}
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline" 
+                                      className="border-red-100 text-red-500 hover:bg-red-55 hover:border-red-200 text-[10px] font-bold rounded-xl h-7 px-3"
+                                      onClick={() => handleDeleteQuest(q.id)}
+                                    >
+                                      Hapus
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </Card>
                   )}
                 </div>
@@ -3714,6 +4058,121 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
+      {/* Quest Dialog */}
+      <Dialog open={questDialogOpen} onOpenChange={setQuestDialogOpen}>
+        <DialogContent className="bg-white border-[#eae8f5] max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-[#110e3d] font-extrabold text-base">
+              {editingQuestId !== null ? "Edit Misi/Quest" : "Tambah Misi/Quest"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Judul Misi *</Label>
+              <Input 
+                value={questForm.title} 
+                onChange={(e) => setQuestForm({ ...questForm, title: e.target.value })} 
+                placeholder="Contoh: Chatter Pro" 
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" 
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Deskripsi Misi</Label>
+              <Textarea 
+                value={questForm.desc} 
+                onChange={(e) => setQuestForm({ ...questForm, desc: e.target.value })} 
+                placeholder="Contoh: Kirim 10 pesan di chat apa saja." 
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800" 
+                rows={3} 
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">Target Progres</Label>
+                <Input 
+                  type="number" 
+                  min={1} 
+                  value={questForm.target} 
+                  onChange={(e) => setQuestForm({ ...questForm, target: parseInt(e.target.value) || 1 })} 
+                  className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">Hadiah (Token 🪙)</Label>
+                <Input 
+                  type="number" 
+                  min={1} 
+                  value={questForm.reward} 
+                  onChange={(e) => setQuestForm({ ...questForm, reward: parseInt(e.target.value) || 1 })} 
+                  className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" 
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Tipe Misi</Label>
+              <Select 
+                value={questForm.type} 
+                onValueChange={(v) => setQuestForm({ ...questForm, type: v as any })}
+              >
+                <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-[#eae8f5] text-slate-700">
+                  <SelectItem value="chat">💬 Kirim Pesan</SelectItem>
+                  <SelectItem value="search">🔍 Cari Obrolan / Teman</SelectItem>
+                  <SelectItem value="dm">➕ Mulai DM Baru</SelectItem>
+                  <SelectItem value="video">🎥 Tonton Video (YouTube / Twitch / TikTok)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {questForm.type === "video" && (
+              <div className="grid grid-cols-3 gap-3 animate-in fade-in-50 duration-200">
+                <div className="col-span-2 space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-600">Video URL *</Label>
+                  <Input 
+                    value={questForm.videoUrl} 
+                    onChange={(e) => setQuestForm({ ...questForm, videoUrl: e.target.value })} 
+                    placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ" 
+                    className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-600">Durasi (detik) *</Label>
+                  <Input 
+                    type="number"
+                    min={5}
+                    value={questForm.duration} 
+                    onChange={(e) => setQuestForm({ ...questForm, duration: parseInt(e.target.value) || 15 })} 
+                    className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800" 
+                  />
+                </div>
+                <p className="col-span-3 text-[10px] text-slate-400 font-semibold leading-relaxed">
+                  Bisa menggunakan link YouTube/Twitch/TikTok biasa. Sistem akan mengonversinya secara otomatis.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 pt-4 border-t border-slate-50">
+            <Button 
+              variant="outline" 
+              className="border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-xs font-bold rounded-xl h-9 px-5" 
+              onClick={() => setQuestDialogOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button 
+              onClick={handleSaveQuest} 
+              className="bg-[#6366f1] text-white hover:bg-violet-600 text-xs font-bold rounded-xl h-9 px-5 shadow-md shadow-violet-500/5"
+            >
+              Simpan Misi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete project confirm dialog */}
       <Dialog open={deletingDevId !== null} onOpenChange={() => setDeletingDevId(null)}>
         <DialogContent className="bg-white border-[#eae8f5] max-w-sm rounded-2xl p-6">
@@ -4070,6 +4529,8 @@ export default function Admin() {
                     <SelectItem value="border">Avatar Border</SelectItem>
                     <SelectItem value="badge">Profile Badge</SelectItem>
                     <SelectItem value="background">Member Backdrop Card</SelectItem>
+                    <SelectItem value="premium">Premium Membership Days</SelectItem>
+                    <SelectItem value="premium_plus">Premium+ Membership Days</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -4094,6 +4555,35 @@ export default function Admin() {
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">Harga Token (🪙)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={cosmeticForm.price}
+                  onChange={(e) => setCosmeticForm({ ...cosmeticForm, price: parseInt(e.target.value) || 0 })}
+                  className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                />
+              </div>
+              <div className="space-y-3 flex flex-col justify-center">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-600">Tampilkan di Gacha</span>
+                  <Switch
+                    checked={cosmeticForm.isGacha}
+                    onCheckedChange={(checked) => setCosmeticForm({ ...cosmeticForm, isGacha: checked })}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-600">Tampilkan di Toko (Shop)</span>
+                  <Switch
+                    checked={cosmeticForm.isShop}
+                    onCheckedChange={(checked) => setCosmeticForm({ ...cosmeticForm, isShop: checked })}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600">Value (CSS class or Image URL) *</Label>
               <Input
@@ -4104,6 +4594,8 @@ export default function Admin() {
                     ? "e.g. gacha-border-golden-aura"
                     : cosmeticForm.type === "background"
                     ? "e.g. https://images.unsplash.com/..."
+                    : (cosmeticForm.type === "premium" || cosmeticForm.type === "premium_plus")
+                    ? "Jumlah hari langganan (misal: 30)"
                     : "e.g. bg-gradient-to-r from-red-500 to-amber-500 text-white"
                 }
                 className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800 font-mono"
@@ -4112,6 +4604,7 @@ export default function Admin() {
                 {cosmeticForm.type === "border" && "This key will trigger the specific CSS glow animations around avatar elements in message chats and menus."}
                 {cosmeticForm.type === "background" && "Must be a direct valid Image URL path to render behind player profile layouts."}
                 {cosmeticForm.type === "badge" && "Standard TailwindCSS utility classes defining gradients, font styling, and border details."}
+                {(cosmeticForm.type === "premium" || cosmeticForm.type === "premium_plus") && "Masukkan jumlah hari durasi Premium/Premium+ yang akan didapatkan saat dibeli (contoh: 7, 30, 90)."}
               </p>
             </div>
 

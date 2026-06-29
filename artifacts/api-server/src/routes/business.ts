@@ -480,9 +480,78 @@ router.get("/business/purchases", async (req, res): Promise<void> => {
       .from(productOrdersTable)
       .where(eq(productOrdersTable.buyerId, user.id))
       .orderBy(desc(productOrdersTable.createdAt));
-
     res.json(purchases.map(serializeDates));
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/business/orders/:id/sync - Sync order status with SayaBayar
+router.post("/business/orders/:id/sync", async (req, res): Promise<void> => {
+  try {
+    const auth = getAuth(req);
+    if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const user = await getDbUser(auth.userId);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+    const orderId = parseInt(req.params.id, 10);
+    const order = await db.query.productOrdersTable.findFirst({
+      where: eq(productOrdersTable.id, orderId),
+    });
+    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+
+    // Only the buyer or the seller can sync the order
+    if (order.buyerId !== user.id && order.sellerId !== user.id) {
+      res.status(403).json({ error: "Not authorized" }); return;
+    }
+
+    if (order.status !== "pending") {
+      res.json(serializeDates(order));
+      return;
+    }
+
+    // Get SayaBayar API Key
+    const settingsRow = await db.query.systemSettingsTable.findFirst({
+      where: eq(systemSettingsTable.key, "homepage_settings"),
+    });
+    const settings = (settingsRow?.value || {}) as any;
+    const apiKey = settings.sayabayarApiKey;
+
+    if (!apiKey) {
+      res.status(400).json({ error: "SayaBayar API Key belum dikonfigurasi di pengaturan admin." });
+      return;
+    }
+
+    // Query SayaBayar invoice status
+    const apiResponse = await fetch(`https://api.sayabayar.com/v1/invoices/${order.invoiceId}`, {
+      method: "GET",
+      headers: {
+        "X-API-Key": apiKey,
+      },
+    });
+
+    const resJson = await apiResponse.json() as any;
+    if (!apiResponse.ok) {
+      console.error("SayaBayar Order Sync API Error:", JSON.stringify(resJson, null, 2));
+      res.status(apiResponse.status).json({
+        error: resJson?.error?.message || resJson?.message || "Gagal mencocokkan invoice di SayaBayar.",
+      });
+      return;
+    }
+
+    const invoiceData = resJson.data;
+    if (invoiceData && invoiceData.status === "paid") {
+      const [updated] = await db
+        .update(productOrdersTable)
+        .set({ status: "completed", updatedAt: new Date() })
+        .where(eq(productOrdersTable.id, order.id))
+        .returning();
+      res.json(serializeDates(updated));
+    } else {
+      res.json(serializeDates(order));
+    }
+  } catch (err: any) {
+    console.error("Error in product order sync:", err);
     res.status(500).json({ error: err.message });
   }
 });
