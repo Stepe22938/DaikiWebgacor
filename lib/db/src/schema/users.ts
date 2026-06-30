@@ -26,6 +26,7 @@ export const usersTable = pgTable("users", {
   hideOnlineStatus: boolean("hide_online_status").notNull().default(false),
   businessName: varchar("business_name", { length: 100 }),
   businessDescription: text("business_description"),
+  recoveryEmail: varchar("recovery_email", { length: 255 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -33,3 +34,12 @@ export const usersTable = pgTable("users", {
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true, updatedAt: true, connectedVoiceChannelId: true, voiceJoinedAt: true, lastSeenAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof usersTable.$inferSelect;
+
+export const recoveryCodesTable = pgTable("recovery_codes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  code: varchar("code", { length: 6 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type RecoveryCode = typeof recoveryCodesTable.$inferSelect;

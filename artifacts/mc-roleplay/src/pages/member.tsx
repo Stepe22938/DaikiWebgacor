@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import Premium from "./premium";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
@@ -1145,6 +1146,7 @@ export default function Member() {
       setSellerBizDesc((user as any).businessDescription || "");
       setSellerBizAutoReply((user as any).businessAutoReply || "");
       setSellerHideOnline(!!(user as any).hideOnlineStatus);
+      setRecoveryEmail((user as any).recoveryEmail || "");
     }
   }, [user]);
   const realmName = realmSettings.realmName || "Arcadia Guild";
@@ -1161,7 +1163,7 @@ export default function Member() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "profile_edit", "credits", "settings", "gacha", "wallet", "membership", "music", "messages", "seller", "guilds"].includes(tab)) {
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "profile_edit", "credits", "settings", "gacha", "wallet", "membership", "music", "messages", "seller", "guilds", "premium"].includes(tab)) {
       setActiveTab(tab);
       if (tab === "profile") {
         const idParam = params.get("id");
@@ -1293,6 +1295,7 @@ export default function Member() {
   const [bio, setBio] = useState("");
   const [username, setUsername] = useState("");
   const [youtubeLiveUrl, setYoutubeLiveUrl] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -1301,24 +1304,34 @@ export default function Member() {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<any | null>(null);
 
   const handleSaveProfile = async () => {
-    if (!displayName.trim() && bio === "" && !username.trim() && youtubeLiveUrl === "") {
+    const isRecoveryEmailChanged = recoveryEmail.trim() !== ((user as any).recoveryEmail || "");
+
+    if (!displayName.trim() && bio === "" && !username.trim() && youtubeLiveUrl === "" && !isRecoveryEmailChanged) {
       toast({ title: "Nothing to save", description: "Fill in at least one field to update." });
       return;
     }
 
     const containsHtml = (str: string) => /<[^>]+>/.test(str);
-    if (containsHtml(displayName) || containsHtml(bio) || containsHtml(username) || containsHtml(youtubeLiveUrl)) {
+    if (containsHtml(displayName) || containsHtml(bio) || containsHtml(username) || containsHtml(youtubeLiveUrl) || containsHtml(recoveryEmail)) {
       toast({ title: "Validation Error", description: "HTML tags are not allowed in profile fields.", variant: "destructive" });
+      return;
+    }
+
+    if (recoveryEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail.trim())) {
+      toast({ title: "Validation Error", description: "Format email pemulihan tidak valid.", variant: "destructive" });
       return;
     }
 
     setSavingProfile(true);
     try {
-      const apiUpdates: { displayName?: string; bio?: string; username?: string; youtubeLiveUrl?: string } = {};
+      const apiUpdates: { displayName?: string; bio?: string; username?: string; youtubeLiveUrl?: string; recoveryEmail?: string | null } = {};
       if (displayName.trim()) apiUpdates.displayName = displayName.trim();
       if (bio !== "") apiUpdates.bio = bio;
       if (username.trim()) apiUpdates.username = username.trim();
       if (youtubeLiveUrl !== "") apiUpdates.youtubeLiveUrl = youtubeLiveUrl.trim();
+      if (isRecoveryEmailChanged) {
+        apiUpdates.recoveryEmail = recoveryEmail.trim() || null;
+      }
 
       if (Object.keys(apiUpdates).length > 0) {
         await updateMe.mutateAsync({ data: apiUpdates });
@@ -1442,8 +1455,8 @@ export default function Member() {
   return (
     <div className={`${activeTab === "messages" ? "h-[100dvh] overflow-hidden overscroll-none" : "min-h-screen"} bg-[#f4f3f8] text-[#1e1b4b] flex font-sans antialiased`}>
       {/* â”€â”€ Left Sidebar (Desktop) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <aside className="w-64 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex">
-        <div className="flex flex-col">
+      <aside className="w-64 h-screen sticky top-0 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex">
+        <div className="flex flex-col min-h-0 flex-1">
           {/* Logo Branding */}
           <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20 overflow-hidden">
@@ -1460,7 +1473,10 @@ export default function Member() {
           </Link>
 
           {/* Sidebar Links */}
-          <div className="p-4 space-y-6">
+          <div 
+            className="p-4 space-y-6 flex-1 overflow-y-auto"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
             <div className="space-y-1.5">
               <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">General</span>
               <nav className="space-y-1">
@@ -1617,12 +1633,16 @@ export default function Member() {
               <div className="space-y-1.5">
                 <span className="px-3 text-[10px] font-black text-purple-600 uppercase tracking-widest block">Premium</span>
                 <nav className="space-y-1">
-                  <Link
-                    href="/premium"
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-purple-600 hover:bg-purple-50 border border-purple-200/30 bg-purple-50/10"
+                  <button
+                    onClick={() => handleTabChange("premium")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "premium"
+                        ? "bg-purple-50 text-purple-600 border border-purple-200/30 bg-purple-50/10"
+                        : "text-slate-550 hover:bg-slate-50 hover:text-slate-900"
+                    }`}
                   >
                     <Crown className="w-4.5 h-4.5 text-purple-500" /> Premium Area
-                  </Link>
+                  </button>
                 </nav>
               </div>
             )}
@@ -1666,7 +1686,7 @@ export default function Member() {
         </div>
 
         {/* User Account / Profile Details Bottom Sidebar */}
-        <div className="p-4 border-t border-[#eae8f5] space-y-3">
+        <div className="p-4 border-t border-[#eae8f5] space-y-3 shrink-0">
           <div className="flex items-center gap-3 px-2 py-1">
             <Avatar className="h-9 w-9 border border-[#eae8f5]">
               <AvatarImage src={selfAvatarUrl} />
@@ -1840,13 +1860,16 @@ export default function Member() {
                 {user && (
                   <div className="py-2 border-t border-[#eae8f5] my-2">
                     <span className="px-3 text-[9px] font-black text-purple-600 uppercase tracking-widest block mb-1">Premium</span>
-                    <Link
-                      href="/premium"
-                      onClick={() => setMobileSidebarOpen(false)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-purple-600 hover:bg-purple-50 border border-purple-200/30 bg-purple-50/10"
+                    <button
+                      onClick={() => handleTabChangeMobile("premium")}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
+                        activeTab === "premium"
+                          ? "bg-purple-50 text-purple-600 border border-purple-200/30 bg-purple-50/10"
+                          : "text-slate-550 hover:bg-slate-50 hover:text-slate-900"
+                      }`}
                     >
                       <Crown className="w-4.5 h-4.5 text-purple-500" /> Premium Area
-                    </Link>
+                    </button>
                   </div>
                 )}
 
@@ -1911,7 +1934,7 @@ export default function Member() {
               <span>Guild Portal</span>
               <span>/</span>
               <span className={`capitalize ${activeTab === "seller" ? "text-white font-black" : "text-[#110e3d]"}`}>
-                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "membership" ? "Membership & Boost" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : activeTab === "seller" ? "Toko Saya" : "Arcadia Credits"}
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "membership" ? "Membership & Boost" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : activeTab === "seller" ? "Toko Saya" : activeTab === "premium" ? "Premium Area" : "Arcadia Credits"}
               </span>
             </div>
           </div>
@@ -2369,7 +2392,7 @@ export default function Member() {
                       placeholder={user?.username ?? ""}
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b]"
                     />
                     <p className="text-[10px] text-slate-400 font-semibold">Public handle. Multiple users can share the same display name.</p>
                   </div>
@@ -2380,7 +2403,7 @@ export default function Member() {
                       placeholder={user?.displayName ?? "Your screen name"}
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
-                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b]"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -2390,7 +2413,7 @@ export default function Member() {
                       placeholder={user?.bio ?? "Tell the realm who you are..."}
                       value={bio}
                       onChange={(e) => setBio(e.target.value)}
-                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs min-h-[80px] resize-none"
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs min-h-[80px] resize-none text-[#1e1b4b]"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -2400,9 +2423,21 @@ export default function Member() {
                       placeholder={user?.youtubeLiveUrl ?? "https://www.youtube.com/watch?v=..."}
                       value={youtubeLiveUrl}
                       onChange={(e) => setYoutubeLiveUrl(e.target.value)}
-                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b]"
                     />
                     <p className="text-[10px] text-slate-400 font-semibold">Displays as a header backdrop card in public views. Keep empty to clear.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="recoveryEmail" className="text-xs font-bold text-slate-600">Email Pemulihan</Label>
+                    <Input
+                      id="recoveryEmail"
+                      type="email"
+                      placeholder={user?.recoveryEmail ?? "email-pemulihan@example.com"}
+                      value={recoveryEmail}
+                      onChange={(e) => setRecoveryEmail(e.target.value)}
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b]"
+                    />
+                    <p className="text-[10px] text-slate-400 font-semibold">Digunakan untuk pemulihan akun secara mandiri. Email ini bersifat privat dan aman.</p>
                   </div>
                   <Button
                     onClick={handleSaveProfile}
@@ -2467,7 +2502,7 @@ export default function Member() {
                       placeholder="Min. 8 characters"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b]"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -2478,7 +2513,7 @@ export default function Member() {
                       placeholder="Repeat new password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
+                      className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b]"
                     />
                   </div>
                   <Button
@@ -2590,55 +2625,82 @@ export default function Member() {
                 </div>
               </Card>
 
-              <Card className="bg-[#0f0e17]/80 backdrop-blur-xl border border-zinc-800/80 shadow-2xl shadow-black/50 rounded-3xl overflow-hidden p-1 sm:p-4 md:p-6 transition-all duration-300 hover:border-violet-500/20">
+              <Card className="bg-gradient-to-br from-white to-slate-50/50 border-[#eae8f5] shadow-xl shadow-indigo-950/5 rounded-3xl overflow-hidden p-1 sm:p-4 md:p-6 transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-950/10 hover:border-indigo-200/60 relative">
+                {/* Glowing decorative background auras */}
+                <div className="absolute -right-24 -top-24 w-48 h-48 rounded-full bg-indigo-400/10 blur-3xl pointer-events-none" />
+                <div className="absolute -left-24 -bottom-24 w-48 h-48 rounded-full bg-violet-400/10 blur-3xl pointer-events-none" />
+
                 <UserProfile 
                   routing="hash" 
                   appearance={{
                     elements: {
-                      rootBox: "w-full",
+                      rootBox: "w-full relative z-10",
                       cardBox: "w-full shadow-none border-0 bg-transparent max-w-none flex",
                       card: "shadow-none border-0 bg-transparent w-full",
-                      navbar: "hidden md:flex bg-[#09090b] border-r border-zinc-800/80 p-6 rounded-l-2xl shrink-0 gap-1.5",
-                      pageScrollable: "p-4 sm:p-6 md:p-8 w-full !bg-[#0f0e17]",
-                      profileSectionTitleText: "!text-white !font-black !text-xs uppercase !tracking-wider",
-                      profileSectionSubtitleText: "!text-zinc-500 !text-[11px] !font-bold",
-                      headerTitle: "!text-white !font-black !text-base uppercase !tracking-wider",
-                      headerSubtitle: "!text-zinc-500 !text-xs !font-bold",
-                      formButtonPrimary: "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black text-[10px] rounded-xl py-3 px-5 shadow-lg shadow-violet-950/50 hover:shadow-violet-900/50 transition-all duration-200 uppercase tracking-widest",
-                      navbarButton: "text-zinc-400 hover:text-white hover:bg-zinc-800/50 font-black text-[11px] rounded-xl px-4 py-3.5 transition-all duration-200 uppercase tracking-wider",
-                      navbarButtonActive: "text-[#a78bfa] bg-violet-950/30 hover:bg-violet-950/30 font-black shadow-sm border-l-4 border-[#a78bfa] rounded-l-none",
-                      profileSection: "border-b border-zinc-800/80 pb-8 mb-8 last:border-0",
-                      userPreview: "bg-zinc-900/50 border border-zinc-800/60 p-6 rounded-2xl shadow-inner",
+                      navbar: "hidden md:flex bg-slate-50/80 backdrop-blur-md border-r border-[#eae8f5] p-6 rounded-l-2xl shrink-0 gap-2",
+                      pageScrollable: "p-4 sm:p-6 md:p-8 w-full bg-transparent text-[#0f172a]",
+                      
+                      // Section Titles & Headers
+                      profileSectionTitleText: "!text-slate-800 !font-black !text-xs uppercase !tracking-widest",
+                      profileSectionTitle: "!text-slate-800 !font-black !text-xs uppercase !tracking-widest",
+                      profileSectionHeader: "!text-slate-800 !font-black !text-xs uppercase !tracking-widest",
+                      profileSectionSubtitleText: "!text-slate-500 !text-[11px] !font-semibold",
+                      profileSectionSubtitle: "!text-slate-500 !text-[11px] !font-semibold",
+                      headerTitle: "!text-slate-900 !font-black !text-lg uppercase !tracking-wider",
+                      headerSubtitle: "!text-slate-500 !text-xs !font-bold",
+                      
+                      // Buttons & Navigation
+                      formButtonPrimary: "bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-extrabold text-[10px] rounded-xl py-3 px-6 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all duration-200 uppercase tracking-widest",
+                      navbarButton: "!text-slate-600 hover:!text-slate-900 hover:!bg-slate-100/80 font-bold text-[11px] rounded-xl px-4 py-3.5 transition-all duration-200 uppercase tracking-wider",
+                      navbarButtonActive: "!text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50/50 font-black shadow-sm border-l-4 border-indigo-600 rounded-l-none",
+                      
+                      // Social Buttons & Modals (Disconnect/Connect)
+                      socialButtonsBlockButtonText: "!text-slate-700 !font-extrabold !opacity-100",
+                      socialButtonsBlockButton: "!w-full !border !border-slate-250 !bg-slate-50 hover:!bg-slate-100 !text-slate-900 !shadow-sm transition-all duration-200",
+                      socialButtonsBlockButtonArrow: "!text-slate-550",
+                      
+                      // Profile & Connected Accounts Lists
+                      profileSection: "border-b border-slate-100 pb-8 mb-8 last:border-0",
+                      userPreview: "bg-gradient-to-r from-slate-50 to-indigo-50/30 border border-[#eae8f5] p-6 rounded-2xl shadow-inner",
                       userPreviewTextContainer: "ml-4",
-                      userPreviewTitle: "!text-white !font-black !text-sm",
-                      userPreviewSubtitle: "!text-zinc-500 !font-bold !text-xs",
-                      formFieldLabel: "!text-zinc-300 !font-black !text-xs uppercase !tracking-wider",
-                      formFieldInput: "!bg-zinc-950/50 !border-zinc-800 focus:!border-violet-500 focus:!ring-2 focus:!ring-violet-950/50 !text-white rounded-xl text-xs h-10 transition-all duration-200",
-                      dividerText: "!text-zinc-600 !font-bold !text-[10px] uppercase",
-                      dividerLine: "!bg-zinc-800/85",
-                      identityPreviewEditButton: "!text-[#a78bfa] hover:!text-violet-350 !font-black !text-xs transition-colors",
-                      formFieldSuccessText: "!text-emerald-400 !font-bold",
-                      alertText: "!text-red-400 !font-bold",
-                      alert: "!bg-red-950/20 !border-red-900/30 rounded-2xl p-4",
-                      otpCodeFieldInput: "!bg-zinc-950 !border-zinc-800 !text-white rounded-xl h-10",
-                      navbarTitle: "!text-white !font-black !text-xs uppercase !tracking-wider",
-                      navbarSubtitle: "!text-zinc-500 !text-[10px]",
-                      breadcrumbsItem: "!text-zinc-500 !font-bold !text-xs",
-                      breadcrumbsItemActive: "!text-white !font-black !text-xs",
-                      breadcrumbsSeparator: "!text-zinc-700",
-                      accordionTriggerButton: "!text-zinc-200 !font-bold",
-                      accordionContent: "!text-zinc-400",
+                      userPreviewTitle: "!text-slate-900 !font-extrabold !text-sm",
+                      userPreviewSubtitle: "!text-slate-500 !font-medium !text-xs",
+                      
+                      // Identity & Connected Account Previews
+                      identityPreviewText: "!text-slate-800 !font-bold",
+                      identityPreviewTitle: "!text-slate-800 !font-bold",
+                      identityPreviewSubtitle: "!text-slate-500 !font-semibold",
+                      identityPreviewEditButton: "!text-indigo-600 hover:!text-indigo-700 !font-extrabold !text-xs transition-colors",
+                      
+                      // Form Fields & Inputs
+                      formFieldLabel: "!text-slate-700 !font-extrabold !text-xs uppercase !tracking-wider",
+                      formFieldInput: "!bg-white !border-slate-250 focus:!border-indigo-500 focus:!ring-2 focus:!ring-indigo-100 !text-slate-900 rounded-xl text-xs h-10 transition-all duration-200 shadow-sm",
+                      
+                      // Dividers & Misc
+                      dividerText: "!text-slate-400 !font-extrabold !text-[10px] uppercase",
+                      dividerLine: "!bg-slate-100",
+                      formFieldSuccessText: "!text-emerald-650 !font-bold",
+                      alertText: "!text-red-650 !font-bold",
+                      alert: "!bg-red-50 !border-red-100 rounded-2xl p-4",
+                      otpCodeFieldInput: "!bg-slate-50 !border-slate-200 !text-slate-900 rounded-xl h-10",
+                      navbarTitle: "!text-slate-900 !font-black !text-xs uppercase !tracking-wider",
+                      navbarSubtitle: "!text-slate-500 !text-[10px]",
+                      breadcrumbsItem: "!text-slate-450 !font-bold !text-xs",
+                      breadcrumbsItemActive: "!text-slate-950 !font-extrabold !text-xs",
+                      breadcrumbsSeparator: "!text-slate-300",
+                      accordionTriggerButton: "!text-slate-800 !font-bold",
+                      accordionContent: "!text-slate-600",
                     },
                     variables: {
-                      colorPrimary: "#a78bfa",
-                      colorBackground: "#0f0e17",
-                      colorText: "#f4f4f5",
-                      colorTextSecondary: "#a1a1aa",
-                      colorForeground: "#f4f4f5",
-                      colorMutedForeground: "#71717a",
-                      colorInput: "#18181b",
-                      colorInputForeground: "#f4f4f5",
-                      colorNeutral: "#27272a",
+                      colorPrimary: "#6366f1",
+                      colorBackground: "#ffffff",
+                      colorText: "#0f172a",
+                      colorTextSecondary: "#475569",
+                      colorForeground: "#0f172a",
+                      colorMutedForeground: "#64748b",
+                      colorInput: "#f8fafc",
+                      colorInputForeground: "#0f172a",
+                      colorNeutral: "#cbd5e1",
                       borderRadius: "0.75rem",
                     }
                   }}
@@ -2757,6 +2819,11 @@ export default function Member() {
               </div>
               <MembershipTab />
             </div>
+          )}
+
+          {/* Premium Area Tab */}
+          {activeTab === "premium" && (
+            <Premium isTab={true} />
           )}
 
           {/* Music Player Tab */}
@@ -3409,7 +3476,7 @@ function FormsTab() {
         ))}
       </div>
       <Dialog open={selectedForm !== null} onOpenChange={(open) => { if (!open) setSelectedForm(null); }}>
-        <DialogContent className="bg-white border-[#eae8f5] max-w-lg flex flex-col max-h-[85vh] p-0 overflow-hidden rounded-2xl">
+        <DialogContent className="bg-white border-[#eae8f5] max-w-lg !flex !flex-col max-h-[85vh] !p-0 !gap-0 overflow-hidden rounded-2xl">
           {selectedForm && <FormDetailContent form={selectedForm} onClose={() => setSelectedForm(null)} />}
         </DialogContent>
       </Dialog>
@@ -3485,7 +3552,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
         <DialogTitle className="text-[#110e3d] font-extrabold text-base">{form.title}</DialogTitle>
         {form.description && <p className="text-[11px] text-slate-400 font-semibold mt-1">{form.description}</p>}
       </DialogHeader>
-      <ScrollArea className="flex-1 p-5 bg-slate-50/20">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 bg-slate-50/20" style={{ scrollbarWidth: 'thin' }}>
         {isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-10 w-full rounded-xl" />
@@ -3566,7 +3633,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
                           }
                           return opts.map((opt: string) => (
                             <button key={opt} type="button" onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: opt }))}
-                              className={`w-full text-left px-3 py-2 rounded-xl border text-xs font-bold transition-all ${formAnswers[field.id] === opt ? "border-[#6366f1] bg-violet-50/50 text-[#6366f1]" : "border-[#eae8f5] bg-white hover:border-[#6366f1]/50 text-slate-550"}`}>
+                              className={`w-full text-left px-3 py-2 rounded-xl border text-xs font-bold transition-all ${formAnswers[field.id] === opt ? "border-[#6366f1] bg-violet-50/50 text-[#6366f1]" : "border-[#eae8f5] bg-white hover:border-[#6366f1]/50 text-slate-600"}`}>
                               {opt}
                             </button>
                           ));
@@ -3581,7 +3648,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
             )}
           </div>
         )}
-      </ScrollArea>
+      </div>
       {!hasResponded && form.status === "open" && (
         <div className="p-4 border-t border-slate-100 bg-white shrink-0">
           {form.type === "poll" ? (
@@ -5498,6 +5565,7 @@ function formatIdr(amount: number) {
 }
 
 function MembershipTab() {
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -5617,12 +5685,12 @@ function MembershipTab() {
               Sekarang kamu bisa subscribe premium, atur server boost, upload sticker custom, dan pasang border/badge kosmetik langsung di halaman Premium Area.
             </p>
           </div>
-          <Link
-            href="/premium"
+          <button
+            onClick={() => setLocation("/member?tab=premium")}
             className="inline-flex shrink-0 items-center justify-center rounded-xl bg-white text-purple-700 hover:bg-purple-50 px-5 py-2.5 text-xs font-black transition-all shadow-sm"
           >
             Buka Premium Area →
-          </Link>
+          </button>
         </div>
       </div>
 

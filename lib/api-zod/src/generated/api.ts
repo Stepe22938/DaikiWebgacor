@@ -140,13 +140,9 @@ export const GetMeResponse = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "recoveryEmail": zod.string().email().nullish(),
   "diamonds": zod.number(),
   "isVerified": zod.boolean().optional(),
-  "isSeller": zod.boolean().optional(),
-  "businessName": zod.string().nullish(),
-  "businessDescription": zod.string().nullish(),
-  "businessAutoReply": zod.string().nullish(),
-  "hideOnlineStatus": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
@@ -162,7 +158,8 @@ export const UpdateMeBody = zod.object({
   "bio": zod.string().optional(),
   "youtubeLiveUrl": zod.string().optional(),
   "username": zod.string().optional(),
-  "mcUsername": zod.string().optional()
+  "mcUsername": zod.string().optional(),
+  "recoveryEmail": zod.string().email().nullish()
 })
 
 export const updateMeResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
@@ -179,13 +176,9 @@ export const UpdateMeResponse = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "recoveryEmail": zod.string().email().nullish(),
   "diamonds": zod.number(),
   "isVerified": zod.boolean().optional(),
-  "isSeller": zod.boolean().optional(),
-  "businessName": zod.string().nullish(),
-  "businessDescription": zod.string().nullish(),
-  "businessAutoReply": zod.string().nullish(),
-  "hideOnlineStatus": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
@@ -229,6 +222,35 @@ export const ReadMeNotificationResponse = zod.object({
 
 
 /**
+ * @summary Request account recovery OTP via recovery email
+ */
+export const RequestRecoveryBody = zod.object({
+  "email": zod.string().email()
+})
+
+export const RequestRecoveryResponse = zod.object({
+  "success": zod.boolean(),
+  "message": zod.string(),
+  "code": zod.string().optional()
+})
+
+
+/**
+ * @summary Verify recovery OTP and get a Clerk sign-in link
+ */
+export const VerifyRecoveryBody = zod.object({
+  "email": zod.string().email(),
+  "code": zod.string()
+})
+
+export const VerifyRecoveryResponse = zod.object({
+  "success": zod.boolean(),
+  "token": zod.string(),
+  "url": zod.string()
+})
+
+
+/**
  * @summary List all users (admin only)
  */
 export const listUsersResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
@@ -245,6 +267,7 @@ export const ListUsersResponseItem = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "recoveryEmail": zod.string().email().nullish(),
   "diamonds": zod.number(),
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
@@ -272,6 +295,7 @@ export const ListSwitchableUsersResponseItem = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "recoveryEmail": zod.string().email().nullish(),
   "diamonds": zod.number(),
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
@@ -307,6 +331,7 @@ export const UpdateUserRoleResponse = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "recoveryEmail": zod.string().email().nullish(),
   "diamonds": zod.number(),
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
@@ -765,9 +790,6 @@ export const AdminListConversationsResponseItem = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
-  "otherUserIsSeller": zod.boolean().optional(),
-  "otherUserIsBusinessVerified": zod.boolean().optional(),
-  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -828,7 +850,8 @@ export const AdminUpdateUserBody = zod.object({
   "youtubeLiveUrl": zod.string().optional(),
   "role": zod.enum(['member', 'premium', 'premium_plus', 'admin', 'staff', 'dev', 'dev_website', 'bot', 'ai']).optional(),
   "mcUsername": zod.string().optional(),
-  "isVerified": zod.boolean().optional()
+  "isVerified": zod.boolean().optional(),
+  "recoveryEmail": zod.string().email().nullish()
 })
 
 export const adminUpdateUserResponseUserTagRegExp = new RegExp('^#[0-9]{3,}$');
@@ -845,6 +868,7 @@ export const AdminUpdateUserResponse = zod.object({
   "bio": zod.string().nullish(),
   "youtubeLiveUrl": zod.string().nullish(),
   "mcUsername": zod.string().nullish(),
+  "recoveryEmail": zod.string().email().nullish(),
   "diamonds": zod.number(),
   "isVerified": zod.boolean().optional(),
   "equippedBorder": zod.string().nullish(),
@@ -915,9 +939,6 @@ export const ListConversationsResponseItem = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
-  "otherUserIsSeller": zod.boolean().optional(),
-  "otherUserIsBusinessVerified": zod.boolean().optional(),
-  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -998,9 +1019,6 @@ export const GetConversationResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
-  "otherUserIsSeller": zod.boolean().optional(),
-  "otherUserIsBusinessVerified": zod.boolean().optional(),
-  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),

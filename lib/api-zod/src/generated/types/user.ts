@@ -24,6 +24,8 @@ export interface User {
   youtubeLiveUrl?: string | null;
   /** @nullable */
   mcUsername?: string | null;
+  /** @nullable */
+  recoveryEmail?: string | null;
   diamonds: number;
   isVerified?: boolean;
   /** @nullable */

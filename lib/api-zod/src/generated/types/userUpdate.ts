@@ -12,4 +12,6 @@ export interface UserUpdate {
   youtubeLiveUrl?: string;
   username?: string;
   mcUsername?: string;
+  /** @nullable */
+  recoveryEmail?: string | null;
 }

@@ -71,6 +71,8 @@ import type {
   PublicUser,
   ReactMessageInput,
   ReadMeNotification200,
+  RequestRecoveryInput,
+  RequestRecoveryResult,
   SendMessageInput,
   SendTicketMessageInput,
   ServerStats,
@@ -92,6 +94,8 @@ import type {
   UserSettings,
   UserSettingsUpdate,
   UserUpdate,
+  VerifyRecoveryInput,
+  VerifyRecoveryResult,
   WalletTransaction
 } from './api.schemas';
 
@@ -914,6 +918,148 @@ export const useReadMeNotification = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getReadMeNotificationMutationOptions(options));
+    }
+
+export const getRequestRecoveryUrl = () => {
+
+
+
+
+  return `/api/users/recovery/request`
+}
+
+/**
+ * @summary Request account recovery OTP via recovery email
+ */
+export const requestRecovery = async (requestRecoveryInput: RequestRecoveryInput, options?: RequestInit): Promise<RequestRecoveryResult> => {
+
+  return customFetch<RequestRecoveryResult>(getRequestRecoveryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      requestRecoveryInput,)
+  }
+);}
+
+
+
+
+export const getRequestRecoveryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestRecovery>>, TError,{data: BodyType<RequestRecoveryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestRecovery>>, TError,{data: BodyType<RequestRecoveryInput>}, TContext> => {
+
+const mutationKey = ['requestRecovery'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestRecovery>>, {data: BodyType<RequestRecoveryInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestRecovery(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestRecoveryMutationResult = NonNullable<Awaited<ReturnType<typeof requestRecovery>>>
+    export type RequestRecoveryMutationBody = BodyType<RequestRecoveryInput>
+    export type RequestRecoveryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Request account recovery OTP via recovery email
+ */
+export const useRequestRecovery = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestRecovery>>, TError,{data: BodyType<RequestRecoveryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestRecovery>>,
+        TError,
+        {data: BodyType<RequestRecoveryInput>},
+        TContext
+      > => {
+      return useMutation(getRequestRecoveryMutationOptions(options));
+    }
+
+export const getVerifyRecoveryUrl = () => {
+
+
+
+
+  return `/api/users/recovery/verify`
+}
+
+/**
+ * @summary Verify recovery OTP and get a Clerk sign-in link
+ */
+export const verifyRecovery = async (verifyRecoveryInput: VerifyRecoveryInput, options?: RequestInit): Promise<VerifyRecoveryResult> => {
+
+  return customFetch<VerifyRecoveryResult>(getVerifyRecoveryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      verifyRecoveryInput,)
+  }
+);}
+
+
+
+
+export const getVerifyRecoveryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyRecovery>>, TError,{data: BodyType<VerifyRecoveryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyRecovery>>, TError,{data: BodyType<VerifyRecoveryInput>}, TContext> => {
+
+const mutationKey = ['verifyRecovery'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyRecovery>>, {data: BodyType<VerifyRecoveryInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  verifyRecovery(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyRecoveryMutationResult = NonNullable<Awaited<ReturnType<typeof verifyRecovery>>>
+    export type VerifyRecoveryMutationBody = BodyType<VerifyRecoveryInput>
+    export type VerifyRecoveryMutationError = ErrorType<void>
+
+    /**
+ * @summary Verify recovery OTP and get a Clerk sign-in link
+ */
+export const useVerifyRecovery = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyRecovery>>, TError,{data: BodyType<VerifyRecoveryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifyRecovery>>,
+        TError,
+        {data: BodyType<VerifyRecoveryInput>},
+        TContext
+      > => {
+      return useMutation(getVerifyRecoveryMutationOptions(options));
     }
 
 export const getListUsersUrl = () => {

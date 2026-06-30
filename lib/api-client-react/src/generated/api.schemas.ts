@@ -52,6 +52,8 @@ export interface User {
   youtubeLiveUrl?: string | null;
   /** @nullable */
   mcUsername?: string | null;
+  /** @nullable */
+  recoveryEmail?: string | null;
   diamonds: number;
   isVerified?: boolean;
   /** @nullable */
@@ -69,6 +71,29 @@ export interface UserUpdate {
   youtubeLiveUrl?: string;
   username?: string;
   mcUsername?: string;
+  /** @nullable */
+  recoveryEmail?: string | null;
+}
+
+export interface RequestRecoveryInput {
+  email: string;
+}
+
+export interface RequestRecoveryResult {
+  success: boolean;
+  message: string;
+  code?: string;
+}
+
+export interface VerifyRecoveryInput {
+  email: string;
+  code: string;
+}
+
+export interface VerifyRecoveryResult {
+  success: boolean;
+  token: string;
+  url: string;
 }
 
 export type UserRoleUpdateRole = typeof UserRoleUpdateRole[keyof typeof UserRoleUpdateRole];
@@ -175,6 +200,8 @@ export interface AdminUserUpdate {
   role?: AdminUserUpdateRole;
   mcUsername?: string;
   isVerified?: boolean;
+  /** @nullable */
+  recoveryEmail?: string | null;
 }
 
 export interface AdminConversationUpdate {

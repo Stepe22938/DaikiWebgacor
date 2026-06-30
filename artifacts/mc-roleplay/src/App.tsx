@@ -5,7 +5,7 @@ import { MultisessionAppSupport } from "@clerk/react/internal";
 import { useSignUp } from "@clerk/react/legacy";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
-import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from "wouter";
+import { Switch, Route, useLocation, Router as WouterRouter, Redirect, Link } from "wouter";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -19,6 +19,7 @@ import Messages from "@/pages/messages";
 import Premium from "@/pages/premium";
 import NotFound from "@/pages/not-found";
 import AddFriendPage from "@/pages/add-friend";
+import RecoveryPage from "@/pages/recovery";
 
 
 const isLocal = window.location.hostname === "localhost" ||
@@ -553,6 +554,11 @@ function AuthPageLayout({ mode }: { mode: "sign-in" | "sign-up" }) {
               }}
             />
           </div>
+          <div className="mt-4 text-center">
+            <Link to="/recovery" className="text-xs font-bold text-violet-400 hover:text-violet-300 hover:underline transition-colors">
+              Masuk pakai Email Pemulihan Akun
+            </Link>
+          </div>
         </div>
 
         {/* Sign Up Form Container */}
@@ -679,6 +685,11 @@ function AuthPageLayout({ mode }: { mode: "sign-in" | "sign-up" }) {
                     oidcPrompt="login select_account consent"
                   />
                 )}
+              </div>
+              <div className="mt-4 text-center border-t border-white/5 pt-3">
+                <Link to="/recovery" className="text-xs font-bold text-violet-400 hover:text-violet-300 hover:underline transition-colors">
+                  Masuk pakai Email Pemulihan Akun
+                </Link>
               </div>
             </div>
           </div>
@@ -903,7 +914,7 @@ function PremiumProtected() {
   return (
     <>
       <Show when="signed-in">
-        <Premium />
+        <Redirect to="/member?tab=premium" />
       </Show>
       <Show when="signed-out">
         <Redirect to="/" />
@@ -985,6 +996,7 @@ function ClerkProviderWithRoutes() {
             <Switch>
               <Route path="/" component={HomeRedirect} />
               <Route path="/member" component={MemberProtected} />
+              <Route path="/recovery" component={RecoveryPage} />
               <Route path="/admin" component={AdminProtected} />
               <Route path="/friends" component={FriendsProtected} />
               <Route path="/profile/:id" component={ProfileProtected} />

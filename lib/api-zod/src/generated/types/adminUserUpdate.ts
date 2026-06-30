@@ -15,4 +15,6 @@ export interface AdminUserUpdate {
   role?: AdminUserUpdateRole;
   mcUsername?: string;
   isVerified?: boolean;
+  /** @nullable */
+  recoveryEmail?: string | null;
 }

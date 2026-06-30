@@ -216,6 +216,46 @@ paths:
                   success:
                     type: boolean
 
+  /users/recovery/request:
+    post:
+      operationId: requestRecovery
+      tags: [users]
+      summary: Request account recovery OTP via recovery email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestRecoveryInput"
+      responses:
+        "200":
+          description: OTP requested successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestRecoveryResult"
+
+  /users/recovery/verify:
+    post:
+      operationId: verifyRecovery
+      tags: [users]
+      summary: Verify recovery OTP and get a Clerk sign-in link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyRecoveryInput"
+      responses:
+        "200":
+          description: OTP verified successfully, returns sign-in link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyRecoveryResult"
+        "400":
+          description: Invalid or expired OTP code
+
   /users:
     get:
       operationId: listUsers
@@ -1917,6 +1957,9 @@ components:
           type: ["string", "null"]
         mcUsername:
           type: ["string", "null"]
+        recoveryEmail:
+          type: ["string", "null"]
+          format: email
         diamonds:
           type: integer
         isVerified:
@@ -1943,7 +1986,50 @@ components:
           type: string
         mcUsername:
           type: string
+        recoveryEmail:
+          type: ["string", "null"]
+          format: email
  
+    RequestRecoveryInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    RequestRecoveryResult:
+      type: object
+      required: [success, message]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        code:
+          type: string
+
+    VerifyRecoveryInput:
+      type: object
+      required: [email, code]
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+
+    VerifyRecoveryResult:
+      type: object
+      required: [success, token, url]
+      properties:
+        success:
+          type: boolean
+        token:
+          type: string
+        url:
+          type: string
+
     UserRoleUpdate:
       type: object
       required: [role]
@@ -2039,6 +2125,9 @@ components:
           type: string
         isVerified:
           type: boolean
+        recoveryEmail:
+          type: ["string", "null"]
+          format: email
 
     AdminConversationUpdate:
       type: object

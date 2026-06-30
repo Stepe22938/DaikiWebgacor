@@ -24,6 +24,23 @@ async function getDbUser(clerkId: string) {
 }
 
 async function userCanAccessDriveFile(fileId: string, userId: number) {
+  // 1. Check if the user is the owner of the uploaded file
+  const ownFile = await db
+    .select({ id: storageObjectsTable.id })
+    .from(storageObjectsTable)
+    .where(
+      and(
+        eq(storageObjectsTable.providerFileId, fileId),
+        eq(storageObjectsTable.ownerUserId, userId)
+      )
+    )
+    .limit(1);
+
+  if (ownFile.length > 0) {
+    return true;
+  }
+
+  // 2. Check if the file is attached to a message in a conversation the user is a member of
   const rows = await db
     .select({ conversationId: messagesTable.conversationId })
     .from(messagesTable)

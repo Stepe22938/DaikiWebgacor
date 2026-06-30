@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { clerkClient } from "@clerk/express";
-import { asc, eq, sql, and, inArray, or, ilike, desc } from "drizzle-orm";
+import { asc, eq, sql, and, inArray, or, ilike, desc, gt } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -12,6 +12,7 @@ import {
   rolesTable,
   memberRolesTable,
   notificationsTable,
+  recoveryCodesTable,
 } from "@workspace/db";
 import { getAuth } from "../lib/auth";
 import { serializeDates } from "../lib/serialize";
@@ -79,6 +80,10 @@ import {
   GetMySettingsResponse,
   UpdateMySettingsBody,
   UpdateMySettingsResponse,
+  RequestRecoveryBody,
+  RequestRecoveryResponse,
+  VerifyRecoveryBody,
+  VerifyRecoveryResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -352,7 +357,8 @@ router.patch("/me", async (req, res): Promise<void> => {
     containsHtml(parsed.data.username) ||
     containsHtml(parsed.data.displayName) ||
     containsHtml(parsed.data.bio) ||
-    containsHtml(parsed.data.youtubeLiveUrl)
+    containsHtml(parsed.data.youtubeLiveUrl) ||
+    containsHtml(parsed.data.recoveryEmail)
   ) {
     res.status(400).json({ error: "HTML tags are not allowed in profile fields." });
     return;
@@ -614,7 +620,8 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
     containsHtml(body.data.displayName) ||
     containsHtml(body.data.bio) ||
     containsHtml(body.data.youtubeLiveUrl) ||
-    containsHtml(body.data.mcUsername)
+    containsHtml(body.data.mcUsername) ||
+    containsHtml(body.data.recoveryEmail)
   ) {
     res.status(400).json({ error: "HTML tags are not allowed in profile fields." });
     return;
@@ -635,6 +642,7 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
   if (body.data.role !== undefined) updateData.role = body.data.role;
   if (body.data.mcUsername !== undefined) updateData.mcUsername = body.data.mcUsername;
   if (body.data.isVerified !== undefined) updateData.isVerified = body.data.isVerified;
+  if (body.data.recoveryEmail !== undefined) updateData.recoveryEmail = body.data.recoveryEmail;
 
   const [updated] = await db.update(usersTable)
     .set(updateData)
@@ -791,6 +799,103 @@ router.post("/me/notifications/:id/read", async (req, res): Promise<void> => {
     res.json({ success: true });
   } catch (err) {
     console.error("Failed to mark notification as read:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/users/recovery/request", async (req, res): Promise<void> => {
+  const parsed = RequestRecoveryBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const email = parsed.data.email.trim().toLowerCase();
+  
+  try {
+    const user = await db.query.usersTable.findFirst({
+      where: eq(sql`lower(${usersTable.recoveryEmail})`, email),
+    });
+
+    if (!user) {
+      res.status(404).json({ error: "Email pemulihan tidak terdaftar." });
+      return;
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await db.delete(recoveryCodesTable).where(eq(recoveryCodesTable.userId, user.id));
+
+    await db.insert(recoveryCodesTable).values({
+      userId: user.id,
+      code,
+      expiresAt,
+    });
+
+    console.log(`\n==========================================`);
+    console.log(`RECOVERY OTP FOR @${user.username} (${email}): ${code}`);
+    console.log(`==========================================\n`);
+
+    const isDev = process.env.NODE_ENV !== "production";
+    res.json(RequestRecoveryResponse.parse({
+      success: true,
+      message: "Kode OTP pemulihan telah dikirim ke email pemulihan Anda.",
+      code: isDev ? code : undefined,
+    }));
+  } catch (err: any) {
+    console.error("Failed to request recovery:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/users/recovery/verify", async (req, res): Promise<void> => {
+  const parsed = VerifyRecoveryBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const email = parsed.data.email.trim().toLowerCase();
+  const code = parsed.data.code.trim();
+
+  try {
+    const user = await db.query.usersTable.findFirst({
+      where: eq(sql`lower(${usersTable.recoveryEmail})`, email),
+    });
+
+    if (!user) {
+      res.status(404).json({ error: "Email pemulihan tidak terdaftar." });
+      return;
+    }
+
+    const recoveryCode = await db.query.recoveryCodesTable.findFirst({
+      where: and(
+        eq(recoveryCodesTable.userId, user.id),
+        eq(recoveryCodesTable.code, code),
+        gt(recoveryCodesTable.expiresAt, new Date())
+      ),
+    });
+
+    if (!recoveryCode) {
+      res.status(400).json({ error: "Kode OTP salah atau telah kedaluwarsa." });
+      return;
+    }
+
+    await db.delete(recoveryCodesTable).where(eq(recoveryCodesTable.id, recoveryCode.id));
+
+    const token = await clerkClient.signInTokens.createSignInToken({
+      userId: user.clerkId,
+      expiresInSeconds: 604800,
+    });
+
+    res.json(VerifyRecoveryResponse.parse({
+      success: true,
+      token: token.token,
+      url: token.url,
+    }));
+  } catch (err: any) {
+    console.error("Failed to verify recovery:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -77,7 +77,17 @@ function getCosmeticBadgeName(value: string | null | undefined) {
   return "Custom Tag";
 }
 
-export default function Premium() {
+const ConditionalWrapper = ({ 
+  condition, 
+  wrapper, 
+  children 
+}: { 
+  condition: boolean; 
+  wrapper: (children: React.ReactNode) => React.JSX.Element; 
+  children: React.ReactNode 
+}) => (condition ? wrapper(children) : <>{children}</>);
+
+export default function Premium({ isTab = false }: { isTab?: boolean }) {
   const { data: me, isLoading: meLoading } = useGetMe();
   const { signOut } = useClerk();
   const [, setLocation] = useLocation();
@@ -469,243 +479,250 @@ export default function Premium() {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[#f7f6fa] text-[#1e1b4b] flex font-sans antialiased">
-      {/* ── Left Sidebar (Desktop) ────────────────────────────────────────── */}
-      <aside className="w-64 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex">
-        <div className="flex flex-col">
-          {/* Logo Branding */}
-          <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20 overflow-hidden">
-              {realmLogoUrl ? (
-                <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
-              ) : (
-                realmName.slice(0, 1).toUpperCase()
-              )}
-            </div>
-            <div>
-              <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
-              <span className="text-[10px] text-purple-500 font-bold uppercase tracking-wider">Premium Hub</span>
-            </div>
-          </Link>
+    <ConditionalWrapper
+      condition={!isTab}
+      wrapper={(children) => (
+        <div className="min-h-screen bg-[#f7f6fa] text-[#1e1b4b] flex font-sans antialiased">
+          {/* ── Left Sidebar (Desktop) ────────────────────────────────────────── */}
+          <aside className="w-64 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex">
+            <div className="flex flex-col">
+              {/* Logo Branding */}
+              <Link href="/" className="p-6 border-b border-[#eae8f5] flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-violet-500/20 overflow-hidden">
+                  {realmLogoUrl ? (
+                    <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+                  ) : (
+                    realmName.slice(0, 1).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
+                  <span className="text-[10px] text-purple-500 font-bold uppercase tracking-wider">Premium Hub</span>
+                </div>
+              </Link>
 
-          {/* Sidebar Links */}
-          <div className="p-4 space-y-6">
-            <div className="space-y-1.5">
-              <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">General</span>
-              <nav className="space-y-1">
-                <Link
-                  href="/member?tab=dashboard"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
-                >
-                  <LayoutGrid className="w-4.5 h-4.5" /> Dashboard
-                </Link>
-                <Link
-                  href="/member?tab=announcements"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
-                >
-                  <Megaphone className="w-4.5 h-4.5" /> Town Crier
-                </Link>
-                <Link
-                  href="/member?tab=developments"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
-                >
-                  <Hammer className="w-4.5 h-4.5" /> The Forge
-                </Link>
-                <Link
-                  href="/member?tab=tickets"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
-                >
-                  <Ticket className="w-4.5 h-4.5" /> Support Tickets
-                </Link>
-                <Link
-                  href="/member?tab=forms"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
-                >
-                  <ClipboardList className="w-4.5 h-4.5" /> Voting & Forms
-                </Link>
-                <Link
-                  href="/member?tab=membership"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
-                >
-                  <Activity className="w-4.5 h-4.5 text-cyan-500" /> Membership & Boost
-                </Link>
-              </nav>
-            </div>
+              {/* Sidebar Links */}
+              <div className="p-4 space-y-6">
+                <div className="space-y-1.5">
+                  <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">General</span>
+                  <nav className="space-y-1">
+                    <Link
+                      href="/member?tab=dashboard"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    >
+                      <LayoutGrid className="w-4.5 h-4.5" /> Dashboard
+                    </Link>
+                    <Link
+                      href="/member?tab=announcements"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    >
+                      <Megaphone className="w-4.5 h-4.5" /> Town Crier
+                    </Link>
+                    <Link
+                      href="/member?tab=developments"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    >
+                      <Hammer className="w-4.5 h-4.5" /> The Forge
+                    </Link>
+                    <Link
+                      href="/member?tab=tickets"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    >
+                      <Ticket className="w-4.5 h-4.5" /> Support Tickets
+                    </Link>
+                    <Link
+                      href="/member?tab=forms"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    >
+                      <ClipboardList className="w-4.5 h-4.5" /> Voting & Forms
+                    </Link>
+                    <Link
+                      href="/member?tab=membership"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    >
+                      <Activity className="w-4.5 h-4.5 text-cyan-500" /> Membership & Boost
+                    </Link>
+                  </nav>
+                </div>
 
-            <div className="space-y-1.5">
-              <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">Social</span>
-              <nav className="space-y-1">
-                <Link
-                  href="/"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
-                >
-                  <Home className="w-4.5 h-4.5" /> Home Page
-                </Link>
-                <Link
-                  href="/member?tab=messages"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
-                >
-                  <MessageSquare className="w-4.5 h-4.5" /> Messages
-                </Link>
-                <Link
-                  href="/friends"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
-                >
-                  <Users className="w-4.5 h-4.5" /> Guilds
-                </Link>
-              </nav>
-            </div>
+                <div className="space-y-1.5">
+                  <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest block">Social</span>
+                  <nav className="space-y-1">
+                    <Link
+                      href="/"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    >
+                      <Home className="w-4.5 h-4.5" /> Home Page
+                    </Link>
+                    <Link
+                      href="/member?tab=messages"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    >
+                      <MessageSquare className="w-4.5 h-4.5" /> Messages
+                    </Link>
+                    <Link
+                      href="/friends"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    >
+                      <Users className="w-4.5 h-4.5" /> Guilds
+                    </Link>
+                  </nav>
+                </div>
 
-            <div className="space-y-1.5">
-              <span className="px-3 text-[10px] font-black text-purple-600 uppercase tracking-widest block">Premium</span>
-              <nav className="space-y-1">
-                <Link
-                  href="/premium"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-600 border border-purple-200/30 transition-all"
-                >
-                  <Sparkles className="w-4.5 h-4.5 text-purple-500 animate-pulse" /> Premium Area
-                </Link>
-              </nav>
-            </div>
-          </div>
-        </div>
-
-        {/* User Account Details Bottom Sidebar */}
-        <div className="p-4 border-t border-[#eae8f5] space-y-3">
-          <div className="flex items-center gap-3 px-2 py-1">
-            <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${me?.equippedBorder ? me.equippedBorder : "border border-[#eae8f5]"}`}>
-              <Avatar className="h-9 w-9 shrink-0">
-                <AvatarImage src={me?.avatarUrl || undefined} />
-                <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
-                  {getInitials(me?.displayName || me?.username)}
-                </AvatarFallback>
-              </Avatar>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-[#110e3d] truncate">{me?.displayName || me?.username}</p>
-              <p className="text-[10px] text-slate-400 font-bold capitalize">{me?.role?.replace('_', ' ') || "Member"}</p>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            onClick={() => signOut({ redirectUrl: "/" })}
-            className="w-full justify-start gap-3 text-slate-500 hover:text-[#ef4444] hover:bg-red-50 rounded-xl py-2 px-3 text-xs font-bold h-9"
-          >
-            <LogOut className="w-4.5 h-4.5 text-[#ef4444]" /> Log out
-          </Button>
-        </div>
-      </aside>
-
-      {/* ── Mobile Sidebar Drawer ────────────────────────────────────────── */}
-      {mobileSidebarOpen && (
-        <div className="fixed inset-0 z-50 flex md:hidden bg-black/40 backdrop-blur-sm">
-          <div className="w-64 bg-white flex flex-col justify-between p-4 shadow-2xl animate-slide-in">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-[#eae8f5]">
-                <Link href="/" onClick={() => setMobileSidebarOpen(false)} className="flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
-                  <div className="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center text-white font-black overflow-hidden shadow-md">
-                    {realmLogoUrl ? (
-                      <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
-                    ) : (
-                      realmName.slice(0, 1).toUpperCase()
-                    )}
-                  </div>
-                  <div>
-                    <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
-                    <span className="text-[10px] text-purple-500 font-bold">Premium Area</span>
-                  </div>
-                </Link>
-                <Button variant="ghost" size="sm" onClick={() => setMobileSidebarOpen(false)} className="text-slate-400 hover:text-[#110e3d]">✕</Button>
+                <div className="space-y-1.5">
+                  <span className="px-3 text-[10px] font-black text-purple-600 uppercase tracking-widest block">Premium</span>
+                  <nav className="space-y-1">
+                    <Link
+                      href="/premium"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-600 border border-purple-200/30 transition-all"
+                    >
+                      <Sparkles className="w-4.5 h-4.5 text-purple-500 animate-pulse" /> Premium Area
+                    </Link>
+                  </nav>
+                </div>
               </div>
-
-              <nav className="space-y-1">
-                <Link
-                  href="/member?tab=dashboard"
-                  onClick={() => setMobileSidebarOpen(false)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all"
-                >
-                  <LayoutGrid className="w-4.5 h-4.5" /> Dashboard
-                </Link>
-                <Link
-                  href="/member?tab=membership"
-                  onClick={() => setMobileSidebarOpen(false)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all"
-                >
-                  <Activity className="w-4.5 h-4.5 text-cyan-500" /> Membership & Boost
-                </Link>
-                <Link
-                  href="/friends"
-                  onClick={() => setMobileSidebarOpen(false)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all"
-                >
-                  <Users className="w-4.5 h-4.5" /> Guilds
-                </Link>
-                <Link
-                  href="/premium"
-                  onClick={() => setMobileSidebarOpen(false)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-600 border border-purple-200/30 transition-all"
-                >
-                  <Sparkles className="w-4.5 h-4.5 text-purple-500 animate-pulse" /> Premium Area
-                </Link>
-              </nav>
             </div>
 
-            <div className="p-4 border-t border-[#eae8f5]">
+            {/* User Account Details Bottom Sidebar */}
+            <div className="p-4 border-t border-[#eae8f5] space-y-3">
+              <div className="flex items-center gap-3 px-2 py-1">
+                <div className={`rounded-full shrink-0 flex items-center justify-center p-0.5 overflow-visible ${me?.equippedBorder ? me.equippedBorder : "border border-[#eae8f5]"}`}>
+                  <Avatar className="h-9 w-9 shrink-0">
+                    <AvatarImage src={me?.avatarUrl || undefined} />
+                    <AvatarFallback className="text-xs bg-slate-100 font-extrabold text-[#6366f1]">
+                      {getInitials(me?.displayName || me?.username)}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-[#110e3d] truncate">{me?.displayName || me?.username}</p>
+                  <p className="text-[10px] text-slate-400 font-bold capitalize">{me?.role?.replace('_', ' ') || "Member"}</p>
+                </div>
+              </div>
               <Button
                 variant="ghost"
                 onClick={() => signOut({ redirectUrl: "/" })}
-                className="w-full justify-start gap-3 text-[#ef4444] hover:bg-red-50 rounded-xl py-2 px-3 text-xs font-bold h-9"
+                className="w-full justify-start gap-3 text-slate-500 hover:text-[#ef4444] hover:bg-red-50 rounded-xl py-2 px-3 text-xs font-bold h-9"
               >
-                <LogOut className="w-4.5 h-4.5" /> Log out
+                <LogOut className="w-4.5 h-4.5 text-[#ef4444]" /> Log out
               </Button>
             </div>
-          </div>
+          </aside>
+
+          {/* ── Mobile Sidebar Drawer ────────────────────────────────────────── */}
+          {mobileSidebarOpen && (
+            <div className="fixed inset-0 z-50 flex md:hidden bg-black/40 backdrop-blur-sm">
+              <div className="w-64 bg-white flex flex-col justify-between p-4 shadow-2xl animate-slide-in">
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between pb-4 border-b border-[#eae8f5]">
+                    <Link href="/" onClick={() => setMobileSidebarOpen(false)} className="flex items-center gap-3 hover:opacity-85 transition-opacity cursor-pointer">
+                      <div className="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center text-white font-black overflow-hidden shadow-md">
+                        {realmLogoUrl ? (
+                          <img src={realmLogoUrl} alt={realmName} className="h-full w-full object-cover" />
+                        ) : (
+                          realmName.slice(0, 1).toUpperCase()
+                        )}
+                      </div>
+                      <div>
+                        <h2 className="font-extrabold text-sm text-[#110e3d] leading-none">{realmName}</h2>
+                        <span className="text-[10px] text-purple-500 font-bold">Premium Area</span>
+                      </div>
+                    </Link>
+                    <Button variant="ghost" size="sm" onClick={() => setMobileSidebarOpen(false)} className="text-slate-400 hover:text-[#110e3d]">✕</Button>
+                  </div>
+
+                  <nav className="space-y-1">
+                    <Link
+                      href="/member?tab=dashboard"
+                      onClick={() => setMobileSidebarOpen(false)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all"
+                    >
+                      <LayoutGrid className="w-4.5 h-4.5" /> Dashboard
+                    </Link>
+                    <Link
+                      href="/member?tab=membership"
+                      onClick={() => setMobileSidebarOpen(false)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all"
+                    >
+                      <Activity className="w-4.5 h-4.5 text-cyan-500" /> Membership & Boost
+                    </Link>
+                    <Link
+                      href="/friends"
+                      onClick={() => setMobileSidebarOpen(false)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all"
+                    >
+                      <Users className="w-4.5 h-4.5" /> Guilds
+                    </Link>
+                    <Link
+                      href="/premium"
+                      onClick={() => setMobileSidebarOpen(false)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-600 border border-purple-200/30 transition-all"
+                    >
+                      <Sparkles className="w-4.5 h-4.5 text-purple-500 animate-pulse" /> Premium Area
+                    </Link>
+                  </nav>
+                </div>
+
+                <div className="p-4 border-t border-[#eae8f5]">
+                  <Button
+                    variant="ghost"
+                    onClick={() => signOut({ redirectUrl: "/" })}
+                    className="w-full justify-start gap-3 text-[#ef4444] hover:bg-red-50 rounded-xl py-2 px-3 text-xs font-bold h-9"
+                  >
+                    <LogOut className="w-4.5 h-4.5" /> Log out
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Main Content Area ────────────────────────────────────────────── */}
+          <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+            {/* Top Header Bar */}
+            <header className="h-16 bg-white border-b border-[#eae8f5] px-6 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setMobileSidebarOpen(true)}
+                  className="md:hidden p-1 text-slate-500 hover:text-slate-900"
+                >
+                  <Menu className="w-5.5 h-5.5" />
+                </Button>
+                {/* Breadcrumbs */}
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+                  <span>Player Hub</span>
+                  <span>/</span>
+                  <span className="text-purple-600 font-extrabold flex items-center gap-1">
+                    <Crown className="w-3.5 h-3.5" /> Premium Area
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                {/* Copy IP Widget */}
+                <button
+                  onClick={handleCopyIP}
+                  className="hidden sm:flex items-center gap-2 border border-[#eae8f5] bg-slate-50 hover:bg-violet-50/50 hover:border-violet-200 transition-all rounded-xl py-1.5 px-3 group text-left cursor-pointer"
+                >
+                  <Activity className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-400 leading-none">SERVER IP</span>
+                    <span className="text-[10px] font-black text-slate-700 leading-tight">play.arcadiamc.net</span>
+                  </div>
+                  <div className="ml-1 text-slate-400 group-hover:text-[#6366f1] transition-colors">
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  </div>
+                </button>
+              </div>
+            </header>
+            {children}
+          </main>
         </div>
       )}
-
-      {/* ── Main Content Area ────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Top Header Bar */}
-        <header className="h-16 bg-white border-b border-[#eae8f5] px-6 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setMobileSidebarOpen(true)}
-              className="md:hidden p-1 text-slate-500 hover:text-slate-900"
-            >
-              <Menu className="w-5.5 h-5.5" />
-            </Button>
-            {/* Breadcrumbs */}
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
-              <span>Player Hub</span>
-              <span>/</span>
-              <span className="text-purple-600 font-extrabold flex items-center gap-1">
-                <Crown className="w-3.5 h-3.5" /> Premium Area
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Copy IP Widget */}
-            <button
-              onClick={handleCopyIP}
-              className="hidden sm:flex items-center gap-2 border border-[#eae8f5] bg-slate-50 hover:bg-violet-50/50 hover:border-violet-200 transition-all rounded-xl py-1.5 px-3 group text-left cursor-pointer"
-            >
-              <Activity className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-slate-400 leading-none">SERVER IP</span>
-                <span className="text-[10px] font-black text-slate-700 leading-tight">play.arcadiamc.net</span>
-              </div>
-              <div className="ml-1 text-slate-400 group-hover:text-[#6366f1] transition-colors">
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-              </div>
-            </button>
-          </div>
-        </header>
-
-        {/* Content Container */}
-        <div className="flex-1 p-6 md:p-8 max-w-5xl w-full mx-auto space-y-6">
+    >
+      <>
+        <div className={isTab ? "space-y-6" : "flex-1 p-6 md:p-8 max-w-5xl w-full mx-auto space-y-6"}>
           
           {/* VIP Header Banner */}
           <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-purple-900 via-indigo-950 to-purple-950 p-6 md:p-8 text-white shadow-xl">
@@ -1772,9 +1789,8 @@ export default function Premium() {
             </div>
           )}
         </div>
-      </main>
 
-      <Dialog open={showRedeemConfirm} onOpenChange={setShowRedeemConfirm}>
+        <Dialog open={showRedeemConfirm} onOpenChange={setShowRedeemConfirm}>
         <DialogContent className="max-w-md bg-white border border-[#eae8f5] rounded-2xl p-6 shadow-xl">
           <DialogHeader className="space-y-2">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-100 text-violet-600">
@@ -1822,6 +1838,7 @@ export default function Premium() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+      </>
+    </ConditionalWrapper>
   );
 }

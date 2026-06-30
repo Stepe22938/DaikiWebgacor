@@ -129,6 +129,10 @@ import {
   ShoppingBag,
   Trophy,
   Bell,
+  Radio,
+  Square,
+  VolumeX,
+  Volume1,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -578,31 +582,22 @@ function JitsiCall({
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const scriptId = "jitsi-external-api-script";
-    const targetSrc = "https://jitsi.sixtopia.net/external_api.js";
-    let script = document.getElementById(scriptId) as HTMLScriptElement;
+    let active = true;
     let timer: any = null;
-    let handleLoad: (() => void) | null = null;
+    let fallbackTimer: any = null;
+    let script: HTMLScriptElement | null = null;
 
-    if (script && script.src !== targetSrc) {
-      script.remove();
-      script = null as any;
-      if ((window as any).JitsiMeetExternalAPI) {
-        delete (window as any).JitsiMeetExternalAPI;
-      }
-    }
-
-    const initJitsi = () => {
-      if (!containerRef.current) return;
+    const initJitsi = (domain: string) => {
+      if (!containerRef.current || !active) return;
       
       if (apiRef.current) {
         apiRef.current.dispose();
       }
 
       try {
-        const domain = "jitsi.sixtopia.net";
         const options = {
           roomName,
           width: "100%",
@@ -620,6 +615,14 @@ function JitsiCall({
             p2p: {
               enabled: true,
             },
+            // Hide Jitsi's internal hangup button to prevent ending the meeting for everyone
+            toolbarButtons: [
+              'microphone', 'camera', 'closedcaptions', 'desktop', 'embedmeeting', 
+              'fullscreen', 'fodeviceselection', 'profile', 'chat', 'recording', 
+              'livestreaming', 'sharedvideo', 'shareaudio', 'settings', 'raisehand', 
+              'videoquality', 'filmstrip', 'invite', 'tileview', 'select-background', 
+              'mute-everyone', 'mute-video-everyone', 'security'
+            ],
           },
           userInfo: {
             displayName,
@@ -630,7 +633,10 @@ function JitsiCall({
         apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options);
         
         apiRef.current.addEventListener("videoConferenceJoined", () => {
-          setLoading(false);
+          if (active) {
+            setLoading(false);
+            setError(null);
+          }
         });
 
         apiRef.current.addEventListener("videoConferenceLeft", () => {
@@ -640,48 +646,91 @@ function JitsiCall({
         apiRef.current.addEventListener("readyToClose", () => {
           if (onClose) onClose();
         });
-
-        // Fail-safe to hide loading spinner after 5 seconds
-        timer = setTimeout(() => {
-          setLoading(false);
-        }, 5000);
       } catch (err) {
-        console.error("Failed to load Jitsi API:", err);
-        setLoading(false);
+        console.error("Failed to initialize Jitsi Meet:", err);
+        if (active) {
+          setError("Gagal menginisialisasi Jitsi Meet.");
+          setLoading(false);
+        }
       }
     };
 
-    if (!script) {
+    const loadScript = (src: string, domain: string) => {
+      if (!active) return;
+      
+      const scriptId = "jitsi-external-api-script";
+      let existingScript = document.getElementById(scriptId) as HTMLScriptElement;
+      if (existingScript) {
+        existingScript.remove();
+      }
+      if ((window as any).JitsiMeetExternalAPI) {
+        delete (window as any).JitsiMeetExternalAPI;
+      }
+
       script = document.createElement("script");
       script.id = scriptId;
-      script.src = targetSrc;
+      script.src = src;
       script.async = true;
+      
       script.onload = () => {
-        initJitsi();
+        if (active && (window as any).JitsiMeetExternalAPI) {
+          clearTimeout(fallbackTimer);
+          initJitsi(domain);
+        }
       };
+
+      script.onerror = () => {
+        if (!active) return;
+        console.warn(`Failed to load Jitsi script from ${src}, trying fallback...`);
+        clearTimeout(fallbackTimer);
+        
+        if (domain === "jitsi.sixtopia.net") {
+          setError("Server utama lambat. Menghubungkan ke server cadangan...");
+          loadScript("https://meet.element.io/external_api.js", "meet.element.io");
+        } else {
+          setError("Gagal memuat Jitsi Meet API. Silakan periksa koneksi internet Anda.");
+          setLoading(false);
+        }
+      };
+
       document.body.appendChild(script);
-    } else {
-      if ((window as any).JitsiMeetExternalAPI) {
-        initJitsi();
-      } else {
-        handleLoad = () => {
-          initJitsi();
-        };
-        script.addEventListener("load", handleLoad);
+
+      // Timeout for this specific script load (6 seconds)
+      fallbackTimer = setTimeout(() => {
+        if (active && !((window as any).JitsiMeetExternalAPI)) {
+          console.warn(`Jitsi script load timed out for ${src}`);
+          if (domain === "jitsi.sixtopia.net") {
+            setError("Server utama tidak merespon. Menghubungkan ke server cadangan...");
+            loadScript("https://meet.element.io/external_api.js", "meet.element.io");
+          } else {
+            setError("Koneksi ke server Jitsi habis. Silakan coba lagi nanti.");
+            setLoading(false);
+          }
+        }
+      }, 6000);
+    };
+
+    // Start by loading the primary Jitsi server
+    loadScript("https://jitsi.sixtopia.net/external_api.js", "jitsi.sixtopia.net");
+
+    // Global backup fail-safe to ensure loading spinner is removed
+    timer = setTimeout(() => {
+      if (active) {
+        setLoading(false);
       }
-    }
+    }, 12000);
 
     return () => {
+      active = false;
       if (apiRef.current) {
         apiRef.current.dispose();
         apiRef.current = null;
       }
-      if (script && handleLoad) {
-        script.removeEventListener("load", handleLoad);
+      if (script) {
+        script.remove();
       }
-      if (timer) {
-        clearTimeout(timer);
-      }
+      if (timer) clearTimeout(timer);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
     };
   }, [roomName, displayName, avatarUrl, audioOnly]);
 
@@ -692,8 +741,25 @@ function JitsiCall({
           <div className="w-12 h-12 rounded-full border-4 border-violet-100 border-t-[#6366f1] animate-spin" />
           <div className="text-center space-y-1">
             <p className="text-sm font-extrabold text-[#110e3d]">Connecting to Voice Channel...</p>
-            <p className="text-xs text-slate-400 font-bold animate-pulse">Syncing profiles & data...</p>
+            <p className="text-xs text-slate-400 font-bold animate-pulse px-4">
+              {error || "Syncing profiles & data..."}
+            </p>
           </div>
+        </div>
+      )}
+      {!loading && error && !apiRef.current && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white p-6 text-center gap-3 z-10">
+          <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center">
+            <span className="text-xl">⚠️</span>
+          </div>
+          <p className="text-sm font-extrabold text-[#110e3d]">{error}</p>
+          <button 
+            type="button"
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold transition-all"
+          >
+            Coba Lagi
+          </button>
         </div>
       )}
       <div ref={containerRef} className="flex-1 w-full h-full min-h-[450px]" />
@@ -1800,6 +1866,19 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   });
   const [showArchived, setShowArchived] = useState(false);
 
+  // Call Music Player States
+  const callAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [showMusicPlayer, setShowMusicPlayer] = useState(false);
+  const [callPlayingTrack, setCallPlayingTrack] = useState<any | null>(null);
+  const [callIsPlaying, setCallIsPlaying] = useState(false);
+  const [callVolume, setCallVolume] = useState(0.5);
+  const [callMusicMuted, setCallMusicMuted] = useState(false);
+  const [callAutoPlayMusic, setCallAutoPlayMusic] = useState(true);
+  const [lastPlayedCallMsgId, setLastPlayedCallMsgId] = useState<number | null>(null);
+  const [musicSearchQuery, setMusicSearchQuery] = useState("");
+  const [musicTracks, setMusicTracks] = useState<any[]>([]);
+  const [loadingMusicTracks, setLoadingMusicTracks] = useState(false);
+
   const { data: realmSettings = {} } = useQuery({
     queryKey: ["/api/settings"],
     queryFn: () => customFetch<any>("/api/settings"),
@@ -2616,6 +2695,15 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     setCallType(null);
     setIsCallMinimized(false);
     setCallContext(null);
+
+    // Stop and clean up call music
+    if (callAudioRef.current) {
+      callAudioRef.current.pause();
+      callAudioRef.current = null;
+    }
+    setCallPlayingTrack(null);
+    setCallIsPlaying(false);
+    setShowMusicPlayer(false);
   };
 
   const handleRestoreCall = () => {
@@ -3399,6 +3487,178 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       callChatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [showCallChat, callMessages]);
+
+  // Fetch music tracks when Music Player is open or search query changes
+  useEffect(() => {
+    if (!showMusicPlayer) return;
+    
+    setLoadingMusicTracks(true);
+    const url = musicSearchQuery.trim() 
+      ? `/api/music/tracks?q=${encodeURIComponent(musicSearchQuery)}`
+      : "/api/music/tracks";
+      
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setMusicTracks(data);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch music tracks:", err))
+      .finally(() => setLoadingMusicTracks(false));
+  }, [showMusicPlayer, musicSearchQuery]);
+
+  // Auto-play music if a message with a music command is received in the call chat
+  useEffect(() => {
+    if (!showCall || !callAutoPlayMusic || callMessages.length === 0) return;
+    const latestMsg = callMessages[callMessages.length - 1];
+    if (latestMsg.imageUrl && latestMsg.imageUrl.startsWith("music:")) {
+      if (latestMsg.id !== lastPlayedCallMsgId) {
+        setLastPlayedCallMsgId(latestMsg.id);
+        try {
+          const track = JSON.parse(latestMsg.imageUrl.slice(6));
+          // Only play if it's not already playing this exact track
+          if (!callPlayingTrack || callPlayingTrack.id !== track.id) {
+            playCallTrack(track);
+            toast({
+              title: "🎵 Musik Diputar",
+              description: `${track.title} - ${track.artist}`,
+            });
+          }
+        } catch (e) {
+          console.error("Error parsing auto-play music:", e);
+        }
+      }
+    }
+  }, [callMessages, showCall, callAutoPlayMusic, lastPlayedCallMsgId, callPlayingTrack, callMusicMuted, callVolume, toast]);
+
+  const playCallTrack = (track: any) => {
+    if (callAudioRef.current) {
+      callAudioRef.current.pause();
+      callAudioRef.current.src = "";
+      callAudioRef.current = null;
+    }
+
+    const playableUrl = track.file && !track.file.startsWith("/api/music/tracks/stream") 
+      ? track.file 
+      : `/api/music/tracks/play?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}&_=${Date.now()}`;
+      
+    const audio = new Audio(playableUrl);
+    audio.volume = callMusicMuted ? 0 : callVolume;
+    audio.loop = true;
+    
+    // Set state immediately to show that it is loading/playing
+    setCallPlayingTrack(track);
+    setCallIsPlaying(true);
+    callAudioRef.current = audio;
+
+    // Handle deferred/async play since resolving the stream via yt-dlp on the server takes a few seconds
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn("Initial play deferred, waiting for stream to resolve...", err);
+        // Do NOT setCallIsPlaying(false) here, we wait for the canplay event.
+      });
+    }
+
+    // Play when the audio stream has successfully resolved on the server and is ready
+    audio.oncanplay = () => {
+      audio.play().then(() => {
+        setCallIsPlaying(true);
+      }).catch((err) => {
+        console.error("Failed to play on canplay:", err);
+      });
+    };
+
+    audio.onerror = (e) => {
+      console.error("Audio element error:", e);
+      setCallIsPlaying(false);
+      toast({
+        title: "Gagal memutar audio",
+        description: "Koneksi ke stream audio terputus atau gagal dimuat.",
+        variant: "destructive",
+      });
+    };
+  };
+
+  const handleToggleCallPlay = () => {
+    if (!callAudioRef.current) return;
+    if (callIsPlaying) {
+      callAudioRef.current.pause();
+      setCallIsPlaying(false);
+    } else {
+      callAudioRef.current.play().then(() => {
+        setCallIsPlaying(true);
+      }).catch((err) => {
+        console.error("Failed to resume playback:", err);
+      });
+    }
+  };
+
+  const handleStopCallPlay = () => {
+    if (callAudioRef.current) {
+      callAudioRef.current.pause();
+      callAudioRef.current = null;
+    }
+    setCallPlayingTrack(null);
+    setCallIsPlaying(false);
+  };
+
+  const handleCallVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVol = parseFloat(e.target.value);
+    setCallVolume(newVol);
+    if (callAudioRef.current) {
+      callAudioRef.current.volume = callMusicMuted ? 0 : newVol;
+    }
+  };
+
+  const handleToggleCallMute = () => {
+    const nextMute = !callMusicMuted;
+    setCallMusicMuted(nextMute);
+    if (callAudioRef.current) {
+      callAudioRef.current.volume = nextMute ? 0 : callVolume;
+    }
+  };
+
+  async function handleSendCallMusic(track: any) {
+    if (!callContext?.conversationId) return;
+    const callConvId = callContext.conversationId;
+    const callChanId = callContext.channelId;
+    
+    // Play locally immediately
+    playCallTrack(track);
+
+    // Send to chat to sync for everyone
+    const text = `[CMD: PLAY_MUSIC title=${track.title}|artist=${track.artist}]`;
+    const musicPayload = `music:${JSON.stringify(track)}`;
+    const payload = {
+      content: text,
+      imageUrl: musicPayload,
+    };
+
+    try {
+      if (callChanId) {
+        // Channel-scoped message
+        const res = await fetch(`/api/conversations/${callConvId}/channels/${callChanId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("Failed to send");
+        await queryClient.invalidateQueries({ queryKey: ["channel-messages", callConvId, callChanId] });
+        await queryClient.invalidateQueries({ queryKey: ["call-messages", callConvId, callChanId] });
+      } else {
+        // DM message
+        await sendMessage.mutateAsync({ id: callConvId, data: payload });
+        await queryClient.invalidateQueries({ queryKey: [`/api/conversations/${callConvId}/messages`] });
+        await queryClient.invalidateQueries({ queryKey: ["call-messages", callConvId, callChanId] });
+      }
+      toast({ title: "Musik disinkronkan!", description: `Memutar ${track.title} untuk semua orang.` });
+    } catch (e) {
+      console.error("Failed to send call music:", e);
+      toast({ title: "Gagal memutar untuk semua", variant: "destructive" });
+    }
+  }
 
   // Group active bots by category for the channels sidebar
   const activeBotsByCategory = useMemo(() => {
@@ -9629,7 +9889,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               : "fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6"
           }`}
         >
-          <div className={`w-full ${showCallChat ? "max-w-6xl" : "max-w-4xl"} h-[80vh] flex flex-col overflow-hidden bg-white border border-[#eae8f5] rounded-3xl shadow-2xl transition-all duration-300`}>
+          <div className={`w-full ${(showCallChat || showMusicPlayer) ? "max-w-6xl" : "max-w-4xl"} h-[80vh] flex flex-col overflow-hidden bg-white border border-[#eae8f5] rounded-3xl shadow-2xl transition-all duration-300`}>
             {/* Call Header */}
             <div className="px-5 py-4 border-b border-[#eae8f5] bg-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
@@ -9648,12 +9908,33 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               </div>
               
               <div className="flex items-center gap-2">
+                {/* Music Button */}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={`h-9 w-9 rounded-full hover:bg-slate-100 ${showMusicPlayer ? "text-[#6366f1] bg-violet-50 hover:bg-violet-100" : "text-slate-500 hover:text-slate-900"}`}
+                  onClick={() => {
+                    setShowMusicPlayer(!showMusicPlayer);
+                    if (!showMusicPlayer) {
+                      setShowCallChat(false); // Close chat if music is opened
+                    }
+                  }}
+                  title="Play Music"
+                >
+                  <Music className="h-5 w-5" />
+                </Button>
+
                 {/* Toggle Chat Button */}
                 <Button
                   size="icon"
                   variant="ghost"
                   className={`h-9 w-9 rounded-full hover:bg-slate-100 ${showCallChat ? "text-[#6366f1] bg-violet-50 hover:bg-violet-100" : "text-slate-500 hover:text-slate-900"}`}
-                  onClick={() => setShowCallChat(!showCallChat)}
+                  onClick={() => {
+                    setShowCallChat(!showCallChat);
+                    if (!showCallChat) {
+                      setShowMusicPlayer(false); // Close music if chat is opened
+                    }
+                  }}
                   title="Toggle Chat"
                 >
                   <MessageSquare className="h-5 w-5" />
@@ -9668,6 +9949,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   title="Minimize Call"
                 >
                   <Minimize2 className="h-5 w-5" />
+                </Button>
+
+                {/* Hang Up / Leave Button */}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-9 w-9 rounded-full bg-red-500 hover:bg-red-600 text-white hover:text-white transition-all shadow-md shadow-red-500/10"
+                  onClick={handleHangUp}
+                  title="Leave Call"
+                >
+                  <PhoneOff className="h-4.5 w-4.5" />
                 </Button>
               </div>
             </div>
@@ -9692,6 +9984,198 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   }
                 />
               </div>
+
+              {/* Music Player Side Panel */}
+              {showMusicPlayer && (
+                <div className="w-80 bg-white border border-[#eae8f5] rounded-2xl flex flex-col min-h-0 overflow-hidden shadow-sm shrink-0">
+                  {/* Music Header */}
+                  <div className="px-4 py-3 border-b border-[#eae8f5] bg-slate-50 flex items-center justify-between shrink-0">
+                    <span className="text-xs font-black text-[#110e3d] uppercase tracking-wider flex items-center gap-1.5">
+                      <Music className="w-4 h-4 text-[#6366f1]" /> Call Music
+                    </span>
+                    <button 
+                      onClick={() => setShowMusicPlayer(false)}
+                      className="text-slate-400 hover:text-slate-700 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Music Search */}
+                  <div className="p-3 border-b border-[#eae8f5] bg-white shrink-0">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                      <Input
+                        placeholder="Cari lagu..."
+                        value={musicSearchQuery}
+                        onChange={(e) => setMusicSearchQuery(e.target.value)}
+                        className="h-8 pl-8 text-xs rounded-lg border-slate-200"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tracks List */}
+                  <ScrollArea className="flex-1 p-3 min-h-0 bg-slate-50/30">
+                    {loadingMusicTracks ? (
+                      <div className="space-y-2 py-4">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <div key={i} className="flex items-center gap-2 px-1">
+                            <Skeleton className="w-9 h-9 rounded-lg" />
+                            <div className="flex-1 space-y-1">
+                              <Skeleton className="h-3 w-24" />
+                              <Skeleton className="h-2 w-16" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : musicTracks.length === 0 ? (
+                      <div className="text-center text-[10px] text-slate-400 font-bold py-12">
+                        Tidak ada lagu ditemukan.
+                      </div>
+                    ) : (
+                      <div className="space-y-1 w-full min-w-0">
+                        {musicTracks.map((track) => {
+                          const isCurrent = callPlayingTrack?.id === track.id;
+                          return (
+                            <div
+                              key={track.id}
+                              className={`flex items-center gap-2 p-1.5 rounded-xl transition-all border w-full min-w-0 ${
+                                isCurrent
+                                  ? "bg-violet-50/70 border-violet-100 text-[#6366f1]"
+                                  : "hover:bg-slate-50 border-transparent text-slate-700"
+                                }`}
+                            >
+                              {track.cover ? (
+                                <img src={track.cover} className="w-8 h-8 rounded-lg object-cover shrink-0 border border-slate-100" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-lg bg-violet-100 text-[#6366f1] flex items-center justify-center shrink-0">
+                                  <Music className="w-3.5 h-3.5" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold truncate block w-full leading-tight">{track.title}</p>
+                                <p className="text-[10px] text-slate-400 font-semibold truncate block w-full mt-0.5">{track.artist}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                                {/* Play locally */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isCurrent && callIsPlaying) {
+                                      handleToggleCallPlay();
+                                    } else {
+                                      playCallTrack(track);
+                                    }
+                                  }}
+                                  className={`w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${
+                                    isCurrent && callIsPlaying
+                                      ? "bg-violet-600 hover:bg-violet-700 text-white"
+                                      : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                                  }`}
+                                  title="Putar Sendiri"
+                                >
+                                  {isCurrent && callIsPlaying ? (
+                                    <Pause className="w-3.5 h-3.5 fill-current" />
+                                  ) : (
+                                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                                  )}
+                                </button>
+
+                                {/* Play for Everyone */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendCallMusic(track)}
+                                  className="w-7 h-7 rounded-full bg-violet-600 hover:bg-violet-700 text-white flex items-center justify-center transition-all shadow-sm"
+                                  title="Putar untuk Semua Orang"
+                                >
+                                  <Radio className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </ScrollArea>
+
+                  {/* Now Playing Control Bar */}
+                  {callPlayingTrack && (
+                    <div className="p-3 border-t border-[#eae8f5] bg-white shrink-0 space-y-2.5">
+                      <div className="flex items-center gap-2.5">
+                        {callPlayingTrack.cover ? (
+                          <img src={callPlayingTrack.cover} className="w-10 h-10 rounded-lg object-cover shrink-0 border border-slate-100" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-violet-100 text-[#6366f1] flex items-center justify-center shrink-0">
+                            <Music className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] bg-violet-50 text-[#6366f1] px-1 rounded font-extrabold uppercase tracking-wider scale-90 origin-left">Now Playing</span>
+                          </div>
+                          <p className="text-xs font-black truncate leading-tight text-[#110e3d]">{callPlayingTrack.title}</p>
+                          <p className="text-[10px] text-slate-400 font-semibold truncate mt-0.5">{callPlayingTrack.artist}</p>
+                        </div>
+                        
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-900"
+                            onClick={handleToggleCallPlay}
+                          >
+                            {callIsPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current ml-0.5" />}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full hover:bg-slate-100 text-slate-500 hover:text-red-600"
+                            onClick={handleStopCallPlay}
+                            title="Stop Music"
+                          >
+                            <Square className="h-3.5 w-3.5 fill-current" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Volume and AutoPlay Controls */}
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-100 gap-4">
+                        {/* Volume Slider */}
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          <button type="button" onClick={handleToggleCallMute} className="text-slate-400 hover:text-slate-600 shrink-0">
+                            {callMusicMuted || callVolume === 0 ? (
+                              <VolumeX className="w-3.5 h-3.5" />
+                            ) : callVolume < 0.5 ? (
+                              <Volume1 className="w-3.5 h-3.5" />
+                            ) : (
+                              <Volume2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={callMusicMuted ? 0 : callVolume}
+                            onChange={handleCallVolumeChange}
+                            className="w-20 accent-violet-600 h-1 rounded-lg cursor-pointer bg-slate-200"
+                          />
+                        </div>
+
+                        {/* Auto Play Toggle */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] font-bold text-slate-400" title="Putar otomatis lagu yang dikirim orang lain">Auto-sync</span>
+                          <Switch
+                            checked={callAutoPlayMusic}
+                            onCheckedChange={setCallAutoPlayMusic}
+                            className="scale-75 data-[state=checked]:bg-[#6366f1]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {showCallChat && (
                 <div className="w-80 bg-white border border-[#eae8f5] rounded-2xl flex flex-col min-h-0 overflow-hidden shadow-sm shrink-0">
