@@ -76,6 +76,7 @@ import {
   Trash2,
   Pencil,
   ShoppingBag,
+  Tv,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -1580,6 +1581,12 @@ export default function Member() {
                 >
                   <Music className="w-4.5 h-4.5 text-pink-500" /> Music Player
                 </button>
+                <Link
+                  href="/anime"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900 cursor-pointer"
+                >
+                  <Tv className="w-4.5 h-4.5 text-amber-500" /> Nonton Anime
+                </Link>
               </nav>
             </div>
 
@@ -1709,7 +1716,7 @@ export default function Member() {
         </div>
       </aside>
 
-      {/* â”€â”€ Mobile Sidebar Drawer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ────────────────────────────────── Mobile Sidebar Drawer ────────────────────────────────── */}
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden bg-black/40 backdrop-blur-sm">
           <div className="w-64 bg-white flex flex-col justify-between p-4 shadow-2xl animate-slide-in">
@@ -1728,7 +1735,7 @@ export default function Member() {
                     <span className="text-[10px] text-slate-400 font-bold">Player Hub</span>
                   </div>
                 </Link>
-                <Button variant="ghost" size="sm" onClick={() => setMobileSidebarOpen(false)} className="text-slate-400 hover:text-[#110e3d]">âœ•</Button>
+                <Button variant="ghost" size="sm" onClick={() => setMobileSidebarOpen(false)} className="text-slate-400 hover:text-[#110e3d]">✕</Button>
               </div>
 
               <nav className="space-y-1">
@@ -1812,6 +1819,13 @@ export default function Member() {
                 >
                   <Music className="w-4.5 h-4.5 text-pink-500" /> Music Player
                 </button>
+                <Link
+                  href="/anime"
+                  onClick={() => setMobileSidebarOpen(false)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 cursor-pointer"
+                >
+                  <Tv className="w-4.5 h-4.5 text-amber-500" /> Nonton Anime
+                </Link>
 
                 <div className="py-2 border-t border-[#eae8f5] my-2">
                   <span className="px-3 text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Social</span>

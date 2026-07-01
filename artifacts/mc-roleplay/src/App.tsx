@@ -20,6 +20,7 @@ import Premium from "@/pages/premium";
 import NotFound from "@/pages/not-found";
 import AddFriendPage from "@/pages/add-friend";
 import RecoveryPage from "@/pages/recovery";
+import AnimePage from "@/pages/anime";
 
 
 const isLocal = window.location.hostname === "localhost" ||
@@ -936,6 +937,19 @@ function AddFriendProtected() {
   );
 }
 
+function AnimeProtected() {
+  return (
+    <>
+      <Show when="signed-in">
+        <AnimePage />
+      </Show>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+    </>
+  );
+}
+
 import { setAuthTokenGetter, useGetStats } from "@workspace/api-client-react";
 
 function ClerkTokenHelper() {
@@ -996,6 +1010,7 @@ function ClerkProviderWithRoutes() {
             <Switch>
               <Route path="/" component={HomeRedirect} />
               <Route path="/member" component={MemberProtected} />
+              <Route path="/anime" component={AnimePage} />
               <Route path="/recovery" component={RecoveryPage} />
               <Route path="/admin" component={AdminProtected} />
               <Route path="/friends" component={FriendsProtected} />
