@@ -172,7 +172,7 @@ export type UrlAnalysisReport = {
 
 async function checkDnsBlock(domain: string): Promise<{ blocked: boolean; reason?: string }> {
   try {
-    const res = await fetch(`https://family.cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=A`, {
+    const res = await fetch(`https://1.1.1.3/dns-query?name=${encodeURIComponent(domain)}&type=A`, {
       headers: { "accept": "application/dns-json" },
       signal: AbortSignal.timeout(3000),
     });

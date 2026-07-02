@@ -28,6 +28,7 @@ import statusesRouter from "./statuses";
 import blocksRouter from "./blocks";
 import specialGachaRouter from "./specialGacha";
 import businessRouter from "./business";
+import mangaRouter from "./manga";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(statusesRouter);
 router.use(blocksRouter);
 router.use(specialGachaRouter);
 router.use(businessRouter);
+router.use(mangaRouter);
 
 export default router;

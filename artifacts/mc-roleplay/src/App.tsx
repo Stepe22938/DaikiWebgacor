@@ -20,7 +20,7 @@ import Premium from "@/pages/premium";
 import NotFound from "@/pages/not-found";
 import AddFriendPage from "@/pages/add-friend";
 import RecoveryPage from "@/pages/recovery";
-import AnimePage from "@/pages/anime";
+import MangaPage from "@/pages/manga";
 
 
 const isLocal = window.location.hostname === "localhost" ||
@@ -937,11 +937,11 @@ function AddFriendProtected() {
   );
 }
 
-function AnimeProtected() {
+function MangaProtected() {
   return (
     <>
       <Show when="signed-in">
-        <AnimePage />
+        <MangaPage />
       </Show>
       <Show when="signed-out">
         <Redirect to="/" />
@@ -1010,7 +1010,10 @@ function ClerkProviderWithRoutes() {
             <Switch>
               <Route path="/" component={HomeRedirect} />
               <Route path="/member" component={MemberProtected} />
-              <Route path="/anime" component={AnimePage} />
+              <Route path="/manga" component={MangaProtected} />
+              <Route path="/anime">
+                <Redirect to="/manga" />
+              </Route>
               <Route path="/recovery" component={RecoveryPage} />
               <Route path="/admin" component={AdminProtected} />
               <Route path="/friends" component={FriendsProtected} />

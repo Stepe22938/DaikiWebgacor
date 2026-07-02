@@ -76,7 +76,7 @@ import {
   Trash2,
   Pencil,
   ShoppingBag,
-  Tv,
+  BookOpen,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -91,6 +91,7 @@ import {
 import MessagesPage from "./messages";
 import FriendsTab from "./friends";
 import ProfileTab from "./profile";
+import MangaPage from "./manga";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1121,6 +1122,8 @@ export default function Member() {
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Mount-once flag: MangaPage stays mounted after first open to preserve reader state
+  const [mangaTabMounted, setMangaTabMounted] = useState(false);
 
   // Lifted SellerHub states to survive Clerk settings panel remounts
   const [sellerSubTab, setSellerSubTab] = useState<"marketplace" | "myshop">("marketplace");
@@ -1164,8 +1167,9 @@ export default function Member() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "profile_edit", "credits", "settings", "gacha", "wallet", "membership", "music", "messages", "seller", "guilds", "premium"].includes(tab)) {
+    if (tab && ["dashboard", "announcements", "developments", "tickets", "forms", "profile", "profile_edit", "credits", "settings", "gacha", "wallet", "membership", "music", "messages", "seller", "guilds", "premium", "manga"].includes(tab)) {
       setActiveTab(tab);
+      if (tab === "manga") setMangaTabMounted(true);
       if (tab === "profile") {
         const idParam = params.get("id");
         setProfileUserId(idParam ? Number(idParam) : (user?.id ?? null));
@@ -1197,6 +1201,7 @@ export default function Member() {
 
   const handleTabChange = (tabName: string) => {
     setActiveTab(tabName);
+    if (tabName === "manga") setMangaTabMounted(true);
     if (tabName === "profile") {
       setProfileUserId(user?.id ?? null);
       setLocation(`/member?tab=profile`);
@@ -1208,6 +1213,7 @@ export default function Member() {
 
   const handleTabChangeMobile = (tabName: string) => {
     setActiveTab(tabName);
+    if (tabName === "manga") setMangaTabMounted(true);
     if (tabName === "profile") {
       setProfileUserId(user?.id ?? null);
       setLocation(`/member?tab=profile`);
@@ -1581,12 +1587,16 @@ export default function Member() {
                 >
                   <Music className="w-4.5 h-4.5 text-pink-500" /> Music Player
                 </button>
-                <Link
-                  href="/anime"
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900 cursor-pointer"
+                <button
+                  onClick={() => handleTabChange("manga")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "manga"
+                      ? "bg-amber-50 text-amber-600"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
                 >
-                  <Tv className="w-4.5 h-4.5 text-amber-500" /> Nonton Anime
-                </Link>
+                  <BookOpen className="w-4.5 h-4.5 text-amber-500" /> Baca Manga
+                </button>
               </nav>
             </div>
 
@@ -1819,13 +1829,14 @@ export default function Member() {
                 >
                   <Music className="w-4.5 h-4.5 text-pink-500" /> Music Player
                 </button>
-                <Link
-                  href="/anime"
-                  onClick={() => setMobileSidebarOpen(false)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-500 hover:bg-slate-50 cursor-pointer"
+                <button
+                  onClick={() => handleTabChangeMobile("manga")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "manga" ? "bg-amber-50 text-amber-600" : "text-slate-500 hover:bg-slate-50"
+                  }`}
                 >
-                  <Tv className="w-4.5 h-4.5 text-amber-500" /> Nonton Anime
-                </Link>
+                  <BookOpen className="w-4.5 h-4.5 text-amber-500" /> Baca Manga
+                </button>
 
                 <div className="py-2 border-t border-[#eae8f5] my-2">
                   <span className="px-3 text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Social</span>
@@ -1931,24 +1942,24 @@ export default function Member() {
       )}
 
       {/* â”€â”€ Main Content Area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <main className={`flex-1 flex flex-col min-w-0 ${activeTab === "messages" ? "overflow-hidden" : "overflow-y-auto"} ${activeTab === "seller" ? "bg-[#09090b]" : ""}`}>
+      <main className={`flex-1 flex flex-col min-w-0 relative ${activeTab === "messages" ? "overflow-hidden" : "overflow-y-auto"} ${activeTab === "seller" || activeTab === "manga" ? "bg-[#09090b]" : ""}`}>
         {/* Top Header Bar */}
-        <header className={`h-16 border-b px-6 flex items-center justify-between shrink-0 ${activeTab === "seller" ? "bg-[#0c0c0e] border-zinc-800/80" : "bg-white border-[#eae8f5]"}`}>
+        <header className={`h-16 border-b px-6 flex items-center justify-between shrink-0 ${activeTab === "seller" || activeTab === "manga" ? "bg-[#0c0c0e] border-zinc-800/80" : "bg-white border-[#eae8f5]"}`}>
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setMobileSidebarOpen(true)}
-              className={`md:hidden p-1 ${activeTab === "seller" ? "text-zinc-400 hover:text-white" : "text-slate-500 hover:text-slate-900"}`}
+              className={`md:hidden p-1 ${activeTab === "seller" || activeTab === "manga" ? "text-zinc-400 hover:text-white" : "text-slate-500 hover:text-slate-900"}`}
             >
               <Menu className="w-5.5 h-5.5" />
             </Button>
             {/* Breadcrumbs */}
-            <div className={`flex items-center gap-2 text-xs font-bold ${activeTab === "seller" ? "text-zinc-500" : "text-slate-400"}`}>
+            <div className={`flex items-center gap-2 text-xs font-bold ${activeTab === "seller" || activeTab === "manga" ? "text-zinc-500" : "text-slate-400"}`}>
               <span>Guild Portal</span>
               <span>/</span>
-              <span className={`capitalize ${activeTab === "seller" ? "text-white font-black" : "text-[#110e3d]"}`}>
-                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "membership" ? "Membership & Boost" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : activeTab === "seller" ? "Toko Saya" : activeTab === "premium" ? "Premium Area" : "Arcadia Credits"}
+              <span className={`capitalize ${activeTab === "seller" || activeTab === "manga" ? "text-white font-black" : "text-[#110e3d]"}`}>
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "membership" ? "Membership & Boost" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : activeTab === "seller" ? "Toko Saya" : activeTab === "premium" ? "Premium Area" : activeTab === "manga" ? "Baca Manga" : "Arcadia Credits"}
               </span>
             </div>
           </div>
@@ -1995,7 +2006,7 @@ export default function Member() {
         )}
 
         {/* Content Container */}
-        {activeTab !== "messages" && (
+        {activeTab !== "messages" && activeTab !== "manga" && (
         <div className={`flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6 overflow-y-auto ${activeTab === "seller" ? "bg-[#09090b]" : ""}`}>
           {/* Guilds (Friends) Tab */}
           {activeTab === "guilds" && (
@@ -2874,6 +2885,21 @@ export default function Member() {
             />
           )}
         </div>
+        )}
+
+        {/* Manga Tab - Mount-once pattern: stays in DOM after first open, hidden/shown with CSS */}
+        {/* This preserves reader state (selected manga, active chapter) when switching tabs */}
+        {mangaTabMounted && (
+          <div
+            className="overflow-y-auto"
+            style={
+              activeTab === "manga"
+                ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
+                : { position: "absolute", width: 0, height: 0, overflow: "hidden", visibility: "hidden", pointerEvents: "none" }
+            }
+          >
+            <MangaPage embedded={true} />
+          </div>
         )}
       </main>
 

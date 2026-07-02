@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { customFetch, useGetMe, useUpdateMe } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, useEffect } from "react";
-import { User, LogOut, Settings, MessageSquare, Users, Home, ChevronDown, Gamepad2, ShieldAlert, Crown, Tv } from "lucide-react";
+import { User, LogOut, Settings, MessageSquare, Users, Home, ChevronDown, Gamepad2, ShieldAlert, Crown, BookOpen } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -108,8 +108,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               Roadmap & Forge
             </a>
-            <Link href="/anime" className="hover:text-white transition-colors cursor-pointer">
-              Anime
+             <Link href="/manga" className="hover:text-white transition-colors cursor-pointer">
+              Manga
             </Link>
           </div>
           
@@ -169,8 +169,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Link href="/member" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
                       <User className="w-4.5 h-4.5" /> Player Hub
                     </Link>
-                    <Link href="/anime" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
-                      <Tv className="w-4.5 h-4.5" /> Nonton Anime
+                    <Link href="/manga" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
+                      <BookOpen className="w-4.5 h-4.5" /> Baca Manga
                     </Link>
                     <Link href="/friends" className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-all cursor-pointer" onClick={() => setIsDropdownOpen(false)}>
                       <Users className="w-4.5 h-4.5" /> Guilds
