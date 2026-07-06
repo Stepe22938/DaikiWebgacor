@@ -11,6 +11,7 @@
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
     "test-direct": "node ../../scratch/check_db_direct.js",
+    "check-presence": "node ../../scratch/check_online_friends.js",
     "migration": "node ../../scratch/add_last_read_at.cjs"
   },
   "dependencies": {

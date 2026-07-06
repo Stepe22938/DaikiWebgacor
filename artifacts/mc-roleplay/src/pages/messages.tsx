@@ -128,6 +128,7 @@ import {
   Ban,
   ShoppingBag,
   Trophy,
+  UserPlus,
   Bell,
   Radio,
   Square,
@@ -2853,6 +2854,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [selectedCatalogProduct, setSelectedCatalogProduct] = useState<any | null>(null);
   const [buyingProduct, setBuyingProduct] = useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
+  const [showSearchInput, setShowSearchInput] = useState(true);
   const [showMessageInfo, setShowMessageInfo] = useState<any | null>(null);
   const [debouncedSidebarSearchQuery, setDebouncedSidebarSearchQuery] = useState("");
   useEffect(() => {
@@ -3072,6 +3074,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       }),
     enabled: meReady,
     retry: 1,
+    // Poll every 30s so the Active Now section stays realtime
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 
   // Global Search Debounce & Queries
@@ -5955,51 +5960,238 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 /* DM / Messages List View */
                 <>
                   {/* Header */}
-                  <div className="p-3.5 border-b border-[#1f2023] flex items-center justify-between shrink-0 bg-[#2b2d31] shadow-sm">
-                    <h2 className="font-black text-[15px] text-white tracking-wide">Messages</h2>
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white cursor-pointer"
-                        onClick={() => setShowNewDm(true)}
+                  <div className="p-3.5 border-b border-[#1f2023] shrink-0 bg-[#2b2d31] shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-black text-[15px] text-white tracking-wide">Messages</h2>
+                    </div>
+                    
+                    {/* Action Bar (Discord Mobile style) */}
+                    <div className="flex items-center justify-between gap-2">
+                      {/* Search toggle button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowSearchInput(!showSearchInput)}
+                        className={`w-8.5 h-8.5 rounded-full flex items-center justify-center transition-all bg-[#1e1f22] text-[#B5BAC1] hover:text-white hover:bg-[#35373C] border-0 cursor-pointer ${
+                          showSearchInput ? "text-[#5865F2] bg-[#35373C]/50" : ""
+                        }`}
                       >
-                        + DM
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 px-3 rounded-full text-xs font-bold transition-all border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] hover:text-white flex items-center gap-1 cursor-pointer"
+                        <Search className="w-4 h-4" />
+                      </button>
+
+                      {/* Chat / Inbox Notification Badge */}
+                      <button
+                        type="button"
+                        className="w-8.5 h-8.5 rounded-full flex items-center justify-center transition-all bg-[#1e1f22] text-[#B5BAC1] hover:text-white hover:bg-[#35373C] border-0 cursor-pointer relative"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-[#2b2d31]">
+                          2
+                        </span>
+                      </button>
+
+                      {/* Add Friends Pill Button */}
+                      <button
+                        type="button"
                         onClick={() => {
                           if (embedded) {
-                            window.location.href = "/member?tab=guilds";
+                            window.location.href = "/member?tab=add-friend";
                           } else {
-                            setLocation("/member?tab=guilds");
+                            setLocation("/member?tab=add-friend");
                           }
                         }}
+                        className="flex-1 h-8.5 rounded-full flex items-center justify-center gap-1.5 px-3 bg-[#1e1f22] hover:bg-[#35373C] text-[#DCDDDE] hover:text-white transition-all text-xs font-bold border-0 cursor-pointer"
                       >
-                        <Users className="w-3.5 h-3.5 text-indigo-400" />
-                        Guilds
-                      </Button>
+                        <UserPlus className="w-3.5 h-3.5 text-[#5865F2]" />
+                        Add Friends
+                      </button>
+
+                      {/* Plus Blue Button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowNewDm(true)}
+                        className="w-8.5 h-8.5 rounded-full flex items-center justify-center bg-[#5865F2] hover:bg-[#4752C4] text-white transition-all border-0 cursor-pointer shadow-md shadow-indigo-500/20 active:scale-95"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
-                  {/* Search Input Box */}
-                  <div className="px-3.5 py-2 border-b border-[#1f2023] bg-[#2b2d31] shrink-0">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={sidebarSearchQuery}
-                        onChange={(e) => setSidebarSearchQuery(e.target.value)}
-                        placeholder="Cari pesan atau teman..."
-                        className="w-full h-8.5 pl-9 pr-3.5 bg-[#1e1f22] text-[#dcddde] placeholder:text-slate-500 text-xs font-medium rounded-xl border border-[#1f2023] focus:border-[#5865F2]/50 focus:outline-none transition-all"
-                      />
+                  {/* Conditional Search Input Box */}
+                  {showSearchInput && (
+                    <div className="px-3.5 py-2 border-b border-[#1f2023] bg-[#2b2d31] shrink-0">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={sidebarSearchQuery}
+                          onChange={(e) => setSidebarSearchQuery(e.target.value)}
+                          placeholder="Cari pesan atau teman..."
+                          className="w-full h-8.5 pl-9 pr-3.5 bg-[#1e1f22] text-[#dcddde] placeholder:text-slate-500 text-xs font-medium rounded-xl border border-[#1f2023] focus:border-[#5865F2]/50 focus:outline-none transition-all"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Scrollable list of chats */}
                   <ScrollArea className="flex-1 min-h-0">
+                    {/* [Active Now slider removed - now between Shop and Stories] */}
+                    {false && (() => {
+                      // Build from DM conversations
+                      const dmPartners = conversations
+                        .filter((c) => c.type === "dm" && !(c as any).archivedAt)
+                        .slice(0, 6)
+                        .map((c) => ({
+                          id: c.otherUserId,
+                          displayName: c.otherDisplayName,
+                          username: c.otherUsername,
+                          avatarUrl: c.otherAvatarUrl,
+                          lastSeenAt: (c as any).otherLastSeenAt,
+                        }));
+
+                      // Merge friends (60-min window) + dm partners
+                      const recentFriends = friends.filter((f: any) => {
+                        if (f.hideOnlineStatus) return false;
+                        return !!f.lastSeenAt && Date.now() - new Date(f.lastSeenAt).getTime() <= 60 * 60 * 1000;
+                      });
+
+                      const seen2 = new Set<number>();
+                      const onlineFriends = [...recentFriends, ...dmPartners].filter((f) => {
+                        if (!f.id || seen2.has(f.id)) return false;
+                        seen2.add(f.id);
+                        return true;
+                      });
+
+                      if (onlineFriends.length === 0) return null;
+
+                      const onlineCount2 = onlineFriends.filter((f) =>
+                        !!f.lastSeenAt && Date.now() - new Date(f.lastSeenAt).getTime() <= 5 * 60 * 1000
+                      ).length;
+
+                      return (
+                        <div className="px-3.5 py-3 border-b border-[#1f2023]/60 mb-2 shrink-0 select-none bg-[#2b2d31]/10">
+                          <div className="flex items-center justify-between mb-2.5 px-1">
+                            <span className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Aktif Sekarang</span>
+                            <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/20 px-1.5 py-0.5 rounded border border-emerald-900/35">
+                              {onlineCount2 > 0 ? `${onlineCount2} Aktif` : `${onlineFriends.length} Teman`}
+                            </span>
+                          </div>
+                          
+                          <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+                            {onlineFriends.map((friend: any, index: number) => {
+                              const friendStory = activeStories.find((story: any) => story.userId === friend.id);
+                              const latestStatus = friendStory?.statuses[friendStory.statuses.length - 1];
+                              const statusText = latestStatus?.caption || "Aktif di Arcadia";
+                              const isIdle = friend.id % 3 === 0;
+
+                              // Spotify card design (for index % 3 === 0)
+                              if (index % 3 === 0) {
+                                return (
+                                  <div
+                                    key={`active-friend-${friend.id}`}
+                                    onClick={() => handleStartDm(friend.id)}
+                                    className="flex items-center gap-2.5 p-2 rounded-xl bg-[#111214]/85 hover:bg-[#1e1f22] border border-[#1f2023]/60 w-[190px] shrink-0 cursor-pointer group transition-all relative"
+                                  >
+                                    <div className="relative shrink-0 w-10 h-10 rounded-lg overflow-hidden border border-zinc-800">
+                                      <img src="https://i.scdn.co/image/ab67616d0000b2734493390737d2f9b8c0d12e8e" alt="Spotify Art" className="w-full h-full object-cover" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5 justify-between">
+                                        <span className="text-[10px] font-black text-white truncate block group-hover:text-indigo-400 transition-colors">
+                                          {friend.displayName || friend.username}
+                                        </span>
+                                        <div className="w-3.5 h-3.5 rounded-full bg-[#1db954] flex items-center justify-center text-black shrink-0">
+                                          <svg className="w-2.5 h-2.5 fill-current" viewBox="0 0 24 24">
+                                            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.565.387-.86.207-2.377-1.454-5.37-1.783-8.894-1.007-.336.074-.67-.14-.744-.477-.074-.336.14-.67.477-.743 3.844-.88 7.136-.503 9.813 1.136.295.18.387.563.208.857zm1.222-2.72c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.082-1.182-.413.125-.85-.107-.975-.522-.125-.413.107-.85.522-.975 3.678-1.117 8.25-.573 11.35 1.335.367.226.487.707.26 1.074zm.104-2.85c-.272.443-.85.584-1.294.312-3.177-1.887-8.406-2.062-11.45-1.14-.503.15-1.03-.135-1.18-.638-.15-.503.135-1.03.638-1.18 3.63-1.1 9.405-.9 13.06 1.27.442.27.584.85.312 1.294z"/>
+                                          </svg>
+                                        </div>
+                                      </div>
+                                      <span className="text-[9px] text-[#B5BAC1] font-bold block mt-0.5 truncate leading-tight">
+                                        Mendengarkan Spotify
+                                      </span>
+                                      <span className="text-[8px] text-[#949BA4] font-semibold truncate block mt-0.5 leading-tight">
+                                        Purple Rain
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              // Premium Gaming Lightning card design (for index % 3 === 1)
+                              if (index % 3 === 1) {
+                                return (
+                                  <div
+                                    key={`active-friend-${friend.id}`}
+                                    onClick={() => handleStartDm(friend.id)}
+                                    className="flex items-center gap-2.5 p-2 rounded-xl bg-gradient-to-br from-[#101935] via-[#080d1a] to-[#12131a] border border-blue-500/20 hover:border-blue-400/40 w-[190px] shrink-0 cursor-pointer group transition-all relative overflow-hidden"
+                                  >
+                                    <div className="absolute inset-0 opacity-10 pointer-events-none flex items-center justify-center">
+                                      <span className="text-blue-500 font-bold text-3xl transform rotate-12">⚡</span>
+                                    </div>
+                                    <div className="relative shrink-0">
+                                      <Avatar className="w-8 h-8 border border-zinc-800">
+                                        <AvatarImage src={friend.avatarUrl || undefined} />
+                                        <AvatarFallback className="text-xs bg-zinc-800 text-white font-bold">
+                                          {getInitials(friend.displayName || friend.username)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#080d1a] flex items-center justify-center">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-[#23a55a]" />
+                                      </div>
+                                    </div>
+                                    <div className="min-w-0 flex-1 relative z-10">
+                                      <span className="text-[10px] font-black text-white truncate block group-hover:text-indigo-400 transition-colors">
+                                        {friend.displayName || friend.username}
+                                      </span>
+                                      <span className="text-[9px] text-blue-300 font-bold block mt-0.5 truncate leading-tight">
+                                        Sedang Streaming
+                                      </span>
+                                      <span className="text-[8px] text-[#B5BAC1] font-semibold truncate block mt-0.5 leading-tight">
+                                        {statusText}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              // Minecraft active card design (for index % 3 === 2)
+                              return (
+                                <div
+                                  key={`active-friend-${friend.id}`}
+                                  onClick={() => handleStartDm(friend.id)}
+                                  className="flex items-center gap-2.5 p-2 rounded-xl bg-[#111214]/85 hover:bg-[#1e1f22] border border-[#1f2023]/60 w-[190px] shrink-0 cursor-pointer group transition-all relative"
+                                >
+                                  <div className="relative shrink-0">
+                                    <div className="w-8 h-8 rounded-full p-[1.5px] bg-gradient-to-tr from-purple-500 to-indigo-500">
+                                      <Avatar className="w-full h-full border border-[#111214]">
+                                        <AvatarImage src={friend.avatarUrl || undefined} />
+                                        <AvatarFallback className="text-xs bg-zinc-850 text-white font-bold">
+                                          {getInitials(friend.displayName || friend.username)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                    </div>
+                                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#111214] flex items-center justify-center">
+                                      <div className="w-2.5 h-2.5 rounded-full bg-[#23a55a]" />
+                                    </div>
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-[10px] font-black text-white truncate block group-hover:text-indigo-400 transition-colors font-mono">
+                                      {friend.displayName || friend.username}
+                                    </span>
+                                    <span className="text-[9px] text-[#B5BAC1] font-bold block mt-0.5 truncate leading-tight">
+                                      Minecraft
+                                    </span>
+                                    <span className="text-[8px] text-purple-300 font-semibold truncate block mt-0.5 leading-tight">
+                                      Server Arcadia Guild
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     <div className="p-2 space-y-1">
                       {sidebarSearchQuery.trim() ? (
                         <div className="space-y-4 pt-1">
@@ -6151,6 +6343,121 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           {/* Divider */}
                           <div className="h-[1px] bg-[#1f2023]/60 my-1 mx-2" />
 
+                          {/* Active Now - Online Friends Horizontal Carousel (realtime: polls every 30s) */}
+                          {(() => {
+                            // Use a 5-minute window for online status (robust to slight heartbeat/network delays)
+                            const ONLINE_MS = 5 * 60 * 1000;
+                            const onlineFriends = friends.filter((f: any) => {
+                              if (f.hideOnlineStatus) return false;
+                              return !!f.lastSeenAt && Date.now() - new Date(f.lastSeenAt).getTime() <= ONLINE_MS;
+                            });
+
+                            // Hide section entirely when no one is online
+                            if (onlineFriends.length === 0) return null;
+
+                            return (
+                              <div className="px-2 pt-2 pb-1 mb-1">
+                                <div className="flex items-center justify-between mb-2 px-1">
+                                  <span className="text-[9px] font-black text-[#949BA4] uppercase tracking-wider">Aktif Sekarang</span>
+                                  <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-400">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
+                                    {onlineFriends.length} online
+                                  </span>
+                                </div>
+
+                                {/* Horizontally scrollable friend cards */}
+                                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none" style={{scrollbarWidth: "none", msOverflowStyle: "none"}}>
+                                  {onlineFriends.map((friend: any, index: number) => {
+                                    const friendStory = activeStories.find((story: any) => story.userId === friend.id);
+                                    const latestStatus = friendStory?.statuses?.[friendStory.statuses.length - 1];
+                                    const customStatus = latestStatus?.caption;
+                                    const isOnline = true; // guaranteed by filter above
+                                    const cardType = index % 3;
+
+                                    // ── Spotify card ──────────────────────────────────
+                                    if (cardType === 0) {
+                                      return (
+                                        <div
+                                          key={friend.id}
+                                          onClick={() => handleStartDm(friend.id)}
+                                          className="flex items-center gap-2.5 p-2 rounded-xl bg-[#111214]/85 hover:bg-[#1e1f22] border border-[#1f2023]/60 w-[190px] shrink-0 cursor-pointer group transition-all relative active:scale-[0.98]"
+                                        >
+                                          <div className="relative shrink-0 w-10 h-10 rounded-lg overflow-hidden border border-zinc-800">
+                                            <img src="https://i.scdn.co/image/ab67616d0000b2734493390737d2f9b8c0d12e8e" alt="Album Art" className="w-full h-full object-cover" />
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-1.5 justify-between">
+                                              <span className="text-[10px] font-black text-white truncate block group-hover:text-indigo-400 transition-colors">
+                                                {friend.displayName || friend.username}
+                                              </span>
+                                              <div className="w-4 h-4 rounded-full bg-[#1db954] flex items-center justify-center shrink-0">
+                                                <svg className="w-2.5 h-2.5 fill-black" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.565.387-.86.207-2.377-1.454-5.37-1.783-8.894-1.007-.336.074-.67-.14-.744-.477-.074-.336.14-.67.477-.743 3.844-.88 7.136-.503 9.813 1.136.295.18.387.563.208.857zm1.222-2.72c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.082-1.182-.413.125-.85-.107-.975-.522-.125-.413.107-.85.522-.975 3.678-1.117 8.25-.573 11.35 1.335.367.226.487.707.26 1.074zm.104-2.85c-.272.443-.85.584-1.294.312-3.177-1.887-8.406-2.062-11.45-1.14-.503.15-1.03-.135-1.18-.638-.15-.503.135-1.03.638-1.18 3.63-1.1 9.405-.9 13.06 1.27.442.27.584.85.312 1.294z"/></svg>
+                                              </div>
+                                            </div>
+                                            <span className="text-[9px] text-[#B5BAC1] font-bold block mt-0.5 truncate leading-tight">Mendengarkan Spotify</span>
+                                            <span className="text-[8px] text-[#949BA4] font-semibold truncate block mt-0.5 leading-tight">Purple Rain</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+
+                                    // ── Lightning / Gaming card ────────────────────────
+                                    if (cardType === 1) {
+                                      return (
+                                        <div
+                                          key={friend.id}
+                                          onClick={() => handleStartDm(friend.id)}
+                                          className="flex items-center gap-2.5 p-2 rounded-xl bg-gradient-to-br from-[#101935] via-[#080d1a] to-[#12131a] border border-blue-500/20 hover:border-blue-400/40 w-[190px] shrink-0 cursor-pointer group transition-all relative overflow-hidden active:scale-[0.98]"
+                                        >
+                                          <div className="absolute inset-0 opacity-10 pointer-events-none flex items-center justify-center">
+                                            <span className="text-blue-400 font-bold text-3xl transform rotate-12 select-none">⚡</span>
+                                          </div>
+                                          <div className="relative shrink-0 w-10 h-10 rounded-lg bg-[#0d1b2e] border border-blue-500/30 flex items-center justify-center">
+                                            <span className="text-xl select-none">⚡</span>
+                                          </div>
+                                          <div className="min-w-0 flex-1 relative z-10">
+                                            <span className="text-[10px] font-black text-white truncate block group-hover:text-blue-300 transition-colors">
+                                              {friend.displayName || friend.username}
+                                            </span>
+                                            <span className="text-[9px] text-blue-300 font-bold block mt-0.5 truncate leading-tight">Sedang Streaming</span>
+                                            <span className="text-[8px] text-[#B5BAC1] font-semibold truncate block mt-0.5 leading-tight">{customStatus || "Live sekarang"}</span>
+                                          </div>
+                                        </div>
+                                        );
+                                      }
+
+                                      return (
+                                        <div
+                                          key={friend.id}
+                                          onClick={() => handleStartDm(friend.id)}
+                                          className="flex items-center gap-2.5 p-2 rounded-xl bg-[#111214]/85 hover:bg-[#1e1f22] border border-[#1f2023]/60 w-[190px] shrink-0 cursor-pointer group transition-all active:scale-[0.98]"
+                                        >
+                                          <div className="relative shrink-0 w-10 h-10 rounded-lg overflow-hidden border border-purple-500/40 bg-gradient-to-br from-green-700 via-emerald-800 to-green-900 flex items-center justify-center">
+                                            <span className="text-xl select-none">⛏️</span>
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-1.5 justify-between">
+                                              <span className="text-[10px] font-black text-white truncate block group-hover:text-purple-300 transition-colors font-mono">
+                                                {friend.displayName || friend.username}
+                                              </span>
+                                              <div className="w-4 h-4 rounded-lg bg-[#1a1a1a] border border-purple-500/30 flex items-center justify-center shrink-0">
+                                                <span className="text-[8px] select-none">🎮</span>
+                                              </div>
+                                            </div>
+                                            <span className="text-[9px] text-purple-300 font-bold block mt-0.5 truncate leading-tight">MINECRAFT</span>
+                                            <span className="text-[8px] text-[#949BA4] font-semibold truncate block mt-0.5 leading-tight">Server Arcadia Guild</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                          })()}
+
+                          {/* Divider before Stories */}
+                          <div className="h-[1px] bg-[#1f2023]/60 mb-1 mx-2" />
+
                           {/* Stories Horizontal Row */}
                           <div className="px-2 py-2.5 border-b border-[#1f2023] mb-2 shrink-0">
                             <div className="flex items-center justify-between mb-2 px-1">
@@ -6261,6 +6568,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             </div>
                           </div>
 
+
+
+
                           {meLoading || convsLoading ? (
                             Array.from({ length: 5 }).map((_, i) => (
                               <div key={i} className="flex items-center gap-3 px-3 py-2.5">
@@ -6326,8 +6636,9 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                                 {archivedConvs.length > 0 && (
                                   <>
                                     <button
+                                      type="button"
                                       onClick={() => setShowArchived((v) => !v)}
-                                      className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-[#949BA4] hover:text-[#DCDDDE] transition-colors"
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-[#949BA4] hover:text-[#DCDDDE] transition-colors border-0 bg-transparent cursor-pointer"
                                     >
                                       <Archive className="w-3.5 h-3.5" />
                                       Diarsipkan ({archivedConvs.length})
