@@ -986,12 +986,18 @@ export const ListConversationsResponseItem = zod.object({
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
+  "otherUserIsBusinessVerified": zod.boolean().nullish(),
+  "otherUserIsSeller": zod.boolean().nullish(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserEquippedBackground": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
   "createdAt": zod.string(),
-  "inviteCode": zod.string().nullish()
+  "inviteCode": zod.string().nullish(),
+  "pinnedAt": zod.string().nullish(),
+  "archivedAt": zod.string().nullish()
 })
 export const ListConversationsResponse = zod.array(ListConversationsResponseItem)
 
@@ -1068,12 +1074,18 @@ export const GetConversationResponse = zod.object({
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
+  "otherUserIsBusinessVerified": zod.boolean().nullish(),
+  "otherUserIsSeller": zod.boolean().nullish(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserEquippedBackground": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
   "createdAt": zod.string(),
-  "inviteCode": zod.string().nullish()
+  "inviteCode": zod.string().nullish(),
+  "pinnedAt": zod.string().nullish(),
+  "archivedAt": zod.string().nullish()
 })
 
 

@@ -2176,7 +2176,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       animationFrameId = requestAnimationFrame(scanLoop);
     };
 
-    if (isScanning && videoRef.current) {
+    if (isScanning) {
       const scriptId = "jsqr-cdn-script";
       if (!document.getElementById(scriptId)) {
         const script = document.createElement("script");
@@ -2185,21 +2185,28 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
         document.body.appendChild(script);
       }
 
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then((stream) => {
-          streamRef.current = stream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.setAttribute("playsinline", "true");
-            videoRef.current.play();
-            animationFrameId = requestAnimationFrame(scanLoop);
-          }
-        })
-        .catch((err) => {
-          console.error("Camera access failed:", err);
-          setScanError("Camera access denied or not available.");
-          setIsScanning(false);
-        });
+      // Wait a tick for React to render the <video> element into the DOM
+      const startCamera = () => {
+        if (!videoRef.current) return;
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+          .then((stream) => {
+            streamRef.current = stream;
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+              videoRef.current.setAttribute("playsinline", "true");
+              videoRef.current.play();
+              animationFrameId = requestAnimationFrame(scanLoop);
+            }
+          })
+          .catch((err) => {
+            console.error("Camera access failed:", err);
+            setScanError("Camera access denied or not available.");
+            setIsScanning(false);
+          });
+      };
+
+      // Use requestAnimationFrame to wait for React render cycle
+      requestAnimationFrame(() => requestAnimationFrame(startCamera));
     }
 
     return () => {
@@ -3070,14 +3077,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     }
   };
 
-  const otherUserIdForCatalog = selectedConv?.type === "dm" && (selectedConv as any).otherUserIsSeller ? selectedConv.otherUserId : null;
-  const { data: sellerCatalogProducts = [] } = useQuery<any[]>({
+  // Always attempt to fetch products for any DM contact — section renders only if products exist
+  const otherUserIdForCatalog = selectedConv?.type === "dm" ? selectedConv.otherUserId : null;
+  const { data: sellerCatalogProducts = [], isLoading: sellerProductsLoading } = useQuery<any[]>({
     queryKey: ["/api/business/products/seller", otherUserIdForCatalog],
     queryFn: () => {
       if (!otherUserIdForCatalog) return Promise.resolve([]);
       return customFetch<any[]>(`/api/business/products/seller/${otherUserIdForCatalog}`);
     },
     enabled: !!otherUserIdForCatalog,
+    refetchInterval: 15000, // real-time: refresh every 15s
+    staleTime: 10000,
   });
 
   useEffect(() => {
@@ -8169,47 +8179,123 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
       </div>
 
           {/* Info Panel - Slide in from right */}
-          {showInfoPanel && selectedConv && (
+          {showInfoPanel && selectedConv && (() => {
+            const bgVid = selectedConv.bgVideoUrl;
+            const groupYtId = bgVid ? extractYouTubeId(bgVid) : null;
+            const otherYtVid = selectedConv.type === "dm" ? selectedConv.otherUserYoutubeLiveUrl : null;
+            const otherYtId = otherYtVid ? extractYouTubeId(otherYtVid) : null;
+            const otherBgCss = selectedConv.type === "dm" ? (selectedConv.otherUserEquippedBackground ?? null) : null;
+            const avatarBorderCls = selectedConv.otherUserEquippedBorder ?? "border-2 border-white/30";
+
+            return (
             <div className={`fixed inset-0 sm:relative sm:inset-auto z-50 sm:z-auto sm:w-80 sm:border-l flex flex-col overflow-hidden animate-in slide-in-from-right duration-200 ${isGroupView ? "bg-[#1E1F22] sm:border-[#3F4147]" : "bg-white sm:border-[#eae8f5]"}`}>
-              {/* Panel Header */}
-              <div className={`h-14 sm:h-16 px-3 sm:px-4 flex items-center justify-between shrink-0 ${isGroupView ? "bg-[#2B2D31]" : "bg-[#075e54]"}`}>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowInfoPanel(false)}
-                    className="sm:hidden text-white/80 hover:text-white transition-colors -ml-1"
-                  >
-                    <ArrowLeft className="h-5 w-5" />
-                  </button>
-                  <p className="text-white text-sm font-extrabold">
-                    {selectedConv.type === "group" ? "Group Info" : "Contact Info"}
-                  </p>
+
+              {/* ── DM with YouTube Live Banner: animated video covers title + avatar area ── */}
+              {selectedConv.type === "dm" && otherYtId ? (
+                <div className={`relative w-full shrink-0 overflow-hidden border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`} style={{ minHeight: 260 }}>
+                  {/* Animated YouTube iframe as full background */}
+                  <iframe
+                    src={`https://www.youtube.com/embed/${otherYtId}?autoplay=1&mute=1&loop=1&playlist=${otherYtId}&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&rel=0`}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ width: "177.78%", height: "177.78%", minWidth: "100%", minHeight: "100%" }}
+                    allow="autoplay; encrypted-media"
+                    title="user-live-banner"
+                  />
+                  {/* Gradient overlay — darker at top for title legibility, darker at bottom for avatar */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/30 to-black/75 pointer-events-none" />
+
+                  {/* Title bar (Contact Info + close) overlaid on video */}
+                  <div className="relative z-10 h-14 sm:h-16 px-3 sm:px-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowInfoPanel(false)}
+                        className="sm:hidden text-white/80 hover:text-white transition-colors -ml-1"
+                      >
+                        <ArrowLeft className="h-5 w-5" />
+                      </button>
+                      <p className="text-white text-sm font-extrabold drop-shadow">Contact Info</p>
+                    </div>
+                    <button
+                      onClick={() => setShowInfoPanel(false)}
+                      className="hidden sm:block text-white/80 hover:text-white transition-colors"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Live badge */}
+                  <div className="absolute top-3 right-12 sm:right-10 flex items-center gap-1 bg-red-600/90 backdrop-blur-sm text-white text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded-full z-10 shadow">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    Live
+                  </div>
+
+                  {/* User info overlaid on video */}
+                  <div className="relative z-10 flex flex-col items-center pb-6 px-4">
+                    {/* Avatar */}
+                    <div className={`rounded-full overflow-visible w-20 h-20 shrink-0 flex items-center justify-center ${avatarBorderCls} p-1 shadow-2xl ring-2 ring-white/10`}>
+                      <img
+                        src={selectedConv.otherAvatarUrl ?? "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=128"}
+                        alt={selectedName}
+                        className="w-full h-full object-cover rounded-full"
+                      />
+                    </div>
+
+                    {/* Name + badges */}
+                    <div className="flex items-center justify-center gap-1.5 mt-3 flex-wrap">
+                      <h2 className="text-lg font-extrabold text-center text-white drop-shadow">{selectedName}</h2>
+                      {selectedConv.otherUserIsVerified && (
+                        <TooltipProvider><Tooltip>
+                          <TooltipTrigger asChild><BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400/20 shrink-0 drop-shadow" /></TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">Akun Terverifikasi</TooltipContent>
+                        </Tooltip></TooltipProvider>
+                      )}
+                      {selectedConv.otherUserIsBusinessVerified && (
+                        <TooltipProvider><Tooltip>
+                          <TooltipTrigger asChild><BadgeCheck className="w-5 h-5 text-emerald-400 fill-emerald-400/20 shrink-0 drop-shadow" /></TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">Bisnis Terverifikasi</TooltipContent>
+                        </Tooltip></TooltipProvider>
+                      )}
+                    </div>
+                    <p className="text-xs font-bold mt-1 text-white/70 drop-shadow">@{selectedConv.otherUsername}</p>
+                    {selectedConv.otherUserRole && (
+                      <span className={`mt-3 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full backdrop-blur-sm ${
+                        selectedConv.otherUserRole === "admin" ? "bg-red-500/30 text-red-200 border border-red-400/40"
+                        : selectedConv.otherUserRole === "ai" ? "bg-blue-500/30 text-blue-200 border border-blue-400/40"
+                        : "bg-white/10 text-white/60 border border-white/20"
+                      }`}>{selectedConv.otherUserRole}</span>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={() => setShowInfoPanel(false)}
-                  className="hidden sm:block text-white/80 hover:text-white transition-colors"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+              ) : (
+                /* ── Standard panel header (no YouTube banner) ── */
+                <>
+                  <div className={`h-14 sm:h-16 px-3 sm:px-4 flex items-center justify-between shrink-0 ${isGroupView ? "bg-[#2B2D31]" : "bg-[#075e54]"}`}>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setShowInfoPanel(false)} className="sm:hidden text-white/80 hover:text-white transition-colors -ml-1">
+                        <ArrowLeft className="h-5 w-5" />
+                      </button>
+                      <p className="text-white text-sm font-extrabold">
+                        {selectedConv.type === "group" ? "Group Info" : "Contact Info"}
+                      </p>
+                    </div>
+                    <button onClick={() => setShowInfoPanel(false)} className="hidden sm:block text-white/80 hover:text-white transition-colors">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </>
+              )}
 
               <ScrollArea className="flex-1">
-                {/* Banner + Avatar / Icon */}
-                {(() => {
-                  const bgVid = (selectedConv as any).bgVideoUrl as string | null | undefined;
-                  const ytId = bgVid ? extractYouTubeId(bgVid) : null;
-                  
-                  const otherYtVid = selectedConv.type === "dm" ? (selectedConv as any).otherUserYoutubeLiveUrl : null;
-                  const otherYtId = otherYtVid ? extractYouTubeId(otherYtVid) : null;
-                  
-                  const hasBanner = (selectedConv.type === "group" && (selectedConv.bannerUrl || ytId)) ||
-                                    (selectedConv.type === "dm" && otherYtId);
+                {/* Banner + Avatar / Icon — only render for non-DM-with-YT cases */}
+                {!(selectedConv.type === "dm" && otherYtId) && (() => {
+                  const hasBanner = (selectedConv.type === "group" && (selectedConv.bannerUrl || groupYtId)) ||
+                                    (selectedConv.type === "dm" && !!otherBgCss);
                   return (
                 <div className={`flex flex-col items-center border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"} ${hasBanner ? "" : "py-6 px-4"}`}>
-                  {/* Banner — video or image */}
-                  {selectedConv.type === "group" && ytId ? (
+                  {selectedConv.type === "group" && groupYtId ? (
                     <div className="w-full h-36 relative overflow-hidden bg-black">
                       <iframe
-                        src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&loop=1&playlist=${ytId}&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&rel=0`}
+                        src={`https://www.youtube.com/embed/${groupYtId}?autoplay=1&mute=1&loop=1&playlist=${groupYtId}&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&rel=0`}
                         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                         style={{ width: "177.78%", height: "177.78%", minWidth: "100%", minHeight: "100%" }}
                         allow="autoplay; encrypted-media"
@@ -8219,34 +8305,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                     </div>
                   ) : selectedConv.type === "group" && selectedConv.bannerUrl ? (
                     <div className="w-full h-28 relative overflow-hidden">
-                      <img
-                        src={selectedConv.bannerUrl}
-                        alt="Banner"
-                        className="w-full h-full object-cover"
-                        onError={(e) => (e.currentTarget.style.display = 'none')}
-                      />
+                      <img src={selectedConv.bannerUrl} alt="Banner" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
                       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/40" />
                     </div>
-                  ) : selectedConv.type === "dm" && otherYtId ? (
-                    <div className="w-full h-36 relative overflow-hidden bg-black">
-                      <iframe
-                        src={`https://www.youtube.com/embed/${otherYtId}?autoplay=1&mute=1&loop=1&playlist=${otherYtId}&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&rel=0`}
-                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                        style={{ width: "177.78%", height: "177.78%", minWidth: "100%", minHeight: "100%" }}
-                        allow="autoplay; encrypted-media"
-                        title="user-banner-video"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50 pointer-events-none" />
+                  ) : selectedConv.type === "dm" && otherBgCss ? (
+                    <div className={`w-full h-28 relative overflow-hidden ${otherBgCss}`}>
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/40 pointer-events-none" />
                     </div>
                   ) : null}
-                  {/* Avatar */}
-                  <div className={`rounded-full overflow-hidden ${selectedConv.type === "group" ? "w-24 h-24" : "w-24 h-24"} ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder + " p-1" : isGroupView ? "border-2 border-[#3F4147]" : "border-2 border-slate-100"} ${hasBanner ? "-mt-12 relative z-10 ring-4 ring-[#1E1F22]" : ""}`}>
+                  <div className={`rounded-full overflow-hidden w-24 h-24 ${selectedConv.type === "dm" && (selectedConv as any).otherUserEquippedBorder ? (selectedConv as any).otherUserEquippedBorder + " p-1" : isGroupView ? "border-2 border-[#3F4147]" : "border-2 border-slate-100"} ${hasBanner ? "-mt-12 relative z-10 ring-4 ring-[#1E1F22]" : ""}`}>
                     <img
-                      src={
-                        selectedConv.type === "dm"
-                          ? (selectedConv.otherAvatarUrl ?? "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=128")
-                          : (selectedConv.iconUrl ?? "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128")
-                      }
+                      src={selectedConv.type === "dm" ? (selectedConv.otherAvatarUrl ?? "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=128") : (selectedConv.iconUrl ?? "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128")}
                       alt={selectedName}
                       className="w-full h-full object-cover rounded-full"
                     />
@@ -8254,41 +8323,17 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   <div className="flex items-center justify-center gap-1.5 mt-3">
                     <h2 className={`text-lg font-extrabold text-center ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>{selectedName}</h2>
                     {selectedConv.type === "dm" && (selectedConv as any).otherUserIsVerified && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400/20 shrink-0" />
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="text-xs">Akun Terverifikasi</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <TooltipProvider><Tooltip><TooltipTrigger asChild><BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400/20 shrink-0" /></TooltipTrigger><TooltipContent side="top" className="text-xs">Akun Terverifikasi</TooltipContent></Tooltip></TooltipProvider>
                     )}
                     {selectedConv.type === "dm" && (selectedConv as any).otherUserIsBusinessVerified && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <BadgeCheck className="w-5 h-5 text-emerald-500 fill-emerald-500/20 shrink-0" />
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="text-xs">Bisnis Terverifikasi</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <TooltipProvider><Tooltip><TooltipTrigger asChild><BadgeCheck className="w-5 h-5 text-emerald-500 fill-emerald-500/20 shrink-0" /></TooltipTrigger><TooltipContent side="top" className="text-xs">Bisnis Terverifikasi</TooltipContent></Tooltip></TooltipProvider>
                     )}
                     {selectedConv.type === "group" && (selectedConv as any).isVerified && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400/20 shrink-0" />
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="text-xs">Komunitas Terverifikasi</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <TooltipProvider><Tooltip><TooltipTrigger asChild><BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400/20 shrink-0" /></TooltipTrigger><TooltipContent side="top" className="text-xs">Komunitas Terverifikasi</TooltipContent></Tooltip></TooltipProvider>
                     )}
                   </div>
                   <p className={`text-xs font-bold mt-1 mb-4 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                    {selectedConv.type === "dm"
-                      ? `@${selectedConv.otherUsername}`
-                      : `Group • ${selectedConv.memberCount} members`
-                    }
+                    {selectedConv.type === "dm" ? `@${selectedConv.otherUsername}` : `Group • ${selectedConv.memberCount} members`}
                   </p>
                   {selectedConv.type === "dm" && (selectedConv as any).otherUserRole && (
                     <span className={`mb-4 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
@@ -8472,6 +8517,105 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                           ? "Buka Blokir User"
                           : "Blokir User"}
                       </Button>
+
+                      {/* Produk Seller — real-time from SellerHub */}
+                      {(sellerProductsLoading || sellerCatalogProducts.length > 0) && (
+                        <div className={`mt-2 rounded-2xl border overflow-hidden ${
+                          isGroupView ? "border-[#3F4147] bg-[#2B2D31]/50" : "border-slate-200 bg-slate-50/60"
+                        }`}>
+                          <div className={`px-3.5 pt-3 pb-2 flex items-center justify-between`}>
+                            <div className="flex items-center gap-1.5">
+                              <ShoppingBag className="h-3.5 w-3.5 text-emerald-500" />
+                              <p className={`text-[10px] font-black uppercase tracking-wider ${
+                                isGroupView ? "text-[#949BA4]" : "text-slate-500"
+                              }`}>Produk SellerHub</p>
+                            </div>
+                            {sellerProductsLoading && (
+                              <div className="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                            )}
+                          </div>
+
+                          {sellerProductsLoading && sellerCatalogProducts.length === 0 ? (
+                            <div className="px-3.5 pb-3 space-y-2">
+                              {[1, 2].map(i => (
+                                <div key={i} className="flex items-center gap-2.5 animate-pulse">
+                                  <div className={`w-10 h-10 rounded-lg shrink-0 ${
+                                    isGroupView ? "bg-[#3F4147]" : "bg-slate-200"
+                                  }`} />
+                                  <div className="flex-1 space-y-1.5">
+                                    <div className={`h-2.5 rounded-full w-3/4 ${
+                                      isGroupView ? "bg-[#3F4147]" : "bg-slate-200"
+                                    }`} />
+                                    <div className={`h-2 rounded-full w-1/2 ${
+                                      isGroupView ? "bg-[#3F4147]" : "bg-slate-200"
+                                    }`} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : sellerCatalogProducts.length === 0 ? (
+                            <p className={`px-3.5 pb-3 text-xs font-semibold italic ${
+                              isGroupView ? "text-[#949BA4]" : "text-slate-400"
+                            }`}>
+                              Belum ada produk aktif.
+                            </p>
+                          ) : (
+                            <div className="px-3.5 pb-3 space-y-2 max-h-56 overflow-y-auto">
+                              {sellerCatalogProducts.map((product: any) => (
+                                <div
+                                  key={`inf-${product.id}`}
+                                  onClick={() => setSelectedCatalogProduct(product)}
+                                  className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer hover:scale-[1.01] active:scale-[0.99] transition-all ${
+                                    isGroupView
+                                      ? "bg-[#2B2D31]/60 border-[#3F4147] hover:bg-[#35373C]"
+                                      : "bg-white border-slate-200/80 hover:border-violet-200 hover:bg-violet-50/30"
+                                  }`}
+                                >
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 overflow-hidden border ${
+                                    isGroupView ? "bg-[#3F4147] border-[#3F4147]" : "bg-slate-50 border-slate-100"
+                                  }`}>
+                                    {product.imageUrl ? (
+                                      <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <ShoppingBag className="w-4 h-4 text-slate-300" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1 space-y-0.5">
+                                    <h4 className={`text-xs font-black truncate ${
+                                      isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"
+                                    }`}>
+                                      {product.name}
+                                    </h4>
+                                    <p className="text-[11px] font-black text-emerald-500">
+                                      {new Intl.NumberFormat("id-ID", {
+                                        style: "currency",
+                                        currency: "IDR",
+                                        maximumFractionDigits: 0
+                                      }).format(product.price)}
+                                    </p>
+                                    {product.stock !== undefined && product.stock !== null && (
+                                      <p className={`text-[9px] font-bold ${
+                                        product.stock <= 3
+                                          ? "text-red-400"
+                                          : isGroupView ? "text-[#949BA4]" : "text-slate-400"
+                                      }`}>
+                                        {product.stock <= 0 ? "Habis" : `Stok: ${product.stock}`}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full border ${
+                                    isGroupView
+                                      ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                                      : "text-emerald-600 bg-emerald-50 border-emerald-100"
+                                  }`}>
+                                    Beli
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
                   {selectedConv.type === "group" && selectedConv.ownerId === me?.id && (
@@ -8511,57 +8655,11 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   )}
                 </div>
 
-                {/* Katalog Toko (DM with Seller only) */}
-                {selectedConv.type === "dm" && (selectedConv as any).otherUserIsSeller && (
-                  <div className={`px-5 py-4 border-b ${isGroupView ? "border-[#3F4147]" : "border-slate-100"}`}>
-                    <p className={`text-[10px] font-black uppercase tracking-wider mb-3 flex items-center gap-1.5 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                      <ShoppingBag className="h-3.5 w-3.5 text-emerald-500" /> Katalog Toko
-                    </p>
 
-                    {sellerCatalogProducts.length === 0 ? (
-                      <p className={`text-xs font-bold italic ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                        Belum ada produk aktif di katalog.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-2.5 max-h-60 overflow-y-auto pr-1">
-                        {sellerCatalogProducts.map((product: any) => (
-                          <div
-                            key={`catalog-item-${product.id}`}
-                            onClick={() => setSelectedCatalogProduct(product)}
-                            className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer hover:scale-[1.01] active:scale-[0.99] transition-all ${
-                              isGroupView
-                                ? "bg-[#2B2D31]/40 border-[#3F4147] hover:bg-[#2B2D31]/70"
-                                : "bg-slate-50/50 border-slate-200/60 hover:bg-slate-50"
-                            }`}
-                          >
-                            <div className="w-10 h-10 rounded-lg bg-white border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
-                              {product.imageUrl ? (
-                                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
-                              ) : (
-                                <ShoppingBag className="w-4 h-4 text-slate-300" />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1 space-y-0.5">
-                              <h4 className={`text-xs font-black truncate ${isGroupView ? "text-[#DCDDDE]" : "text-[#110e3d]"}`}>
-                                {product.name}
-                              </h4>
-                              <p className="text-[11px] font-black text-emerald-500">
-                                {new Intl.NumberFormat("id-ID", {
-                                  style: "currency",
-                                  currency: "IDR",
-                                  maximumFractionDigits: 0
-                                }).format(product.price)}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </ScrollArea>
             </div>
-          )}
+            );
+          })()}
         </div>
       </main>
 

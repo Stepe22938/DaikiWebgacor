@@ -1455,6 +1455,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
   let otherUserIsBusinessVerified = false;
   let otherUserIsSeller = false;
   let otherUserEquippedBorder: string | null = null;
+  let otherUserEquippedBackground: string | null = null;
   let otherUserYoutubeLiveUrl: string | null = null;
 
   if (conv.type === "dm") {
@@ -1475,18 +1476,19 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
       if (other.username === "zaidanai" || other.username === "akira" || other.username === "metaai") {
         otherUserEquippedBorder = "bg-gradient-to-tr from-blue-500 via-cyan-400 to-indigo-500 p-[2px]";
       } else {
-        const equipped = await db
-          .select({ value: cosmeticsTable.value })
+        const equippedCosmetics = await db
+          .select({ value: cosmeticsTable.value, type: cosmeticsTable.type })
           .from(userCosmeticsTable)
           .innerJoin(cosmeticsTable, eq(userCosmeticsTable.cosmeticId, cosmeticsTable.id))
           .where(
             and(
               eq(userCosmeticsTable.userId, other.userId),
               eq(userCosmeticsTable.isEquipped, true),
-              eq(cosmeticsTable.type, "border")
+              sql`${cosmeticsTable.type} IN ('border', 'background')`
             )
           );
-        otherUserEquippedBorder = equipped[0]?.value ?? null;
+        otherUserEquippedBorder = equippedCosmetics.find(c => c.type === "border")?.value ?? null;
+        otherUserEquippedBackground = equippedCosmetics.find(c => c.type === "background")?.value ?? null;
       }
     }
   }
@@ -1511,6 +1513,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     otherUserIsBusinessVerified,
     otherUserIsSeller,
     otherUserEquippedBorder,
+    otherUserEquippedBackground,
     otherUserYoutubeLiveUrl,
     lastMessageContent: lastMsg ? (lastMsg.content || (lastMsg.imageUrl ? "📷 Image" : "")) : null,
     lastMessageAt: lastMsg ? serializeDates(lastMsg).createdAt : null,

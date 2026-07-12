@@ -114,7 +114,7 @@ export default function AddFriendPage() {
       animationFrameId = requestAnimationFrame(scanLoop);
     };
 
-    if (isScanning && videoRef.current) {
+    if (isScanning) {
       const scriptId = "jsqr-cdn-script";
       if (!document.getElementById(scriptId)) {
         const script = document.createElement("script");
@@ -123,21 +123,27 @@ export default function AddFriendPage() {
         document.body.appendChild(script);
       }
 
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then((stream) => {
-          streamRef.current = stream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.setAttribute("playsinline", "true");
-            videoRef.current.play();
-            animationFrameId = requestAnimationFrame(scanLoop);
-          }
-        })
-        .catch((err) => {
-          console.error("Camera access failed:", err);
-          setScanError("Camera access denied or not available.");
-          setIsScanning(false);
-        });
+      // Wait for React to render the <video> element into the DOM
+      const startCamera = () => {
+        if (!videoRef.current) return;
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+          .then((stream) => {
+            streamRef.current = stream;
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+              videoRef.current.setAttribute("playsinline", "true");
+              videoRef.current.play();
+              animationFrameId = requestAnimationFrame(scanLoop);
+            }
+          })
+          .catch((err) => {
+            console.error("Camera access failed:", err);
+            setScanError("Camera access denied or not available.");
+            setIsScanning(false);
+          });
+      };
+
+      requestAnimationFrame(() => requestAnimationFrame(startCamera));
     }
 
     return () => {
