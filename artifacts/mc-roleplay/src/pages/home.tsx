@@ -26,6 +26,24 @@ import {
   ArrowRight
 } from "lucide-react";
 
+function RevealText({ text, delay = 0, className = "" }: { text: string; delay?: number; className?: string }) {
+  const words = text.split(" ");
+  return (
+    <span className={className}>
+      {words.map((word, wIdx) => (
+        <span key={wIdx} className="inline-block overflow-hidden mr-[0.22em] pb-[0.05em] align-bottom">
+          <span 
+            className="reveal-word"
+            style={{ animationDelay: `${delay + wIdx * 0.07}s` }}
+          >
+            {word}
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export default function Home() {
   const { data: stats } = useGetStats();
   const { data: developments } = useListDevelopments();
@@ -94,6 +112,17 @@ export default function Home() {
         }
         .animate-float-ornament {
           animation: floatOrnament 8s ease-in-out infinite;
+        }
+
+        /* Letter reveal animation */
+        @keyframes slideUpReveal {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        .reveal-word {
+          display: inline-block;
+          transform: translateY(100%);
+          animation: slideUpReveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         /* Ambient background glow points */
@@ -168,12 +197,12 @@ export default function Home() {
 
               {/* Title */}
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-none text-white text-pretty uppercase">
-                A server that keeps up with your <span className="text-[#ed731a]">ambition.</span>
+                <RevealText text="A server that keeps up with your" delay={0.15} /> <span className="text-[#ed731a] inline-block overflow-hidden pb-[0.05em] align-bottom"><span className="reveal-word" style={{ animationDelay: `${0.15 + 7 * 0.07}s` }}>ambition.</span></span>
               </h1>
 
               {/* Subtitle */}
-              <p className="text-sm text-zinc-400 font-medium leading-relaxed max-w-lg">
-                Arcadia is a high-performance Minecraft Roleplay server. We forge visual systems, custom currencies, guild systems, and immersive voice communications.
+              <p className="text-sm text-zinc-400 font-medium leading-relaxed max-w-lg text-pretty">
+                <RevealText text="Arcadia is a high-performance Minecraft Roleplay server. We forge visual systems, custom currencies, guild systems, and immersive voice communications." delay={0.7} />
               </p>
 
               {/* Play Address Copier */}
@@ -309,7 +338,7 @@ export default function Home() {
           </div>
           <div className="md:col-span-6 space-y-6">
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white leading-tight uppercase">
-              An approach built on one belief.
+              <RevealText text="An approach built on one belief." delay={0.1} />
             </h2>
             <div className="pt-2">
               <Link href="/about" className="text-xs font-bold text-zinc-400 hover:text-white transition-colors inline-flex items-center gap-1.5 group">
@@ -328,7 +357,9 @@ export default function Home() {
         <section id="features" className="py-20 md:py-28 relative z-10 max-w-5xl mx-auto px-4 scroll-mt-20">
           <div className="flex flex-col items-center text-center mb-16 space-y-4">
             <span className="akis-tag">Features</span>
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-white uppercase">From strategy to launch</h2>
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-white uppercase">
+              <RevealText text="From strategy to launch" delay={0.1} />
+            </h2>
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
