@@ -134,6 +134,8 @@ import {
   Square,
   VolumeX,
   Volume1,
+  QrCode,
+  Camera,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -2028,6 +2030,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   });
   const [messageText, setMessageText] = useState("");
   const [showNewDm, setShowNewDm] = useState(false);
+  const [showAddFriendDialog, setShowAddFriendDialog] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [profilePreviewUser, setProfilePreviewUser] = useState<ProfilePreviewUser | null>(null);
@@ -2109,6 +2112,124 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
   const [activeView, setActiveView] = useState<"chat" | "shop" | "quests">("chat");
   const [questProgress, setQuestProgress] = useState<Record<number, { current: number; claimed: boolean }>>({});
+
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [searchUsername, setSearchUsername] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [addFriendQrCopied, setAddFriendQrCopied] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    if (!showAddFriendDialog) {
+      setIsScanning(false);
+      setSearchUsername("");
+      setScanError(null);
+    }
+  }, [showAddFriendDialog]);
+
+  useEffect(() => {
+    let animationFrameId: number;
+
+    const scanLoop = () => {
+      if (!videoRef.current || !isScanning) return;
+      
+      const video = videoRef.current;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        const canvas = canvasRef.current || document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        
+        if (context) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const jsQR = (window as any).jsQR;
+          
+          if (jsQR) {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "dontInvert",
+            });
+            
+            if (code) {
+              const text = code.data;
+              let targetUser = text;
+              if (text.includes("/add-friend/")) {
+                const parts = text.split("/add-friend/");
+                targetUser = parts[parts.length - 1];
+              }
+              
+              if (targetUser) {
+                toast({ title: "Player scanned!", description: `Resolving profile for ${targetUser}...` });
+                setIsScanning(false);
+                setShowAddFriendDialog(false);
+                setLocation(`/add-friend/${encodeURIComponent(targetUser)}`);
+                return;
+              }
+            }
+          }
+        }
+      }
+      animationFrameId = requestAnimationFrame(scanLoop);
+    };
+
+    if (isScanning && videoRef.current) {
+      const scriptId = "jsqr-cdn-script";
+      if (!document.getElementById(scriptId)) {
+        const script = document.createElement("script");
+        script.id = scriptId;
+        script.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
+        document.body.appendChild(script);
+      }
+
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then((stream) => {
+          streamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.setAttribute("playsinline", "true");
+            videoRef.current.play();
+            animationFrameId = requestAnimationFrame(scanLoop);
+          }
+        })
+        .catch((err) => {
+          console.error("Camera access failed:", err);
+          setScanError("Camera access denied or not available.");
+          setIsScanning(false);
+        });
+    }
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, [isScanning]);
+
+  const handleSearchAndAdd = async () => {
+    if (!searchUsername.trim()) return;
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/users/resolve/${encodeURIComponent(searchUsername.trim())}`);
+      if (!res.ok) {
+        throw new Error("Player not found");
+      }
+      const data = await res.json();
+      setShowAddFriendDialog(false);
+      setLocation(`/add-friend/${encodeURIComponent(data.username)}`);
+    } catch (err: any) {
+      toast({ title: "Player not found", description: "Username is not registered on this server.", variant: "destructive" });
+    } finally {
+      setSearching(false);
+    }
+  };
 
   // Load progress when user changes
   useEffect(() => {
@@ -6000,13 +6121,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       {/* Add Friends Pill Button */}
                       <button
                         type="button"
-                        onClick={() => {
-                          if (embedded) {
-                            window.location.href = "/member?tab=add-friend";
-                          } else {
-                            setLocation("/member?tab=add-friend");
-                          }
-                        }}
+                        onClick={() => setShowAddFriendDialog(true)}
                         className="flex-1 h-8.5 rounded-full flex items-center justify-center gap-1.5 px-3 bg-[#1e1f22] hover:bg-[#35373C] text-[#DCDDDE] hover:text-white transition-all text-xs font-bold border-0 cursor-pointer"
                       >
                         <UserPlus className="w-3.5 h-3.5 text-[#5865F2]" />
@@ -9035,6 +9150,135 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
               </div>
             )}
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAddFriendDialog} onOpenChange={setShowAddFriendDialog}>
+        <DialogContent className="max-w-md bg-white border border-[#eae8f5] rounded-3xl p-6 text-center text-slate-800">
+          <DialogHeader className="w-full">
+            <DialogTitle className="text-base font-extrabold text-[#110e3d] flex items-center justify-center gap-2">
+              <UserPlus className="w-5 h-5 text-[#6366f1]" />
+              Tambah Teman Baru
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 font-bold">
+              Cari username, scan QR code mereka, atau bagikan QR milikmu!
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-4">
+            {/* 1. Search Username Box */}
+            <div className="space-y-2 text-left">
+              <Label className="text-xs font-black text-[#110e3d] uppercase tracking-wider">Cari Berdasarkan Username</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Masukkan username player..."
+                  value={searchUsername}
+                  onChange={(e) => setSearchUsername(e.target.value)}
+                  className="bg-white border-[#eae8f5] focus-visible:ring-violet-500 rounded-xl text-slate-700 font-semibold"
+                />
+                <Button
+                  onClick={handleSearchAndAdd}
+                  disabled={searching || !searchUsername.trim()}
+                  className="bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl font-bold text-xs shrink-0"
+                >
+                  {searching ? "Mencari..." : "Cari & Add"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="relative flex items-center py-1">
+              <div className="flex-grow border-t border-slate-100"></div>
+              <span className="flex-shrink mx-4 text-[10px] text-slate-400 font-black uppercase tracking-widest">atau scan</span>
+              <div className="flex-grow border-t border-slate-100"></div>
+            </div>
+
+            {/* 2. QR Code Display / Live Scanner */}
+            {isScanning ? (
+              <div className="space-y-3">
+                <div className="relative aspect-square w-full max-w-[240px] mx-auto rounded-2xl overflow-hidden border-2 border-[#6366f1] bg-black flex items-center justify-center">
+                  <video
+                    ref={videoRef}
+                    className="w-full h-full object-cover"
+                  />
+                  <canvas ref={canvasRef} className="hidden" />
+                  
+                  {/* Scanner overlay square */}
+                  <div className="absolute inset-4 border-2 border-dashed border-emerald-400 rounded-xl animate-pulse pointer-events-none" />
+                </div>
+                {scanError && (
+                  <p className="text-[10px] text-red-500 font-bold">{scanError}</p>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => setIsScanning(false)}
+                  className="w-full rounded-xl border-red-100 text-red-500 hover:bg-red-50 text-xs font-bold"
+                >
+                  Matikan Kamera
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Option A: Open Camera Scanner */}
+                  <button
+                    onClick={() => {
+                      setScanError(null);
+                      setIsScanning(true);
+                    }}
+                    className="p-4 rounded-2xl border border-violet-100 hover:border-[#6366f1] bg-slate-50/50 hover:bg-violet-50/30 transition-all text-center flex flex-col items-center justify-center gap-2 group border-0 cursor-pointer"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center text-[#6366f1] group-hover:scale-110 transition-transform">
+                      <Camera className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-black text-[#110e3d] uppercase tracking-wider">Scan QR Orang</span>
+                    <span className="text-[10px] text-slate-400 font-bold leading-normal">Buka kamera untuk scan QR barcode player lain</span>
+                  </button>
+
+                  {/* Option B: Copy My Link & show QR */}
+                  <div className="p-4 rounded-2xl border border-violet-100 bg-slate-50/50 text-center flex flex-col items-center justify-center gap-2">
+                    {me && (
+                      <div className="p-1.5 bg-white rounded-xl border border-violet-100 shadow-sm">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&color=6366f1&data=${encodeURIComponent(
+                            `${window.location.origin}/add-friend/${me.username}`
+                          )}`}
+                          alt="QR Barcode Saya"
+                          className="w-16 h-16"
+                        />
+                      </div>
+                    )}
+                    <span className="text-xs font-black text-[#110e3d] uppercase tracking-wider">Barcode Saya</span>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (me) {
+                          navigator.clipboard.writeText(`${window.location.origin}/add-friend/${me.username}`);
+                          setAddFriendQrCopied(true);
+                          toast({ title: "Copied!", description: "Add friend link copied." });
+                          setTimeout(() => setAddFriendQrCopied(false), 2000);
+                        }
+                      }}
+                      className="w-full h-7 bg-[#6366f1] text-white hover:bg-violet-700 rounded-lg text-[9px] font-bold uppercase tracking-wider"
+                    >
+                      {addFriendQrCopied ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
+                      {addFriendQrCopied ? "Copied" : "Copy Link"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="mt-6">
+            <Button
+              variant="outline"
+              onClick={() => setShowAddFriendDialog(false)}
+              className="w-full rounded-xl border-[#eae8f5] text-slate-500 hover:text-slate-700 text-xs font-bold"
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

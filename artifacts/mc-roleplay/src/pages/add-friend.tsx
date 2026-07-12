@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   useFollowUser,
   useUnfollowUser,
@@ -18,7 +18,9 @@ import {
   QrCode,
   Users,
   Copy,
-  Check
+  Check,
+  Camera,
+  X
 } from "lucide-react";
 
 type PublicUser = {
@@ -52,6 +54,102 @@ export default function AddFriendPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showMyQr, setShowMyQr] = useState(false);
+  const [showScanDialog, setShowScanDialog] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    if (!showScanDialog) {
+      setIsScanning(false);
+      setScanError(null);
+    }
+  }, [showScanDialog]);
+
+  useEffect(() => {
+    let animationFrameId: number;
+
+    const scanLoop = () => {
+      if (!videoRef.current || !isScanning) return;
+      
+      const video = videoRef.current;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        const canvas = canvasRef.current || document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        
+        if (context) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const jsQR = (window as any).jsQR;
+          
+          if (jsQR) {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "dontInvert",
+            });
+            
+            if (code) {
+              const text = code.data;
+              let targetUser = text;
+              if (text.includes("/add-friend/")) {
+                const parts = text.split("/add-friend/");
+                targetUser = parts[parts.length - 1];
+              }
+              
+              if (targetUser) {
+                toast({ title: "Player scanned!", description: `Resolving profile for ${targetUser}...` });
+                setIsScanning(false);
+                setShowScanDialog(false);
+                setLocation(`/add-friend/${encodeURIComponent(targetUser)}`);
+                return;
+              }
+            }
+          }
+        }
+      }
+      animationFrameId = requestAnimationFrame(scanLoop);
+    };
+
+    if (isScanning && videoRef.current) {
+      const scriptId = "jsqr-cdn-script";
+      if (!document.getElementById(scriptId)) {
+        const script = document.createElement("script");
+        script.id = scriptId;
+        script.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
+        document.body.appendChild(script);
+      }
+
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then((stream) => {
+          streamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.setAttribute("playsinline", "true");
+            videoRef.current.play();
+            animationFrameId = requestAnimationFrame(scanLoop);
+          }
+        })
+        .catch((err) => {
+          console.error("Camera access failed:", err);
+          setScanError("Camera access denied or not available.");
+          setIsScanning(false);
+        });
+    }
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, [isScanning]);
 
   useEffect(() => {
     if (!targetParam) return;
@@ -266,14 +364,26 @@ export default function AddFriendPage() {
           <p className="text-[11px] font-bold text-slate-400">
             Let this player scan your QR code or click the button below to display your QR Code.
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowMyQr(true)}
-            className="w-full rounded-xl border-[#eae8f5] text-slate-500 hover:text-[#6366f1] text-xs font-bold"
-          >
-            Show My Add Friend QR Code
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowMyQr(true)}
+              className="w-full rounded-xl border-[#eae8f5] text-slate-500 hover:text-[#6366f1] text-xs font-bold"
+            >
+              Show My Add Friend QR Code
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setShowScanDialog(true);
+                setIsScanning(true);
+              }}
+              className="w-full rounded-xl bg-[#6366f1] text-white hover:bg-violet-700 text-xs font-bold flex items-center justify-center gap-1.5"
+            >
+              <Camera className="w-3.5 h-3.5" /> Scan Player's QR Code
+            </Button>
+          </div>
         </Card>
       </div>
 
@@ -322,6 +432,62 @@ export default function AddFriendPage() {
               className="flex-1 rounded-xl border-[#eae8f5] text-slate-500 hover:text-slate-700 text-xs font-bold h-9"
             >
               Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Camera Scan Dialog */}
+      <Dialog open={showScanDialog} onOpenChange={setShowScanDialog}>
+        <DialogContent className="max-w-xs bg-white border border-[#eae8f5] rounded-3xl p-5 text-center flex flex-col items-center">
+          <DialogHeader className="w-full">
+            <DialogTitle className="text-sm font-extrabold text-[#110e3d] flex items-center justify-center gap-1.5">
+              <Camera className="w-4.5 h-4.5 text-[#6366f1]" /> Scan Player's QR Code
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-400 font-bold">
+              Point your camera at another player's profile QR code.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 w-full">
+            {isScanning ? (
+              <div className="relative aspect-square w-full rounded-2xl overflow-hidden border-2 border-[#6366f1] bg-black flex items-center justify-center">
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover"
+                  playsInline
+                />
+                <canvas ref={canvasRef} className="hidden" />
+                <div className="absolute inset-4 border-2 border-dashed border-emerald-400 rounded-xl animate-pulse pointer-events-none" />
+              </div>
+            ) : (
+              <div className="py-8 space-y-4">
+                <Button
+                  onClick={() => {
+                    setScanError(null);
+                    setIsScanning(true);
+                  }}
+                  className="w-full bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold h-10"
+                >
+                  <Camera className="w-4 h-4 mr-2" /> Start Camera Scan
+                </Button>
+                {scanError && (
+                  <p className="text-[10px] text-red-500 font-bold">{scanError}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 w-full">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsScanning(false);
+                setShowScanDialog(false);
+              }}
+              className="w-full rounded-xl border-[#eae8f5] text-slate-500 hover:text-slate-700 text-xs font-bold h-9"
+            >
+              Cancel
             </Button>
           </div>
         </DialogContent>
