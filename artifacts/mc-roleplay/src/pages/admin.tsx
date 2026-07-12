@@ -45,6 +45,7 @@ import {
   useGetGachaBoard,
   useAdminListConversations,
   useAdminUpdateConversation,
+  useAdminDeleteConversation,
 } from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -96,6 +97,7 @@ import {
   XCircle,
   Video,
   ShoppingBag,
+  Ban,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -362,6 +364,7 @@ export default function Admin() {
     query: { enabled: canQueryAdmin } as any,
   });
   const adminUpdateConv = useAdminUpdateConversation();
+  const adminDeleteConv = useAdminDeleteConversation();
 
   // Gacha & Wallet Sub-tab State
   const [gachaSubTab, setGachaSubTab] = useState<"settings" | "registry" | "wallets" | "quests" | "shop">("settings");
@@ -3704,7 +3707,8 @@ export default function Admin() {
                           <TableHead className="text-xs font-black text-[#110e3d]">Invite Code</TableHead>
                           <TableHead className="w-24 text-xs font-black text-[#110e3d]">UID</TableHead>
                           <TableHead className="w-20 text-xs font-black text-[#110e3d]">Members</TableHead>
-                          <TableHead className="text-right text-xs font-black text-[#110e3d] w-36">Verified</TableHead>
+                          <TableHead className="text-center text-xs font-black text-[#110e3d] w-48">Status</TableHead>
+                          <TableHead className="text-right text-xs font-black text-[#110e3d] w-24">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -3730,10 +3734,15 @@ export default function Admin() {
                                     )}
                                   </div>
                                   <div className="min-w-0">
-                                    <div className="font-extrabold text-xs text-[#110e3d] truncate flex items-center gap-1">
+                                    <div className="font-extrabold text-xs text-[#110e3d] truncate flex items-center gap-1.5 flex-wrap">
                                       {g.name || <span className="text-slate-400 italic">Unnamed Group</span>}
                                       {g.isVerified && (
-                                        <BadgeCheck className="w-3 h-3 text-blue-500 fill-blue-100 shrink-0" />
+                                        <BadgeCheck className="w-3.5 h-3.5 text-blue-500 fill-blue-100 shrink-0" />
+                                      )}
+                                      {g.isSuspended && (
+                                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-red-50 text-red-600 flex items-center gap-0.5 shrink-0 border border-red-100">
+                                          <Ban className="w-2.5 h-2.5" /> Suspended
+                                        </span>
                                       )}
                                     </div>
                                     <div className="text-[10px] text-slate-400 font-bold">{g.memberCount} anggota</div>
@@ -3749,36 +3758,81 @@ export default function Admin() {
                               </TableCell>
                               <TableCell className="text-xs text-slate-400 font-bold">#{g.id}</TableCell>
                               <TableCell className="text-xs text-slate-600 font-bold">{g.memberCount}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center justify-center gap-4">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-slate-400 font-extrabold">Verify</span>
+                                    <Switch
+                                      id={`group-verified-${g.id}`}
+                                      checked={!!g.isVerified}
+                                      onCheckedChange={async (checked) => {
+                                        try {
+                                          await adminUpdateConv.mutateAsync({ id: g.id, data: { isVerified: checked } });
+                                          toast({
+                                            title: checked ? "Grup diverifikasi" : "Verifikasi dicabut",
+                                            description: `${g.name || "Grup"} telah ${checked ? "mendapatkan" : "kehilangan"} centang biru.`,
+                                          });
+                                          queryClient.invalidateQueries({ queryKey: ["/api/admin/conversations"] });
+                                        } catch {
+                                          toast({ title: "Gagal", description: "Terjadi kesalahan. Coba lagi.", variant: "destructive" });
+                                        }
+                                      }}
+                                      className="data-[state=checked]:bg-blue-500 scale-90"
+                                      disabled={adminUpdateConv.isPending}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-slate-400 font-extrabold">Suspend</span>
+                                    <Switch
+                                      id={`group-suspended-${g.id}`}
+                                      checked={!!g.isSuspended}
+                                      onCheckedChange={async (checked) => {
+                                        try {
+                                          await adminUpdateConv.mutateAsync({ id: g.id, data: { isSuspended: checked } });
+                                          toast({
+                                            title: checked ? "Grup ditangguhkan" : "Tangguhan dicabut",
+                                            description: `${g.name || "Grup"} telah ${checked ? "ditangguhkan" : "diaktifkan kembali"}.`,
+                                          });
+                                          queryClient.invalidateQueries({ queryKey: ["/api/admin/conversations"] });
+                                        } catch {
+                                          toast({ title: "Gagal", description: "Terjadi kesalahan. Coba lagi.", variant: "destructive" });
+                                        }
+                                      }}
+                                      className="data-[state=checked]:bg-red-500 scale-90"
+                                      disabled={adminUpdateConv.isPending}
+                                    />
+                                  </div>
+                                </div>
+                              </TableCell>
                               <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  {g.isVerified && (
-                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-600">Verified</span>
-                                  )}
-                                  <Switch
-                                    id={`group-verified-${g.id}`}
-                                    checked={!!g.isVerified}
-                                    onCheckedChange={async (checked) => {
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={async () => {
+                                    if (confirm(`Apakah Anda yakin ingin menghapus grup "${g.name || "Grup"}" secara permanen? Semua pesan dan anggota grup akan dihapus.`)) {
                                       try {
-                                        await adminUpdateConv.mutateAsync({ id: g.id, data: { isVerified: checked } });
+                                        await adminDeleteConv.mutateAsync({ id: g.id });
                                         toast({
-                                          title: checked ? "Grup diverifikasi" : "Verifikasi dicabut",
-                                          description: `${g.name || "Grup"} telah ${checked ? "mendapatkan" : "kehilangan"} centang biru.`,
+                                          title: "Grup dihapus",
+                                          description: `Grup ${g.name || "Grup"} berhasil dihapus permanen.`,
                                         });
                                         queryClient.invalidateQueries({ queryKey: ["/api/admin/conversations"] });
                                       } catch {
-                                        toast({ title: "Gagal", description: "Terjadi kesalahan. Coba lagi.", variant: "destructive" });
+                                        toast({ title: "Gagal menghapus grup", description: "Terjadi kesalahan. Coba lagi.", variant: "destructive" });
                                       }
-                                    }}
-                                    className="data-[state=checked]:bg-blue-500"
-                                    disabled={adminUpdateConv.isPending}
-                                  />
-                                </div>
+                                    }
+                                  }}
+                                  className="text-slate-400 hover:text-red-500 hover:bg-red-50 h-8 w-8 rounded-lg"
+                                  disabled={adminDeleteConv.isPending}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
                               </TableCell>
                             </TableRow>
                           ))}
                         {adminGroups?.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={5} className="text-center text-xs text-slate-400 py-8">Belum ada grup yang ditemukan.</TableCell>
+                            <TableCell colSpan={6} className="text-center text-xs text-slate-400 py-8">Belum ada grup yang ditemukan.</TableCell>
                           </TableRow>
                         )}
                       </TableBody>

@@ -12,6 +12,7 @@ export const conversationsTable = pgTable("conversations", {
   ownerId: integer("owner_id").references(() => usersTable.id, { onDelete: "set null" }),
   inviteCode: varchar("invite_code", { length: 50 }).unique(),
   isVerified: boolean("is_verified").notNull().default(false),
+  isSuspended: boolean("is_suspended").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

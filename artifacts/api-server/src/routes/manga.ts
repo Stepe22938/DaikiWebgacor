@@ -143,7 +143,7 @@ mangaRouter.get("/manga/score/:mangaId", async (req: any, res: any) => {
           { headers: { "User-Agent": "ArcadiaManga/1.0", "Accept": "application/json" } }
         );
         if (!r.ok) return;
-        const d = await r.json();
+        const d = await r.json() as any;
         const bayesian: number = d?.statistics?.[mangaId]?.rating?.bayesian;
         if (bayesian && bayesian > 0) {
           results.push({
@@ -170,7 +170,7 @@ mangaRouter.get("/manga/score/:mangaId", async (req: any, res: any) => {
           body: JSON.stringify({ query, variables: { s: title } })
         });
         if (!r.ok) return;
-        const d = await r.json();
+        const d = await r.json() as any;
         const score: number = d?.data?.Media?.averageScore;
         const siteUrl: string = d?.data?.Media?.siteUrl || "https://anilist.co";
         if (score && score > 0) {
@@ -196,7 +196,7 @@ mangaRouter.get("/manga/score/:mangaId", async (req: any, res: any) => {
           { headers: { "Accept": "application/vnd.api+json" } }
         );
         if (!r.ok) return;
-        const d = await r.json();
+        const d = await r.json() as any;
         const avg: string = d?.data?.[0]?.attributes?.averageRating;
         const slug: string = d?.data?.[0]?.attributes?.slug || "";
         if (avg && parseFloat(avg) > 0) {

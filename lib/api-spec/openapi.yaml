@@ -720,6 +720,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConversationSummary"
+    delete:
+      operationId: adminDeleteConversation
+      tags: [messaging]
+      summary: Delete group conversation (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Conversation deleted successfully
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Conversation not found
 
   /admin/users/{id}:
     patch:
@@ -2146,6 +2165,8 @@ components:
       properties:
         isVerified:
           type: boolean
+        isSuspended:
+          type: boolean
 
     AdminFollowInput:
       type: object
@@ -2345,6 +2366,8 @@ components:
         memberCount:
           type: integer
         isVerified:
+          type: boolean
+        isSuspended:
           type: boolean
         otherUserId:
           type: ["integer", "null"]

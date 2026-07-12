@@ -1501,6 +1501,7 @@ async function buildSummary(conv: typeof conversationsTable.$inferSelect, curren
     ownerId: conv.ownerId ?? null,
     memberCount: memberRows.length,
     isVerified: conv.isVerified ?? false,
+    isSuspended: conv.isSuspended ?? false,
     otherUserId,
     otherUsername,
     otherDisplayName,
@@ -1909,6 +1910,7 @@ router.patch("/admin/conversations/:id", async (req, res): Promise<void> => {
 
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (body.data.isVerified !== undefined) updateData.isVerified = body.data.isVerified;
+  if ((body.data as any).isSuspended !== undefined) updateData.isSuspended = (body.data as any).isSuspended;
 
   const [updated] = await db
     .update(conversationsTable)
@@ -1917,6 +1919,40 @@ router.patch("/admin/conversations/:id", async (req, res): Promise<void> => {
     .returning();
 
   res.json(await buildSummary(updated, adminUser.id));
+});
+
+router.delete("/admin/conversations/:id", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  if (!auth.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const adminUser = await getDbUser(auth.userId);
+  if (!adminUser || (adminUser.role !== "admin" && adminUser.role !== "dev_website")) {
+    res.status(403).json({ error: "Forbidden: admin only" }); return;
+  }
+
+  const id = parseInt(req.params.id as string, 10);
+  const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
+  if (!conv) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (conv.type !== "group") {
+    res.status(400).json({ error: "Can only delete group conversations" });
+    return;
+  }
+
+  const stickersToDelete = await db
+    .select({ driveFileId: stickersTable.driveFileId, sizeBytes: stickersTable.sizeBytes })
+    .from(stickersTable)
+    .where(eq(stickersTable.conversationId, id));
+
+  for (const s of stickersToDelete) {
+    if (s.driveFileId) {
+      await deleteStickerResources(s.driveFileId, s.sizeBytes);
+    }
+  }
+
+  await db.delete(conversationsTable).where(eq(conversationsTable.id, id));
+
+  res.status(204).send();
 });
 
 router.delete("/conversations/:id", async (req, res): Promise<void> => {
@@ -2224,6 +2260,11 @@ router.post("/conversations/:id/messages", async (req, res): Promise<void> => {
 
   const conv = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.id, id) });
   if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  if (conv.isSuspended) {
+    res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." });
+    return;
+  }
 
   if (conv.type === "dm") {
     const otherMember = await db.query.conversationMembersTable.findFirst({
@@ -2563,6 +2604,10 @@ router.post("/conversations/:id/messages/:messageId/forward", async (req, res): 
   const targetConv = await db.query.conversationsTable.findFirst({
     where: eq(conversationsTable.id, parsedTargetConversationId)
   });
+  if (targetConv?.isSuspended) {
+    res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." });
+    return;
+  }
   if (targetConv && targetConv.type === "dm") {
     const otherMember = await db.query.conversationMembersTable.findFirst({
       where: and(
@@ -3143,6 +3188,11 @@ router.post("/conversations/:id/channels/:channelId/messages", async (req, res):
     where: eq(conversationsTable.id, id),
   });
   if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  if (conv.isSuspended) {
+    res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." });
+    return;
+  }
 
   const isOwner = conv.ownerId === user.id;
 

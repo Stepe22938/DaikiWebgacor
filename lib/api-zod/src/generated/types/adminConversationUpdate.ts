@@ -8,4 +8,5 @@
 
 export interface AdminConversationUpdate {
   isVerified?: boolean;
+  isSuspended?: boolean;
 }

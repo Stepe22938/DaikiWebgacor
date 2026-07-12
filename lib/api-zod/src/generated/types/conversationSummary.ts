@@ -24,6 +24,7 @@ export interface ConversationSummary {
   ownerId?: number | null;
   memberCount: number;
   isVerified?: boolean;
+  isSuspended?: boolean;
   /** @nullable */
   otherUserId?: number | null;
   /** @nullable */

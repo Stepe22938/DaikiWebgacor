@@ -813,6 +813,7 @@ export const AdminListConversationsResponseItem = zod.object({
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "isVerified": zod.boolean().optional(),
+  "isSuspended": zod.boolean().optional(),
   "otherUserId": zod.number().nullish(),
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),
@@ -837,7 +838,8 @@ export const AdminUpdateConversationParams = zod.object({
 })
 
 export const AdminUpdateConversationBody = zod.object({
-  "isVerified": zod.boolean().optional()
+  "isVerified": zod.boolean().optional(),
+  "isSuspended": zod.boolean().optional()
 })
 
 export const AdminUpdateConversationResponse = zod.object({
@@ -851,6 +853,7 @@ export const AdminUpdateConversationResponse = zod.object({
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "isVerified": zod.boolean().optional(),
+  "isSuspended": zod.boolean().optional(),
   "otherUserId": zod.number().nullish(),
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),
@@ -863,6 +866,14 @@ export const AdminUpdateConversationResponse = zod.object({
   "lastMessageSenderId": zod.number().nullish(),
   "createdAt": zod.string(),
   "inviteCode": zod.string().nullish()
+})
+
+
+/**
+ * @summary Delete group conversation (admin only)
+ */
+export const AdminDeleteConversationParams = zod.object({
+  "id": zod.coerce.number()
 })
 
 
@@ -968,6 +979,7 @@ export const ListConversationsResponseItem = zod.object({
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "isVerified": zod.boolean().optional(),
+  "isSuspended": zod.boolean().optional(),
   "otherUserId": zod.number().nullish(),
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),
@@ -1015,6 +1027,7 @@ export const CreateOrGetDmResponse = zod.object({
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "isVerified": zod.boolean().optional(),
+  "isSuspended": zod.boolean().optional(),
   "otherUserId": zod.number().nullish(),
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),
@@ -1048,6 +1061,7 @@ export const GetConversationResponse = zod.object({
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "isVerified": zod.boolean().optional(),
+  "isSuspended": zod.boolean().optional(),
   "otherUserId": zod.number().nullish(),
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),
@@ -1096,6 +1110,7 @@ export const UpdateGroupResponse = zod.object({
   "ownerId": zod.number().nullish(),
   "memberCount": zod.number(),
   "isVerified": zod.boolean().optional(),
+  "isSuspended": zod.boolean().optional(),
   "otherUserId": zod.number().nullish(),
   "otherUsername": zod.string().nullish(),
   "otherDisplayName": zod.string().nullish(),

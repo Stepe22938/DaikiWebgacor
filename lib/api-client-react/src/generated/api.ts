@@ -2993,6 +2993,76 @@ export const useAdminUpdateConversation = <TError = ErrorType<unknown>,
       return useMutation(getAdminUpdateConversationMutationOptions(options));
     }
 
+export const getAdminDeleteConversationUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/conversations/${id}`
+}
+
+/**
+ * @summary Delete group conversation (admin only)
+ */
+export const adminDeleteConversation = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getAdminDeleteConversationUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getAdminDeleteConversationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminDeleteConversation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminDeleteConversation>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['adminDeleteConversation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminDeleteConversation>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  adminDeleteConversation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminDeleteConversationMutationResult = NonNullable<Awaited<ReturnType<typeof adminDeleteConversation>>>
+
+    export type AdminDeleteConversationMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete group conversation (admin only)
+ */
+export const useAdminDeleteConversation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminDeleteConversation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminDeleteConversation>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getAdminDeleteConversationMutationOptions(options));
+    }
+
 export const getAdminUpdateUserUrl = (id: number,) => {
 
 
