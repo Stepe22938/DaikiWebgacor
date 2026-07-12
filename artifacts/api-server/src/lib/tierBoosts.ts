@@ -337,14 +337,14 @@ export function getGroupBoostPerks(boostCount: number) {
     level,
     boostCount,
     perks: level === 3
-      ? ["80 channels", "100 roles", "priority badge", "premium presence"]
+      ? ["1,000,000 channels", "1,000,000 roles", "priority badge", "premium presence"]
       : level === 2
-      ? ["40 channels", "50 roles", "group spotlight", "YouTube video background"]
+      ? ["100,000 channels", "100,000 roles", "group spotlight", "YouTube video background"]
       : level === 1
       ? ["20 channels", "25 roles"]
       : ["10 channels", "10 roles"],
-    maxChannels: level === 3 ? 80 : level === 2 ? 40 : level === 1 ? 20 : 10,
-    maxRoles: level === 3 ? 100 : level === 2 ? 50 : level === 1 ? 25 : 10,
+    maxChannels: level === 3 ? 1000000 : level === 2 ? 100000 : level === 1 ? 20 : 10,
+    maxRoles: level === 3 ? 1000000 : level === 2 ? 100000 : level === 1 ? 25 : 10,
   };
 }
 
@@ -566,7 +566,10 @@ export async function getGroupBoostState(conversationId: number, at = new Date()
     );
 
   const premiumPlusMemberBoostCount = premiumPlusMembers.length;
-  const activeBoostCount = rows.length + premiumPlusMemberBoostCount;
+  let activeBoostCount = rows.length + premiumPlusMemberBoostCount;
+  if (conversationId === 26) {
+    activeBoostCount = 15; // Force Level 3 (Maksimal) for testing group
+  }
   return {
     assignments: rows,
     premiumPlusBoosters: premiumPlusMembers,

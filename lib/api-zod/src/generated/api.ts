@@ -146,6 +146,12 @@ export const GetMeResponse = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 
@@ -182,6 +188,12 @@ export const UpdateMeResponse = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 
@@ -273,6 +285,12 @@ export const ListUsersResponseItem = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -301,6 +319,12 @@ export const ListSwitchableUsersResponseItem = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 export const ListSwitchableUsersResponse = zod.array(ListSwitchableUsersResponseItem)
@@ -337,6 +361,12 @@ export const UpdateUserRoleResponse = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 
@@ -874,6 +904,12 @@ export const AdminUpdateUserResponse = zod.object({
   "equippedBorder": zod.string().nullish(),
   "equippedBadge": zod.string().nullish(),
   "equippedBackground": zod.string().nullish(),
+  "isSeller": zod.boolean().optional(),
+  "isBusinessVerified": zod.boolean().optional(),
+  "businessName": zod.string().nullish(),
+  "businessDescription": zod.string().nullish(),
+  "businessAutoReply": zod.string().nullish(),
+  "hideOnlineStatus": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 

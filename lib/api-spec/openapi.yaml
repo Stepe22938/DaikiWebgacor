@@ -1970,6 +1970,18 @@ components:
           type: ["string", "null"]
         equippedBackground:
           type: ["string", "null"]
+        isSeller:
+          type: boolean
+        isBusinessVerified:
+          type: boolean
+        businessName:
+          type: ["string", "null"]
+        businessDescription:
+          type: ["string", "null"]
+        businessAutoReply:
+          type: ["string", "null"]
+        hideOnlineStatus:
+          type: boolean
         createdAt:
           type: string
  

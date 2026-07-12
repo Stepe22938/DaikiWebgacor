@@ -34,5 +34,14 @@ export interface User {
   equippedBadge?: string | null;
   /** @nullable */
   equippedBackground?: string | null;
+  isSeller?: boolean;
+  isBusinessVerified?: boolean;
+  /** @nullable */
+  businessName?: string | null;
+  /** @nullable */
+  businessDescription?: string | null;
+  /** @nullable */
+  businessAutoReply?: string | null;
+  hideOnlineStatus?: boolean;
   createdAt: string;
 }

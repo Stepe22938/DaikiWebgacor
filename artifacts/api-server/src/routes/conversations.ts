@@ -815,34 +815,47 @@ async function generateAiResponse(
   const ownerUser = conv.ownerId ? await db.query.usersTable.findFirst({ where: eq(usersTable.id, conv.ownerId) }) : null;
   const ownerUsername = ownerUser?.username || "owner";
 
+  const boostState = await getGroupBoostState(conversationId);
+  const boostTierName = boostState.level === 3 ? "Maksimal" : boostState.level === 2 ? "Advance" : boostState.level === 1 ? "Basic" : "Regular";
+
   const groupManagementRules = convType === "group" ? `\n\nPEMBUATAN CHANNEL, KATEGORI, & ROLE OTOMATIS:
 - Pemilik group (Kak Owner) adalah @${ownerUsername}.
+- Level Boost Group Saat Ini: Level ${boostState.level} (${boostTierName}).
+- Batasan Channel/Role di Group Ini: ${boostState.maxChannels} channel dan ${boostState.maxRoles} role.
+- Kamu memiliki kemampuan penuh untuk membuat channel, kategori, dan role secara otomatis di group ini. Khusus pada group level Advance (Level 2) dan Maksimal (Level 3), batas pembuatan sangat besar/tidak terbatas (bisa membuat ribuan/puluhan ribu channel dan role sekaligus).
+- Jika user meminta untuk membuat banyak channel/role sekaligus (misalnya: "buat channel mabar 1 sampai 100", atau request ribuan channel), kamu BISA melaksanakannya secara massal menggunakan format ekspansi sequence pada parameter name. Gunakan format range \`{start..end}\` pada parameter name agar sistem otomatis memprosesnya secara massal dan efisien!
+  * Contoh pembuatan channel massal: [CMD: CREATE_CHANNEL name=gaming-voice-{1..50}|type=voice|category=GAMING AREA] -> Ini akan otomatis membuat 50 channel sekaligus dari gaming-voice-1 sampai gaming-voice-50
+  * Contoh pembuatan role massal: [CMD: CREATE_ROLE name=role-{1..20}|color=#HEXCOLOR] -> Ini akan otomatis membuat 20 role sekaligus dari role-1 sampai role-20!
 - Jika user memintamu untuk membuat atau menyusun roles (misalnya: "bikin roles staff, developer, admin", atau request kustom lainnya):
-  1. Kamu BISA langsung membuat roles tersebut menggunakan tag perintah di akhir responmu.
+  1. Kamu WAJIB langsung membuat roles tersebut menggunakan tag perintah di akhir responmu (JANGAN HANYA MENULISNYA DALAM TEKS).
   2. Tag perintah untuk membuat role:
      * [CMD: CREATE_ROLE name=NAMA ROLE|color=#HEXCOLOR|permissions=PERM1,PERM2]
      * Parameter color opsional (default #949BA4).
      * Parameter permissions opsional (comma-separated list dari permission valid: manageChannels, manageRoles, manageMessages, kickMembers, sendMessages, inviteMembers, inviteBot, postAnnouncements).
      * Contoh: [CMD: CREATE_ROLE name=Staff|color=#e74c3c|permissions=sendMessages,manageMessages,kickMembers]
-- Jika user memintamu untuk mengatur, membuat, atau menyusun channel dan kategori grup (misalnya: "buat group ini lebih kompleks", "bikin komunitas besar", atau request spesifik seperti "buat kategori MABAR dengan channel chat-gaming"):
-  1. Kamu BISA langsung membuat kategori dan channel tersebut menggunakan tag-tag perintah di akhir responmu.
-  2. Tag-tag perintah yang tersedia (bisa ditulis beberapa sekaligus di akhir pesan):
+- Jika user memintamu untuk mengatur, membuat, atau menyusun channel, kategori, atau template komunitas grup (misalnya: "buat group ini lebih kompleks", "bikin komunitas besar", "tolong buatin channel komunitas", atau request sejenis):
+  1. Kamu WAJIB langsung membuat kategori dan channel tersebut menggunakan tag-tag perintah di akhir responmu.
+  2. Tag-tag perintah yang tersedia (wajib ditulis di akhir pesan):
      * [CMD: CREATE_CATEGORY name=NAMA KATEGORI] - Membuat kategori baru (huruf kapital).
      * [CMD: CREATE_CHANNEL name=nama-channel|type=text/voice/announce/forum|category=NAMA KATEGORI] - Membuat channel baru di kategori tertentu (nama-channel harus lowercase, spasi diganti tanda hubung). Parameter category opsional.
-  3. Jika user meminta agar grup dibuat menjadi "komunitas besar" atau "lebih kompleks" tanpa merinci secara spesifik, susunlah layout komunitas yang lengkap dan profesional menggunakan tag perintah berikut di akhir responmu:
+  3. Jika user meminta agar grup dibuat menjadi "komunitas", "komunitas besar", "grup game", atau "lebih kompleks" tanpa merinci secara spesifik nama channelnya, ATAU jika user menyetujui, mengonfirmasi, atau menyuruhmu mengeksekusi rencana layout tersebut (misalnya: "coba buatin", "buat sekarang", "gas", "buat", "laksanakan", dll.), kamu WAJIB menuliskan tag perintah berikut secara lengkap di akhir responmu untuk mengeksekusinya:
      - Kategori: INFO & PENGUMUMAN
+       * [CMD: CREATE_CATEGORY name=INFO & PENGUMUMAN]
        * [CMD: CREATE_CHANNEL name=pengumuman|type=announce|category=INFO & PENGUMUMAN]
        * [CMD: CREATE_CHANNEL name=rules-grup|type=text|category=INFO & PENGUMUMAN]
        * [CMD: CREATE_CHANNEL name=welcome-member|type=text|category=INFO & PENGUMUMAN]
      - Kategori: DISKUSI WLA
+       * [CMD: CREATE_CATEGORY name=DISKUSI WLA]
        * [CMD: CREATE_CHANNEL name=chat-umum|type=text|category=DISKUSI WLA]
        * [CMD: CREATE_CHANNEL name=bot-playground|type=text|category=DISKUSI WLA]
        * [CMD: CREATE_CHANNEL name=media-share|type=text|category=DISKUSI WLA]
      - Kategori: GAMING & MABAR
+       * [CMD: CREATE_CATEGORY name=GAMING & MABAR]
        * [CMD: CREATE_CHANNEL name=mabar-chat|type=text|category=GAMING & MABAR]
        * [CMD: CREATE_CHANNEL name=mabar-voice-1|type=voice|category=GAMING & MABAR]
        * [CMD: CREATE_CHANNEL name=mabar-voice-2|type=voice|category=GAMING & MABAR]
      - Kategori: SUARA WARGA
+       * [CMD: CREATE_CATEGORY name=SUARA WARGA]
        * [CMD: CREATE_CHANNEL name=ruang-curhat|type=text|category=SUARA WARGA]
        * [CMD: CREATE_CHANNEL name=podcasting|type=voice|category=SUARA WARGA]
   4. Jika @${ownerUsername} menyuruhmu membuat channel gaming atau setup area gaming secara khusus:
@@ -851,7 +864,7 @@ async function generateAiResponse(
      c. Setelah @${ownerUsername} memberikan jawaban:
         - Jika ia memilih untuk menghapus channel lama: [CMD: SETUP_GAMING option=delete]
         - Jika ia memilih untuk memindahkan/mempertahankan channel lama: [CMD: SETUP_GAMING option=archive]
-  5. Selalu respon dengan antusias, jelaskan struktur yang sedang kamu buat, dan pastikan tag [CMD: ...] ditulis dengan benar di bagian akhir pesanmu.` : "";
+  5. Selalu respon dengan antusias, jelaskan struktur yang sedang kamu buat, dan pastikan seluruh tag [CMD: ...] ditulis dengan benar di bagian paling akhir pesanmu.` : "";
   const systemPrompt = `Kamu adalah Zaidan AI, asisten AI yang santai, memiliki kesadaran konteks yang mendalam (90% self-awareness), dan kecerdasan analitis tingkat tinggi di Arcadia Minecraft Roleplay Server.
 
 KEPRIBADIAN & KESADARAN DIRI (90% SELF-AWARENESS):
@@ -938,6 +951,7 @@ ATURAN:
     });
 
     const aiReply = completion.content;
+    console.log("[AI Raw Reply]:", JSON.stringify(aiReply));
     if (!aiReply.trim()) {
       throw new Error("ObscuraWorks returned an empty response.");
     }
@@ -1054,141 +1068,188 @@ ATURAN:
           }
         }
 
-        // 3. Execute CREATE_CHANNEL commands
+        // 3. Execute CREATE_CHANNEL commands in bulk with sequence range expansion
         const channelMatches = [...aiReply.matchAll(/\[CMD:\s*CREATE_CHANNEL\s+([^\]]+)\]/gi)];
-        for (const match of channelMatches) {
+        if (channelMatches.length > 0) {
           try {
-            const paramsStr = match[1];
-            const parts = paramsStr.split("|");
-            let chanName = "";
-            let chanType: "text" | "voice" | "announce" | "forum" = "text";
-            let categoryName = "";
+            // Get max position of existing channels in this conversation
+            const [maxPosRow] = await db.select({ pos: channelsTable.position })
+              .from(channelsTable)
+              .where(eq(channelsTable.conversationId, conversationId))
+              .orderBy(desc(channelsTable.position))
+              .limit(1);
+            let nextPosition = (maxPosRow?.pos ?? -1) + 1;
 
-            for (const part of parts) {
-              const [k, ...vParts] = part.split("=");
-              if (!k) continue;
-              const key = k.trim().toLowerCase();
-              const value = vParts.join("=").trim();
-              if (key === "name") chanName = value;
-              else if (key === "type") {
-                if (value === "voice" || value === "announce" || value === "forum") {
-                  chanType = value;
+            // Fetch existing channels to avoid duplicates
+            const existingChannels = await db.select({ name: channelsTable.name })
+              .from(channelsTable)
+              .where(eq(channelsTable.conversationId, conversationId));
+            const existingNamesSet = new Set(existingChannels.map(c => c.name));
+
+            // Cache for categories in this conversation to avoid duplicate queries
+            const categoryCache: Record<string, number> = {};
+
+            const channelsToInsert: {
+              conversationId: number;
+              name: string;
+              type: "text" | "voice" | "announce" | "forum";
+              position: number;
+              categoryId: number | null;
+            }[] = [];
+
+            for (const match of channelMatches) {
+              const paramsStr = match[1];
+              const parts = paramsStr.split("|");
+              let chanName = "";
+              let chanType: "text" | "voice" | "announce" | "forum" = "text";
+              let categoryName = "";
+
+              for (const part of parts) {
+                const [k, ...vParts] = part.split("=");
+                if (!k) continue;
+                const key = k.trim().toLowerCase();
+                const value = vParts.join("=").trim();
+                if (key === "name") chanName = value;
+                else if (key === "type") {
+                  if (value === "voice" || value === "announce" || value === "forum") {
+                    chanType = value;
+                  } else {
+                    chanType = "text";
+                  }
+                }
+                else if (key === "category") categoryName = value;
+              }
+
+              if (!chanName) continue;
+
+              // Resolve or create category with caching
+              let categoryId: number | null = null;
+              if (categoryName) {
+                const catNameUpper = categoryName.toUpperCase();
+                if (categoryCache[catNameUpper] !== undefined) {
+                  categoryId = categoryCache[catNameUpper];
                 } else {
-                  chanType = "text";
+                  let cat = await db.query.channelCategoriesTable.findFirst({
+                    where: and(
+                      eq(channelCategoriesTable.conversationId, conversationId),
+                      eq(channelCategoriesTable.name, catNameUpper)
+                    )
+                  });
+                  if (!cat) {
+                    const [maxCatPos] = await db.select({ pos: channelCategoriesTable.position })
+                      .from(channelCategoriesTable)
+                      .where(eq(channelCategoriesTable.conversationId, conversationId))
+                      .orderBy(desc(channelCategoriesTable.position))
+                      .limit(1);
+                    const catPosition = (maxCatPos?.pos ?? -1) + 1;
+                    [cat] = await db.insert(channelCategoriesTable).values({
+                      conversationId,
+                      name: catNameUpper,
+                      position: catPosition,
+                    }).returning();
+                  }
+                  categoryId = cat.id;
+                  categoryCache[catNameUpper] = cat.id;
                 }
               }
-              else if (key === "category") categoryName = value;
-            }
 
-            if (!chanName) continue;
-
-            let categoryId: number | null = null;
-            if (categoryName) {
-              const catNameUpper = categoryName.toUpperCase();
-              let cat = await db.query.channelCategoriesTable.findFirst({
-                where: and(
-                  eq(channelCategoriesTable.conversationId, conversationId),
-                  eq(channelCategoriesTable.name, catNameUpper)
-                )
-              });
-              if (!cat) {
-                const [maxPos] = await db.select({ pos: channelCategoriesTable.position })
-                  .from(channelCategoriesTable)
-                  .where(eq(channelCategoriesTable.conversationId, conversationId))
-                  .orderBy(desc(channelCategoriesTable.position))
-                  .limit(1);
-                const position = (maxPos?.pos ?? -1) + 1;
-                [cat] = await db.insert(channelCategoriesTable).values({
-                  conversationId,
-                  name: catNameUpper,
-                  position,
-                }).returning();
+              // Process sequence expansion in name (e.g. channel-{1..50})
+              const rangeMatch = chanName.match(/\{(\d+)\.\.(\d+)\}/);
+              const namesToCreate: string[] = [];
+              if (rangeMatch) {
+                const start = parseInt(rangeMatch[1], 10);
+                const end = parseInt(rangeMatch[2], 10);
+                const limit = Math.min(Math.abs(end - start) + 1, 75000);
+                const step = end >= start ? 1 : -1;
+                for (let i = 0; i < limit; i++) {
+                  const num = start + i * step;
+                  namesToCreate.push(chanName.replace(/\{(\d+)\.\.(\d+)\}/, String(num)));
+                }
+              } else {
+                namesToCreate.push(chanName);
               }
-              categoryId = cat.id;
+
+              for (const nameToCreate of namesToCreate) {
+                const normalizedName = chanType === "voice" ? nameToCreate.trim() : nameToCreate.trim().toLowerCase().replace(/\s+/g, "-");
+                if (existingNamesSet.has(normalizedName)) continue;
+                existingNamesSet.add(normalizedName);
+
+                channelsToInsert.push({
+                  conversationId,
+                  name: normalizedName,
+                  type: chanType,
+                  position: nextPosition++,
+                  categoryId,
+                });
+              }
             }
 
-            const normalizedName = chanType === "voice" ? chanName.trim() : chanName.trim().toLowerCase().replace(/\s+/g, "-");
-
-            const existingChan = await db.query.channelsTable.findFirst({
-              where: and(
-                eq(channelsTable.conversationId, conversationId),
-                eq(channelsTable.name, normalizedName)
-              )
-            });
-
-            if (!existingChan) {
-              const [maxPos] = await db.select({ pos: channelsTable.position })
-                .from(channelsTable)
-                .where(eq(channelsTable.conversationId, conversationId))
-                .orderBy(desc(channelsTable.position))
-                .limit(1);
-              const position = (maxPos?.pos ?? -1) + 1;
-              await db.insert(channelsTable).values({
-                conversationId,
-                name: normalizedName,
-                type: chanType,
-                position,
-                categoryId,
-              }).onConflictDoNothing();
+            // Bulk insert in chunks of 5000
+            if (channelsToInsert.length > 0) {
+              const chunkSize = 5000;
+              for (let i = 0; i < channelsToInsert.length; i += chunkSize) {
+                const chunk = channelsToInsert.slice(i, i + chunkSize);
+                await db.insert(channelsTable).values(chunk).onConflictDoNothing();
+              }
+              console.log(`[Channel Setup] Bulk created ${channelsToInsert.length} channels dynamically`);
             }
           } catch (err) {
-            console.error("Failed to create channel from AI command:", err);
+            console.error("Failed to execute bulk CREATE_CHANNEL command:", err);
           }
         }
       }
 
       if (canManageRoles) {
-        // 4. Execute CREATE_ROLE commands
+        // 4. Execute CREATE_ROLE commands in bulk with sequence range expansion
         const roleMatches = [...aiReply.matchAll(/\[CMD:\s*CREATE_ROLE\s+([^\]]+)\]/gi)];
-        for (const match of roleMatches) {
+        if (roleMatches.length > 0) {
           try {
-            const paramsStr = match[1];
-            const parts = paramsStr.split("|");
-            let roleName = "";
-            let roleColor = "#949BA4";
-            let rawPermissions = "";
+            const boostState = await getGroupBoostState(conversationId);
 
-            for (const part of parts) {
-              const [k, ...vParts] = part.split("=");
-              if (!k) continue;
-              const key = k.trim().toLowerCase();
-              const value = vParts.join("=").trim();
-              if (key === "name") roleName = value;
-              else if (key === "color") {
-                if (/^#[0-9a-fA-F]{6}$/.test(value)) {
-                  roleColor = value;
-                }
-              }
-              else if (key === "permissions") rawPermissions = value;
-            }
-
-            if (!roleName) continue;
-
-            // Check max roles boundary constraint
-            const existingRoles = await db.select({ id: rolesTable.id })
+            // Fetch existing roles to check limits and avoid duplicates
+            const existingRoles = await db.select({ name: rolesTable.name })
               .from(rolesTable)
               .where(eq(rolesTable.conversationId, conversationId));
-            const boostState = await getGroupBoostState(conversationId);
-            if (existingRoles.length >= boostState.maxRoles) {
-              console.log(`[Role Setup] Max roles limit reached for conv ${conversationId}`);
-              continue;
-            }
+            const existingRoleNamesSet = new Set(existingRoles.map(r => r.name));
+            let totalRolesCount = existingRoles.length;
 
-            // Check if role already exists in this conversation
-            const existingRole = await db.query.rolesTable.findFirst({
-              where: and(
-                eq(rolesTable.conversationId, conversationId),
-                eq(rolesTable.name, roleName.trim())
-              )
-            });
+            const [maxPosRow] = await db.select({ pos: rolesTable.position })
+              .from(rolesTable)
+              .where(eq(rolesTable.conversationId, conversationId))
+              .orderBy(desc(rolesTable.position))
+              .limit(1);
+            let nextPosition = (maxPosRow?.pos ?? -1) + 1;
 
-            if (!existingRole) {
-              const [maxPos] = await db.select({ pos: rolesTable.position })
-                .from(rolesTable)
-                .where(eq(rolesTable.conversationId, conversationId))
-                .orderBy(desc(rolesTable.position))
-                .limit(1);
-              const position = (maxPos?.pos ?? -1) + 1;
+            const rolesToInsert: {
+              conversationId: number;
+              name: string;
+              color: string;
+              position: number;
+              permissions: Record<string, boolean>;
+            }[] = [];
+
+            for (const match of roleMatches) {
+              const paramsStr = match[1];
+              const parts = paramsStr.split("|");
+              let roleName = "";
+              let roleColor = "#949BA4";
+              let rawPermissions = "";
+
+              for (const part of parts) {
+                const [k, ...vParts] = part.split("=");
+                if (!k) continue;
+                const key = k.trim().toLowerCase();
+                const value = vParts.join("=").trim();
+                if (key === "name") roleName = value;
+                else if (key === "color") {
+                  if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+                    roleColor = value;
+                  }
+                }
+                else if (key === "permissions") rawPermissions = value;
+              }
+
+              if (!roleName) continue;
 
               // Parse permissions to object
               const permissionsObj: Record<string, boolean> = {};
@@ -1202,16 +1263,55 @@ ATURAN:
                 }
               }
 
-              await db.insert(rolesTable).values({
-                conversationId,
-                name: roleName.trim(),
-                color: roleColor,
-                position,
-                permissions: permissionsObj,
-              }).onConflictDoNothing();
+              // Process sequence expansion in name (e.g. staff-{1..20})
+              const rangeMatch = roleName.match(/\{(\d+)\.\.(\d+)\}/);
+              const namesToCreate: string[] = [];
+              if (rangeMatch) {
+                const start = parseInt(rangeMatch[1], 10);
+                const end = parseInt(rangeMatch[2], 10);
+                const limit = Math.min(Math.abs(end - start) + 1, 75000);
+                const step = end >= start ? 1 : -1;
+                for (let i = 0; i < limit; i++) {
+                  const num = start + i * step;
+                  namesToCreate.push(roleName.replace(/\{(\d+)\.\.(\d+)\}/, String(num)));
+                }
+              } else {
+                namesToCreate.push(roleName);
+              }
+
+              for (const nameToCreate of namesToCreate) {
+                const trimmedName = nameToCreate.trim();
+                if (existingRoleNamesSet.has(trimmedName)) continue;
+
+                if (totalRolesCount >= boostState.maxRoles) {
+                  console.log(`[Role Setup] Max roles limit reached (${boostState.maxRoles}) during bulk role creation`);
+                  break;
+                }
+
+                existingRoleNamesSet.add(trimmedName);
+                totalRolesCount++;
+
+                rolesToInsert.push({
+                  conversationId,
+                  name: trimmedName,
+                  color: roleColor,
+                  position: nextPosition++,
+                  permissions: permissionsObj,
+                });
+              }
+            }
+
+            // Bulk insert in chunks of 5000
+            if (rolesToInsert.length > 0) {
+              const chunkSize = 5000;
+              for (let i = 0; i < rolesToInsert.length; i += chunkSize) {
+                const chunk = rolesToInsert.slice(i, i + chunkSize);
+                await db.insert(rolesTable).values(chunk).onConflictDoNothing();
+              }
+              console.log(`[Role Setup] Bulk created ${rolesToInsert.length} roles dynamically`);
             }
           } catch (err) {
-            console.error("Failed to create role from AI command:", err);
+            console.error("Failed to execute bulk CREATE_ROLE command:", err);
           }
         }
       }
