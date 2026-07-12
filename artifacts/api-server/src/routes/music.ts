@@ -6,7 +6,7 @@ import { usersTable } from "@workspace/db";
 import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { Readable } from "node:stream";
 
@@ -279,7 +279,65 @@ async function getCachedResolvedAudio(cacheKey: string, searchQuery: string, exp
   }
 }
 
+function isHlsUrl(audioUrl: string): boolean {
+  return audioUrl.includes(".m3u8") || audioUrl.includes("/hls_playlist/") || audioUrl.includes("hls_chunk_host");
+}
+
+// Some YouTube formats are only served as HLS manifests. Browsers' <audio> elements
+// cannot play HLS directly (outside Safari), so remux/transcode via ffmpeg into a
+// plain audio/mpeg stream instead of proxying the m3u8 as-is.
+function streamHlsAsMp3(req: any, res: any, hlsUrl: string) {
+  const ffmpeg = spawn("ffmpeg", [
+    "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "-i", hlsUrl,
+    "-vn",
+    "-acodec", "libmp3lame",
+    "-b:a", "128k",
+    "-f", "mp3",
+    "-",
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+
+  let stderrTail = "";
+  ffmpeg.stderr.on("data", (chunk) => {
+    stderrTail = (stderrTail + chunk.toString()).slice(-4000);
+  });
+
+  let headersSent = false;
+  ffmpeg.stdout.once("data", () => {
+    if (!headersSent && !res.headersSent) {
+      headersSent = true;
+      res.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "Cache-Control": "no-store",
+      });
+    }
+  });
+
+  ffmpeg.stdout.pipe(res);
+
+  ffmpeg.on("error", (err) => {
+    req.log?.error({ err }, "ffmpeg failed to start for HLS transcode");
+    if (!res.headersSent) res.status(502).send("Audio transcode failed.");
+  });
+
+  ffmpeg.on("close", (code) => {
+    if (code !== 0 && !headersSent) {
+      req.log?.error({ code, stderrTail }, "ffmpeg exited before producing audio output");
+      if (!res.headersSent) res.status(502).send("Audio transcode failed.");
+    }
+  });
+
+  req.on("close", () => {
+    if (!ffmpeg.killed) ffmpeg.kill("SIGKILL");
+  });
+}
+
 async function proxyAudioUrl(req: any, res: any, audioUrl: string) {
+  if (isHlsUrl(audioUrl)) {
+    streamHlsAsMp3(req, res, audioUrl);
+    return;
+  }
+
   const headers: Record<string, string> = {};
   if (req.headers.range) {
     headers["Range"] = req.headers.range;
