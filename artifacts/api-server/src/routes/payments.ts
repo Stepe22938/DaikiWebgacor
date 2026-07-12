@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { aliasedTable, and, asc, desc, eq, like } from "drizzle-orm";
+import { aliasedTable, and, asc, desc, eq, like, sql } from "drizzle-orm";
 import {
   boostSlotsTable,
   conversationMembersTable,
@@ -444,6 +444,88 @@ router.get("/admin/payments", async (req, res): Promise<void> => {
     .orderBy(desc(ticketsTable.createdAt));
 
   res.json(rows.map((row) => serializeDates(row)));
+});
+
+router.get("/admin/premium-stats", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  const admin = await requireAdmin(req);
+  if (!admin) { res.status(auth.userId ? 403 : 401).json({ error: auth.userId ? "Forbidden" : "Unauthorized" }); return; }
+
+  const activeSubs = await db
+    .select({
+      id: userTierSubscriptionsTable.id,
+      userId: userTierSubscriptionsTable.userId,
+      tier: userTierSubscriptionsTable.tier,
+      source: userTierSubscriptionsTable.source,
+      startsAt: userTierSubscriptionsTable.startsAt,
+      endsAt: userTierSubscriptionsTable.endsAt,
+      username: usersTable.username,
+      displayName: usersTable.displayName,
+      avatarUrl: usersTable.avatarUrl,
+    })
+    .from(userTierSubscriptionsTable)
+    .innerJoin(usersTable, eq(userTierSubscriptionsTable.userId, usersTable.id))
+    .where(eq(userTierSubscriptionsTable.status, "active"));
+
+  const sourceCounts: Record<string, number> = {
+    payment_ticket: 0,
+    payment_auto: 0,
+    gift_redeem: 0,
+    token_shop: 0,
+    admin_manual: 0,
+    other: 0,
+  };
+
+  const tierCounts: Record<string, number> = {
+    premium: 0,
+    premium_plus: 0,
+  };
+
+  activeSubs.forEach((sub) => {
+    const src = sub.source;
+    if (src in sourceCounts) {
+      sourceCounts[src]++;
+    } else {
+      sourceCounts.other++;
+    }
+
+    const tier = sub.tier;
+    if (tier in tierCounts) {
+      tierCounts[tier]++;
+    }
+  });
+
+  const paymentsList = await db
+    .select({
+      id: ticketsTable.id,
+      creatorUsername: usersTable.username,
+      creatorDisplayName: usersTable.displayName,
+      requestedTier: ticketsTable.requestedTier,
+      createdAt: ticketsTable.createdAt,
+      grantedAt: ticketsTable.grantedAt,
+      paymentStatus: ticketsTable.paymentStatus,
+    })
+    .from(ticketsTable)
+    .innerJoin(usersTable, eq(ticketsTable.creatorId, usersTable.id))
+    .where(and(eq(ticketsTable.ticketType, "payment"), eq(ticketsTable.paymentStatus, "paid")))
+    .orderBy(desc(ticketsTable.createdAt))
+    .limit(20);
+
+  const coinRedemptionsCount = await db
+    .select({ count: sql`count(*)` })
+    .from(userTierSubscriptionsTable)
+    .where(eq(userTierSubscriptionsTable.source, "token_shop"));
+
+  res.json({
+    activeSubscriptions: activeSubs.map(serializeDates),
+    summary: {
+      totalActive: activeSubs.length,
+      bySource: sourceCounts,
+      byTier: tierCounts,
+      totalCoinRedeemedCount: Number(coinRedemptionsCount[0]?.count ?? 0),
+    },
+    paymentsList: paymentsList.map(serializeDates),
+  });
 });
 
 router.patch("/admin/payments/:id", async (req, res): Promise<void> => {

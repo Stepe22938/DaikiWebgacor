@@ -265,6 +265,11 @@ export default function Admin() {
     queryFn: () => customFetch<any>("/api/me/membership"),
     enabled: canManagePayments,
   });
+  const { data: premiumStats, isLoading: premiumStatsLoading } = useQuery({
+    queryKey: ["/api/admin/premium-stats"],
+    queryFn: () => customFetch<any>("/api/admin/premium-stats"),
+    enabled: canManagePayments,
+  });
   const { data: ticketReasons = [], isLoading: ticketReasonsLoading } = useListAdminTicketReasons({
     query: { enabled: canQueryAdmin } as any,
   });
@@ -905,7 +910,7 @@ export default function Admin() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "developments", "announcements", "tickets", "payments", "forms", "users", "credits", "settings", "gacha", "groups"].includes(tab)) {
+    if (tab && ["dashboard", "developments", "announcements", "tickets", "payments", "forms", "users", "credits", "settings", "gacha", "groups", "premium"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [window.location.search]);
@@ -1384,6 +1389,18 @@ export default function Admin() {
                     <Wallet className="w-4.5 h-4.5" /> Payments
                   </button>
                 )}
+                {canManagePayments && (
+                  <button
+                    onClick={() => handleTabChange("premium")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "premium"
+                        ? "bg-violet-50 text-[#6366f1]"
+                        : "text-slate-500 hover:bg-slate-55 hover:text-slate-900"
+                    }`}
+                  >
+                    <Crown className="w-4.5 h-4.5" /> Premium Stats
+                  </button>
+                )}
                 {canManageAdmin && (
                   <button
                     onClick={() => handleTabChange("forms")}
@@ -1582,6 +1599,16 @@ export default function Admin() {
                     }`}
                   >
                     <Wallet className="w-4.5 h-4.5" /> Payments
+                  </button>
+                )}
+                {canManagePayments && (
+                  <button
+                    onClick={() => handleTabChangeMobile("premium")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "premium" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-55"
+                    }`}
+                  >
+                    <Crown className="w-4.5 h-4.5" /> Premium Stats
                   </button>
                 )}
                 {canManageAdmin && (
@@ -3840,6 +3867,188 @@ export default function Admin() {
                   </Card>
                 )}
               </div>
+            </div>
+          )}
+
+          {activeTab === "premium" && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="flex justify-between items-center flex-wrap gap-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-[#110e3d]">Premium Statistics</h2>
+                  <p className="text-xs text-slate-400 font-bold mt-1">
+                    Analisis data pengguna premium, metode pembayaran, dan redeem coin.
+                  </p>
+                </div>
+              </div>
+
+              {premiumStatsLoading ? (
+                <Skeleton className="h-96 w-full rounded-2xl" />
+              ) : !premiumStats ? (
+                <div className="text-center py-16 text-slate-400 bg-slate-50 border border-[#eae8f5] rounded-2xl">
+                  Gagal memuat data statistik premium.
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Metric Cards */}
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Card className="bg-white border-[#eae8f5] p-5 shadow-sm shadow-[#5a567a]/5 rounded-2xl">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Premium Active</div>
+                      <div className="text-2xl font-black text-[#110e3d] mt-1">{premiumStats.summary.totalActive}</div>
+                      <p className="text-[10px] text-slate-400 font-bold mt-1">Users currently with active premium roles</p>
+                    </Card>
+                    <Card className="bg-white border-[#eae8f5] p-5 shadow-sm shadow-[#5a567a]/5 rounded-2xl">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Premium / Premium+</div>
+                      <div className="text-2xl font-black text-[#6366f1] mt-1">
+                        {premiumStats.summary.byTier.premium} / {premiumStats.summary.byTier.premium_plus}
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-bold mt-1">Active users breakdown by tier type</p>
+                    </Card>
+                    <Card className="bg-white border-[#eae8f5] p-5 shadow-sm shadow-[#5a567a]/5 rounded-2xl">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Coin/Token Redemptions</div>
+                      <div className="text-2xl font-black text-amber-500 mt-1">{premiumStats.summary.totalCoinRedeemedCount}</div>
+                      <p className="text-[10px] text-slate-400 font-bold mt-1">Total subscriptions claimed using gacha tokens</p>
+                    </Card>
+                    <Card className="bg-white border-[#eae8f5] p-5 shadow-sm shadow-[#5a567a]/5 rounded-2xl">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Real Money Paid (Manual/Auto)</div>
+                      <div className="text-2xl font-black text-emerald-600 mt-1">
+                        {(premiumStats.summary.bySource.payment_ticket || 0) + (premiumStats.summary.bySource.payment_auto || 0)}
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-bold mt-1">Subscriptions purchased with actual IDR/RP</p>
+                    </Card>
+                  </div>
+
+                  {/* Diagrams Section */}
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl p-6">
+                      <h4 className="font-extrabold text-sm text-[#110e3d] mb-4">Subscription Sources Distribution</h4>
+                      <div className="h-64 flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={[
+                              { name: "Pay Manual", count: premiumStats.summary.bySource.payment_ticket },
+                              { name: "Pay Auto", count: premiumStats.summary.bySource.payment_auto },
+                              { name: "Token Shop", count: premiumStats.summary.bySource.token_shop },
+                              { name: "Gift Code", count: premiumStats.summary.bySource.gift_redeem },
+                              { name: "Admin Manual", count: premiumStats.summary.bySource.admin_manual },
+                            ]}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f0f7" />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={9} tickLine={false} />
+                            <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} />
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: "#fff", borderColor: "#eae8f5", borderRadius: "12px", fontSize: "11px" }}
+                            />
+                            <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                              <Cell fill="#6366f1" />
+                              <Cell fill="#3b82f6" />
+                              <Cell fill="#f59e0b" />
+                              <Cell fill="#10b981" />
+                              <Cell fill="#64748b" />
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </Card>
+
+                    <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl p-6">
+                      <h4 className="font-extrabold text-sm text-[#110e3d] mb-4">Tiers Distribution</h4>
+                      <div className="h-64 flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={[
+                              { name: "Premium", count: premiumStats.summary.byTier.premium },
+                              { name: "Premium+", count: premiumStats.summary.byTier.premium_plus },
+                            ]}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f0f7" />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={9} tickLine={false} />
+                            <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} />
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: "#fff", borderColor: "#eae8f5", borderRadius: "12px", fontSize: "11px" }}
+                            />
+                            <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                              <Cell fill="#818cf8" />
+                              <Cell fill="#4f46e5" />
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Active Premium Subscribers List */}
+                  <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl overflow-hidden">
+                    <div className="p-6 border-b border-[#eae8f5] flex justify-between items-center flex-wrap gap-4">
+                      <div>
+                        <h4 className="font-extrabold text-sm text-[#110e3d]">Active Premium Subscribers</h4>
+                        <p className="text-[10px] text-slate-400 font-bold mt-1">Daftar semua pengguna yang saat ini memiliki status premium aktif.</p>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader className="bg-[#f8f7fa]">
+                          <TableRow className="border-[#eae8f5]">
+                            <TableHead className="text-xs font-black text-[#110e3d]">User</TableHead>
+                            <TableHead className="text-xs font-black text-[#110e3d]">Tier</TableHead>
+                            <TableHead className="text-xs font-black text-[#110e3d]">Source</TableHead>
+                            <TableHead className="text-xs font-black text-[#110e3d]">Starts At</TableHead>
+                            <TableHead className="text-xs font-black text-[#110e3d]">Ends At</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {premiumStats.activeSubscriptions.map((sub: any) => (
+                            <TableRow key={sub.id} className="border-[#eae8f5] hover:bg-slate-50/50">
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center font-black text-[#6366f1] text-xs shrink-0 overflow-hidden border border-[#eae8f5]">
+                                    {sub.avatarUrl ? (
+                                      <img src={sub.avatarUrl} alt="" className="w-full h-full object-cover" />
+                                    ) : (
+                                      (sub.displayName || sub.username || "U").charAt(0).toUpperCase()
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="font-extrabold text-xs text-[#110e3d]">
+                                      {sub.displayName || sub.username}
+                                    </div>
+                                    <div className="text-[9px] text-slate-400 font-bold">@{sub.username} (UID: #{sub.userId})</div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  sub.tier === "premium_plus" ? "bg-indigo-100 text-indigo-700 border border-indigo-200" : "bg-blue-100 text-blue-700 border border-blue-200"
+                                }`}>
+                                  {sub.tier === "premium_plus" ? "Premium+" : "Premium"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-xs font-bold text-slate-500">
+                                {sub.source === "payment_ticket" && "Manual Pay (Ticket)"}
+                                {sub.source === "payment_auto" && "Auto Pay"}
+                                {sub.source === "gift_redeem" && "Gift Code"}
+                                {sub.source === "token_shop" && "Token Shop (Coins)"}
+                                {sub.source === "admin_manual" && "Admin Manual"}
+                                {!["payment_ticket", "payment_auto", "gift_redeem", "token_shop", "admin_manual"].includes(sub.source) && sub.source}
+                              </TableCell>
+                              <TableCell className="text-xs text-slate-400 font-bold">
+                                {new Date(sub.startsAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                              </TableCell>
+                              <TableCell className="text-xs text-slate-400 font-bold">
+                                {sub.endsAt ? new Date(sub.endsAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : <span className="text-slate-300 italic">Unlimited</span>}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {premiumStats.activeSubscriptions.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center text-xs text-slate-400 py-8">Belum ada pelanggan premium aktif.</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </Card>
+                </div>
+              )}
             </div>
           )}
         </main>
