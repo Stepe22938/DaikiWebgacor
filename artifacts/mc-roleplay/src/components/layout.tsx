@@ -50,8 +50,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#050507] text-zinc-100">
-      <header className="border-b border-zinc-900/60 bg-[#050507]/80 backdrop-blur-md sticky top-0 z-50">
+    <div className="min-h-screen flex flex-col bg-black text-zinc-100">
+      <header className="border-b border-zinc-900/60 bg-black/80 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5 group">
             <img src={realmLogoUrl} alt={realmName} className="w-7.5 h-7.5 rounded-lg object-cover opacity-85 group-hover:opacity-100 transition-opacity" />
@@ -216,7 +216,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
       
-      <footer className="border-t border-zinc-900/60 bg-[#050507] py-8">
+      <footer className="border-t border-zinc-900/60 bg-black py-8">
         <div className="container mx-auto px-4 text-center text-zinc-500 text-[10px] font-bold uppercase tracking-[0.2em]">
           <p>{realmName} &copy; {new Date().getFullYear()}. Forged in myth.</p>
         </div>
