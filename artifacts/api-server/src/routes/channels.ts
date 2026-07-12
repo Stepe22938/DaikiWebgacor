@@ -38,6 +38,13 @@ async function isOwner(conversationId: number, userId: number) {
   return conv?.ownerId === userId;
 }
 
+async function isSuspended(conversationId: number) {
+  const conv = await db.query.conversationsTable.findFirst({
+    where: eq(conversationsTable.id, conversationId),
+  });
+  return !!conv?.isSuspended;
+}
+
 // === CHANNEL CATEGORIES ===
 
 // GET /conversations/:id/categories
@@ -63,6 +70,7 @@ router.post("/conversations/:id/categories", async (req, res): Promise<void> => 
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   const id = parseInt(req.params.id, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+  if (await isSuspended(id)) { res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." }); return; }
   if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage categories" }); return; }
 
   const { name } = req.body;
@@ -90,6 +98,7 @@ router.patch("/conversations/:id/categories/:catId", async (req, res): Promise<v
   const id = parseInt(req.params.id, 10);
   const catId = parseInt(req.params.catId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+  if (await isSuspended(id)) { res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." }); return; }
   if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage categories" }); return; }
 
   const { name, position } = req.body;
@@ -112,6 +121,7 @@ router.delete("/conversations/:id/categories/:catId", async (req, res): Promise<
   const id = parseInt(req.params.id, 10);
   const catId = parseInt(req.params.catId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+  if (await isSuspended(id)) { res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." }); return; }
   if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage categories" }); return; }
 
   // Unlink channels from this category
@@ -214,6 +224,7 @@ router.post("/conversations/:id/channels/:channelId/join", async (req, res): Pro
   const channelId = parseInt(req.params.channelId, 10);
 
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+  if (await isSuspended(id)) { res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." }); return; }
 
   // Verify the channel exists and is a voice channel in this conversation
   const channel = await db.query.channelsTable.findFirst({
@@ -275,6 +286,7 @@ router.post("/conversations/:id/channels", async (req, res): Promise<void> => {
 
   const id = parseInt(req.params.id, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+  if (await isSuspended(id)) { res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." }); return; }
   if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage channels" }); return; }
 
   const { name, type, categoryId } = req.body;
@@ -341,6 +353,7 @@ router.patch("/conversations/:id/channels/:channelId", async (req, res): Promise
   const id = parseInt(req.params.id, 10);
   const channelId = parseInt(req.params.channelId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+  if (await isSuspended(id)) { res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." }); return; }
   if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage channels" }); return; }
 
   const channel = await db.query.channelsTable.findFirst({
@@ -372,6 +385,7 @@ router.delete("/conversations/:id/channels/:channelId", async (req, res): Promis
   const id = parseInt(req.params.id, 10);
   const channelId = parseInt(req.params.channelId, 10);
   if (!(await isMember(id, user.id))) { res.status(403).json({ error: "Not a member" }); return; }
+  if (await isSuspended(id)) { res.status(403).json({ error: "Grup ini ditangguhkan oleh admin." }); return; }
   if (!(await isOwner(id, user.id)) && !(await hasPermission(id, user.id, "manageChannels"))) { res.status(403).json({ error: "Only owner or admins with manageChannels permission can manage channels" }); return; }
 
   const channel = await db.query.channelsTable.findFirst({

@@ -2665,6 +2665,14 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   }, [activeJoinedVoiceChannel]);
 
   const handleJoinVoice = async (conversationId: number, channelId: number) => {
+    if (selectedConv?.isSuspended) {
+      toast({
+        title: "Gagal bergabung ke Voice",
+        description: "Grup ini ditangguhkan oleh admin.",
+        variant: "destructive",
+      });
+      return;
+    }
     const ch = channels.find((c) => c.id === channelId);
     setCallContext({
       conversationId,
@@ -7455,6 +7463,16 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                   const isOwner = selectedConv?.ownerId === me?.id;
                   const isGroup = selectedConv?.type === "group";
                   const hasSendPermission = !isGroup || isOwner || myPerms?.permissions?.sendMessages;
+                  const isSuspended = (selectedConv as any)?.isSuspended;
+
+                  if (isSuspended) {
+                    return (
+                      <div className={`px-2 sm:px-4 md:px-6 py-4 border-t shrink-0 flex items-center justify-center text-xs font-bold gap-2 ${isGroupView ? "border-[#3F4147] bg-[#1E1F22] text-[#ef4444]" : "border-[#fecaca] bg-[#fef2f2] text-red-700"}`}>
+                        <Ban className="w-4 h-4 text-red-500 animate-pulse" />
+                        Grup ini telah ditangguhkan oleh admin.
+                      </div>
+                    );
+                  }
                   
                   const canPostAnnounce = isOwner || myPerms?.permissions?.postAnnouncements;
                   const isAnnounceChannel = selectedChannel?.type === "announce";
@@ -10541,6 +10559,15 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                       const isCallConvGroup = selectedConv?.id === callContext?.conversationId && selectedConv?.type === "group";
                       const isCallGroupOwner = selectedConv?.id === callContext?.conversationId && selectedConv?.ownerId === me?.id;
                       const hasCallSendPermission = !isCallConvGroup || isCallGroupOwner || myPerms?.permissions?.sendMessages;
+                      const isCallSuspended = (selectedConv as any)?.isSuspended;
+
+                      if (isCallSuspended) {
+                        return (
+                          <div className="text-center text-[10px] text-red-500 font-bold py-2">
+                            Grup ini ditangguhkan oleh admin.
+                          </div>
+                        );
+                      }
 
                       if (!hasCallSendPermission) {
                         return (
