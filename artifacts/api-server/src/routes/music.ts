@@ -234,20 +234,34 @@ async function resolveYoutubeAudioUrl(ytDlpCmd: string, searchQuery: string, exp
     })
     .sort((a: any, b: any) => a.score - b.score);
 
-  const best = scored[0];
-  const { stdout: directUrl } = await execFileAsync(ytDlpCmd, [
-    "-g",
-    "-f", "140/bestaudio[ext=m4a]/bestaudio",
-    "--no-playlist",
-    best.url,
-  ], { timeout: 45_000 });
+  // YouTube's anti-bot measures (SABR forcing, per-video/client format gating) mean the
+  // default "web" client fails unpredictably for most videos right now ("content not
+  // available on this app", missing formats, etc), even for completely unrestricted videos.
+  // The "android_vr" client consistently returns a direct progressive URL (no PO token
+  // required, no HLS wrapping) where "web"/"android"/"ios"/"tv"/"mweb" all fail — use it
+  // first, and fall back to the default client + next search candidates if it ever changes.
+  const clientAttempts = ["android_vr", undefined] as const;
+  let lastError: unknown = null;
 
-  const url = directUrl.split(/\r?\n/).find((line) => line.startsWith("http")) || "";
-  if (!url) {
-    throw new Error("Gagal mengambil URL audio YouTube.");
+  for (const candidate of scored.slice(0, 5)) {
+    for (const client of clientAttempts) {
+      try {
+        const args = ["-g", "-f", "bestaudio", "--no-playlist"];
+        if (client) args.push("--extractor-args", `youtube:player_client=${client}`);
+        args.push(candidate.url);
+
+        const { stdout: directUrl } = await execFileAsync(ytDlpCmd, args, { timeout: 30_000 });
+        const url = directUrl.split(/\r?\n/).find((line) => line.startsWith("http")) || "";
+        if (url) {
+          return { url, duration: candidate.duration || expectedDuration || null, title: candidate.title };
+        }
+      } catch (err) {
+        lastError = err;
+      }
+    }
   }
 
-  return { url, duration: best.duration || expectedDuration || null, title: best.title };
+  throw lastError instanceof Error ? lastError : new Error("Gagal mengambil URL audio YouTube.");
 }
 
 async function getCachedResolvedAudio(cacheKey: string, searchQuery: string, expectedDuration: number | null) {
