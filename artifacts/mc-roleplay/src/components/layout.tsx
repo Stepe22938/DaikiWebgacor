@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { customFetch, useGetMe, useUpdateMe } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, useEffect } from "react";
-import { User, LogOut, Settings, MessageSquare, Users, Home, ChevronDown, Gamepad2, ShieldAlert, Crown, BookOpen } from "lucide-react";
+import { User, LogOut, Settings, MessageSquare, Users, Home, ChevronDown, Gamepad2, ShieldAlert, Crown, BookOpen, Menu } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { signOut } = useClerk();
@@ -24,6 +25,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [savingMc, setSavingMc] = useState(false);
   const [errorMc, setErrorMc] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const realmName = realmSettings.realmName || "Arcadia Studio";
   const realmLogoUrl = realmSettings.realmLogoUrl || `${basePath}/logo.svg`;
@@ -112,7 +114,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
               Manga
             </Link>
           </div>
-          
+
+          <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsMobileNavOpen(true)}
+            className="md:hidden w-10 h-10 rounded-full border border-zinc-800/30 flex items-center justify-center hover:bg-zinc-900 transition-colors text-zinc-400 hover:text-white focus:outline-none cursor-pointer"
+            aria-label="Buka menu navigasi"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
           <div className="relative" ref={dropdownRef}>
             <Show when="signed-out">
               <button 
@@ -209,8 +220,78 @@ export function Layout({ children }: { children: React.ReactNode }) {
               )}
             </Show>
           </div>
+          </div>
         </div>
       </header>
+
+      <Sheet open={isMobileNavOpen} onOpenChange={setIsMobileNavOpen}>
+        <SheetContent side="right" className="bg-[#0b0b0f]/98 backdrop-blur-md border-zinc-800/50 w-4/5 max-w-xs">
+          <SheetHeader>
+            <SheetTitle className="text-white text-left font-black text-xs uppercase tracking-[0.25em]">{realmName}</SheetTitle>
+          </SheetHeader>
+          <nav className="mt-6 flex flex-col gap-1 text-sm font-black uppercase tracking-[0.15em] text-zinc-400 font-mono">
+            <a
+              href="/#home"
+              onClick={(e) => {
+                setIsMobileNavOpen(false);
+                if (window.location.pathname === "/") {
+                  e.preventDefault();
+                  document.getElementById("home")?.scrollIntoView({ behavior: "smooth" });
+                }
+              }}
+              className="px-3 py-3 rounded-lg hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
+            >
+              Home
+            </a>
+            <a
+              href="/#gallery"
+              onClick={(e) => {
+                setIsMobileNavOpen(false);
+                if (window.location.pathname === "/") {
+                  e.preventDefault();
+                  document.getElementById("gallery")?.scrollIntoView({ behavior: "smooth" });
+                }
+              }}
+              className="px-3 py-3 rounded-lg hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
+            >
+              Gallery
+            </a>
+            <a
+              href="/#features"
+              onClick={(e) => {
+                setIsMobileNavOpen(false);
+                if (window.location.pathname === "/") {
+                  e.preventDefault();
+                  document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
+                }
+              }}
+              className="px-3 py-3 rounded-lg hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
+            >
+              Feature
+            </a>
+            <a
+              href="/#roadmap"
+              onClick={(e) => {
+                setIsMobileNavOpen(false);
+                if (window.location.pathname === "/") {
+                  e.preventDefault();
+                  document.getElementById("roadmap")?.scrollIntoView({ behavior: "smooth" });
+                }
+              }}
+              className="px-3 py-3 rounded-lg hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
+            >
+              Roadmap & Forge
+            </a>
+            <Link
+              href="/manga"
+              onClick={() => setIsMobileNavOpen(false)}
+              className="px-3 py-3 rounded-lg hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
+            >
+              Manga
+            </Link>
+          </nav>
+        </SheetContent>
+      </Sheet>
       
       <main className="flex-1">
         {children}
