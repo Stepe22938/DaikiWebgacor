@@ -5754,7 +5754,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
           {/* Chat Sidebar: Two Column Discord Layout */}
           <div className={`
-            ${selectedConv 
+            ${(selectedConv || activeView !== "chat")
               ? (mobileChannelDrawerOpen ? "fixed inset-y-0 left-0 z-50 w-[332px] flex animate-in slide-in-from-left duration-200" : "hidden md:flex") 
               : "flex w-full"
             } md:w-[332px] border-r border-[#1f2023] bg-[#2b2d31] shrink-0 min-w-0 min-h-0 overflow-hidden
@@ -6942,6 +6942,14 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 <div className="p-6 border-b border-[#1f2023] bg-[#2b2d31] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
                   <div>
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveView("chat")}
+                        className="md:hidden -ml-1 mr-1 p-1.5 rounded-lg text-[#B5BAC1] hover:text-white hover:bg-[#35373C] transition-colors border-0 cursor-pointer"
+                        aria-label="Kembali"
+                      >
+                        <ArrowLeft className="w-4.5 h-4.5" />
+                      </button>
                       <ShoppingBag className="w-6 h-6 text-amber-500" />
                       <h1 className="text-xl font-black text-white tracking-wide">Shop</h1>
                     </div>
@@ -7082,6 +7090,14 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                 <div className="p-6 border-b border-[#1f2023] bg-[#2b2d31] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
                   <div>
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveView("chat")}
+                        className="md:hidden -ml-1 mr-1 p-1.5 rounded-lg text-[#B5BAC1] hover:text-white hover:bg-[#35373C] transition-colors border-0 cursor-pointer"
+                        aria-label="Kembali"
+                      >
+                        <ArrowLeft className="w-4.5 h-4.5" />
+                      </button>
                       <Trophy className="w-6 h-6 text-yellow-500" />
                       <h1 className="text-xl font-black text-white tracking-wide">Quests</h1>
                     </div>
