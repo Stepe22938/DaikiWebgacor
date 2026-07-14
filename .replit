@@ -3,13 +3,43 @@ modules = ["nodejs-24", "postgresql-16"]
 [deployment]
 router = "application"
 deploymentTarget = "autoscale"
+build = ["pnpm", "run", "build"]
+run = ["sh", "-c", "NODE_ENV=production PORT=8080 node --enable-source-maps ./artifacts/api-server/dist/index.mjs"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
+runButton = "Dev"
+
+[[workflows.workflow]]
+name = "Dev"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/api-server run dev"
+waitForPort = 5000
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=5173 pnpm --filter @workspace/mc-roleplay run dev"
+waitForPort = 5173
+
+[[workflows.workflow]]
+name = "Start"
+mode = "sequential"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm run build"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "NODE_ENV=production PORT=8080 node --enable-source-maps ./artifacts/api-server/dist/index.mjs"
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -19,17 +49,19 @@ expertMode = true
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
 
+# Dev mode ports
+[[ports]]
+localPort = 5173
+externalPort = 3000
+
+[[ports]]
+localPort = 5000
+externalPort = 8081
+
+# Production / public port
 [[ports]]
 localPort = 8080
 externalPort = 80
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 24628
-externalPort = 3000
 
 [nix]
 channel = "stable-25_05"
