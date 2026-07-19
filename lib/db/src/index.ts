@@ -9,7 +9,13 @@ const { Pool } = pg;
 if (!process.env.DATABASE_URL) {
   const rootEnvPath = path.resolve(import.meta.dirname, "../../../.env");
   if (fs.existsSync(rootEnvPath)) {
-    process.loadEnvFile(rootEnvPath);
+    try {
+      if (typeof process.loadEnvFile === "function") {
+        process.loadEnvFile(rootEnvPath);
+      }
+    } catch (e) {
+      console.warn("Failed to load .env file via loadEnvFile:", e);
+    }
   }
 }
 
