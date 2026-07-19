@@ -1,5 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import path from "node:path";
+import fs from "node:fs";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
@@ -83,5 +85,21 @@ app.use(async (req, _res, next) => {
 });
 
 app.use("/api", router);
+
+// In production, serve the built React frontend from the same Express server.
+// This lets Replit expose only one port (8080 → :80 externally).
+if (process.env.NODE_ENV === "production") {
+  const frontendDist = path.resolve(import.meta.dirname, "../../mc-roleplay/dist/public");
+  if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+    // All non-API routes fall through to the React SPA
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(frontendDist, "index.html"));
+    });
+    logger.info({ frontendDist }, "Serving static frontend");
+  } else {
+    logger.warn({ frontendDist }, "Frontend dist not found — skipping static file serving");
+  }
+}
 
 export default app;

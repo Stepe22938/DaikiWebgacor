@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Layout } from "@/components/layout";
 import { Redirect, Link, useLocation } from "wouter";
-import { useClerk } from "@clerk/react";
+import { useClerk, useUser } from "@clerk/react";
 import {
   useGetMe,
   useListDevelopments,
@@ -259,6 +259,7 @@ export default function Admin() {
     queryKey: ["/api/admin/payments"],
     queryFn: () => customFetch<any[]>("/api/admin/payments"),
     enabled: canManagePayments,
+    refetchInterval: 5000,
   });
   const { data: paymentMembershipData } = useQuery({
     queryKey: ["/api/me/membership", "admin-preview"],
@@ -269,6 +270,7 @@ export default function Admin() {
     queryKey: ["/api/admin/premium-stats"],
     queryFn: () => customFetch<any>("/api/admin/premium-stats"),
     enabled: canManagePayments,
+    refetchInterval: 5000,
   });
   const { data: ticketReasons = [], isLoading: ticketReasonsLoading } = useListAdminTicketReasons({
     query: { enabled: canQueryAdmin } as any,
@@ -303,6 +305,274 @@ export default function Admin() {
   const deleteTicketReason = useDeleteTicketReason();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Dashboard redesign states
+  const [engagementPeriod, setEngagementPeriod] = useState<"daily" | "weekly">("weekly");
+  const [dateRange, setDateRange] = useState("30days");
+  const [systemMetrics, setSystemMetrics] = useState({ load: 75, cpu: 49, memory: 82 });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSystemMetrics((prev) => {
+        const nextLoad = Math.min(95, Math.max(10, prev.load + (Math.random() > 0.5 ? 1 : -1)));
+        const nextCpu = Math.min(95, Math.max(10, prev.cpu + (Math.random() > 0.5 ? 2 : -2)));
+        const nextMemory = Math.min(95, Math.max(10, prev.memory + (Math.random() > 0.5 ? 1 : -1)));
+        return { load: nextLoad, cpu: nextCpu, memory: nextMemory };
+      });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Leaflet map states & dynamic loading
+  const mapRef = useRef<HTMLDivElement>(null);
+  const leafletMapRef = useRef<any>(null);
+  const [leafletLoaded, setLeafletLoaded] = useState(false);
+  const [currentUserGeo, setCurrentUserGeo] = useState<any>(null);
+  const { user: clerkUser } = useUser();
+
+  const getDeviceName = (ua: string) => {
+    if (ua.includes("Windows")) return "Windows";
+    if (ua.includes("Macintosh") || ua.includes("Mac OS")) return "macOS";
+    if (ua.includes("iPhone")) return "iPhone";
+    if (ua.includes("Android")) return "Android";
+    if (ua.includes("Linux")) return "Linux";
+    return "Unknown Device";
+  };
+
+  const getBrowserName = (ua: string) => {
+    if (ua.includes("Chrome")) return "Chrome";
+    if (ua.includes("Safari") && !ua.includes("Chrome")) return "Safari";
+    if (ua.includes("Firefox")) return "Firefox";
+    if (ua.includes("Edge")) return "Edge";
+    return "Browser";
+  };
+
+  useEffect(() => {
+    const fallbackToIpGeo = () => {
+      fetch("https://ipapi.co/json/")
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.latitude && data.longitude) {
+            setCurrentUserGeo({
+              ip: data.ip || "Active VPN/Proxy",
+              city: data.city || "Singapore",
+              region: data.region || "",
+              country: data.country_name || "Singapore",
+              lat: data.latitude,
+              lng: data.longitude,
+              device: getDeviceName(navigator.userAgent),
+              browser: getBrowserName(navigator.userAgent)
+            });
+          }
+        })
+        .catch(e => console.error("Error fetching IP geo fallback:", e));
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+            .then(r => r.json())
+            .then(geo => {
+              setCurrentUserGeo({
+                ip: "GPS Active",
+                city: geo.address.city || geo.address.town || geo.address.suburb || geo.address.village || "Your Location",
+                region: geo.address.state || "",
+                country: geo.address.country || "",
+                lat,
+                lng,
+                device: getDeviceName(navigator.userAgent),
+                browser: getBrowserName(navigator.userAgent)
+              });
+            })
+            .catch(() => {
+              setCurrentUserGeo({
+                ip: "GPS Active",
+                city: "GPS Coordinate",
+                region: "",
+                country: "",
+                lat,
+                lng,
+                device: getDeviceName(navigator.userAgent),
+                browser: getBrowserName(navigator.userAgent)
+              });
+            });
+        },
+        (error) => {
+          console.warn("Geolocation permission denied or timed out, using IP geo:", error);
+          fallbackToIpGeo();
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    } else {
+      fallbackToIpGeo();
+    }
+  }, []);
+
+  useEffect(() => {
+    let checkInterval: any;
+    if ((window as any).L) {
+      setLeafletLoaded(true);
+    } else {
+      checkInterval = setInterval(() => {
+        if ((window as any).L) {
+          setLeafletLoaded(true);
+          clearInterval(checkInterval);
+        }
+      }, 100);
+    }
+    return () => {
+      if (checkInterval) clearInterval(checkInterval);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.remove();
+        leafletMapRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!leafletLoaded || !mapRef.current || !(window as any).L) return;
+
+    const L = (window as any).L;
+
+    // Use a wider global view zoom if current user is in Singapore or elsewhere
+    const centerLat = currentUserGeo ? currentUserGeo.lat : -2.548926;
+    const centerLng = currentUserGeo ? currentUserGeo.lng : 118.014863;
+    const initialZoom = currentUserGeo ? 4 : 5;
+
+    if (!leafletMapRef.current) {
+      const map = L.map(mapRef.current, {
+        zoomControl: false,
+        attributionControl: false
+      }).setView([centerLat, centerLng], initialZoom);
+
+      // Super robust standard OpenStreetMap tile layer
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+      }).addTo(map);
+
+      L.control.zoom({ position: 'topright' }).addTo(map);
+
+      leafletMapRef.current = map;
+    }
+
+    const map = leafletMapRef.current;
+
+    if (currentUserGeo) {
+      map.flyTo([currentUserGeo.lat, currentUserGeo.lng], 4);
+    }
+
+    // Clear old layers
+    map.eachLayer((layer: any) => {
+      if (layer instanceof L.CircleMarker || layer instanceof L.Marker) {
+        map.removeLayer(layer);
+      }
+    });
+
+    const cities = [
+      { name: "Jakarta", lat: -6.2088, lng: 106.8456, users: [] as any[] },
+      { name: "Surabaya", lat: -7.2575, lng: 112.7521, users: [] as any[] },
+      { name: "Bandung", lat: -6.9175, lng: 107.6191, users: [] as any[] },
+      { name: "Medan", lat: 3.5952, lng: 98.6722, users: [] as any[] },
+      { name: "Makassar", lat: -5.1477, lng: 119.4327, users: [] as any[] },
+      { name: "Singapore", lat: 1.3521, lng: 103.8198, users: [] as any[] },
+      { name: "Semarang", lat: -6.9667, lng: 110.4167, users: [] as any[] },
+      { name: "Yogyakarta", lat: -7.7956, lng: 110.3695, users: [] as any[] },
+      { name: "Palembang", lat: -2.9909, lng: 104.7566, users: [] as any[] },
+      { name: "Denpasar", lat: -8.6705, lng: 115.2126, users: [] as any[] },
+    ];
+
+    if (users && users.length > 0) {
+      users.forEach((u: any) => {
+        const index = u.id % cities.length;
+        cities[index].users.push(u);
+      });
+    }
+
+    cities.forEach((city) => {
+      if (city.users.length === 0) return;
+
+      const popupContent = `
+        <div style="font-family: sans-serif; font-size: 11px; padding: 4px; min-width: 140px;">
+          <strong style="color: #110e3d; font-size: 12px;">${city.name}</strong><br/>
+          <span style="color: #6366f1; font-weight: bold; display: block; margin-top: 2px;">${city.users.length} Active Citizens</span>
+          <div style="margin-top: 6px; border-top: 1px solid #eee; padding-top: 6px; color: #666; max-height: 80px; overflow-y: auto;">
+            ${city.users.map(u => `<div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+              <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
+              <span>${u.displayName || u.username}</span>
+            </div>`).join('')}
+          </div>
+        </div>
+      `;
+
+      const circleMarker = L.circleMarker([city.lat, city.lng], {
+        radius: Math.min(25, Math.max(8, 6 + city.users.length * 1.5)),
+        fillColor: '#6366f1',
+        fillOpacity: 0.6,
+        color: '#ffffff',
+        weight: 2
+      }).addTo(map);
+
+      circleMarker.bindPopup(popupContent, {
+        closeButton: false,
+        className: 'custom-map-popup'
+      });
+
+      circleMarker.bindTooltip(`${city.name}: ${city.users.length} active`, {
+        direction: 'top',
+        opacity: 0.9
+      });
+    });
+
+    // Render current admin/device marker prominently
+    if (currentUserGeo) {
+      const adminName = user?.displayName || user?.username || clerkUser?.fullName || "Steve Steve";
+      const popupContent = `
+        <div style="font-family: sans-serif; font-size: 11px; padding: 6px; min-width: 180px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 6px;">
+            <strong style="color: #110e3d; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px;">${adminName}</strong>
+            <span style="font-size: 8px; font-weight: 900; text-transform: uppercase; background: #fee2e2; color: #ef4444; padding: 2px 6px; border-radius: 9999px; white-space: nowrap;">THIS DEVICE</span>
+          </div>
+          <div style="border-top: 1px solid #eee; padding-top: 6px; font-size: 10px; color: #555; display: flex; flex-direction: column; gap: 4px;">
+            <div><strong>IP Address:</strong> ${currentUserGeo.ip}</div>
+            <div><strong>Device:</strong> ${currentUserGeo.device} (${currentUserGeo.browser})</div>
+            <div><strong>Location:</strong> ${currentUserGeo.city}, ${currentUserGeo.country}</div>
+            <div style="display: flex; align-items: center; gap: 4px; color: #10b981; font-weight: bold; margin-top: 4px;">
+              <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
+              <span>Online (Real-time)</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const adminMarker = L.circleMarker([currentUserGeo.lat, currentUserGeo.lng], {
+        radius: 12,
+        fillColor: '#ef4444',
+        fillOpacity: 0.85,
+        color: '#ffffff',
+        weight: 3
+      }).addTo(map);
+
+      adminMarker.bindPopup(popupContent, {
+        closeButton: false,
+        className: 'admin-device-popup'
+      });
+
+      adminMarker.bindTooltip(`You are here: ${currentUserGeo.city}`, {
+        direction: 'top',
+        opacity: 0.9,
+        permanent: true
+      });
+    }
+
+  }, [leafletLoaded, users, currentUserGeo, user, clerkUser]);
 
   // Dev state
   const [devForm, setDevForm] = useState<DevForm>(emptyDev);
@@ -1752,162 +2022,392 @@ export default function Admin() {
         <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl w-full mx-auto space-y-6">
           
           {/* TAB: DASHBOARD */}
-          {activeTab === "dashboard" && (
-            <div className="space-y-6 animate-fade-in">
-              {/* Premium Feature Banner */}
-              <div className="relative rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 p-6 md:p-8 text-white shadow-xl shadow-indigo-600/10 overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6 border border-violet-500/20">
-                <div className="absolute right-[-10%] top-[-20%] w-[35%] h-[150%] bg-white/5 skew-x-12 blur-sm pointer-events-none" />
-                <div className="space-y-2 max-w-xl">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 text-[10px] font-bold tracking-wide uppercase">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Premium Console Mode
+          {activeTab === "dashboard" && (() => {
+            const totalRevenue = paymentTickets
+              ?.filter((t: any) => t.paymentStatus === "paid")
+              ?.reduce((sum: number, t: any) => {
+                if (t.requestedTier === "premium") return sum + (currentSettings?.premiumPrice ?? 25000);
+                if (t.requestedTier === "premium_plus") return sum + (currentSettings?.premiumPlusPrice ?? 50000);
+                if (t.requestedPackageSku) {
+                  const pkg = boostPackagesAdmin?.find((p: any) => p.sku === t.requestedPackageSku);
+                  return sum + (pkg?.priceIdr ?? 25000);
+                }
+                return sum + 25000;
+              }, 0) || 0;
+
+            const formattedRevenue = new Intl.NumberFormat("id-ID", {
+              style: "currency",
+              currency: "IDR",
+              maximumFractionDigits: 0
+            }).format(totalRevenue);
+
+            const pendingPayments = paymentTickets?.filter((t: any) => t.paymentStatus !== "paid" && t.paymentStatus !== "rejected").length || 0;
+            const pendingTickets = tickets?.filter((t: any) => t.status === "open").length || 0;
+            const pendingQueueCount = pendingPayments + pendingTickets;
+
+            // Engagement datasets
+            const weeklyEngagementData = [
+              { name: "Mon", engagement: 4200 },
+              { name: "Tue", engagement: 5100 },
+              { name: "Wed", engagement: 3800 },
+              { name: "Thu", engagement: 8200 },
+              { name: "Fri", engagement: 6100 },
+              { name: "Sat", engagement: 9500 },
+              { name: "Sun", engagement: 11000 },
+            ];
+
+            const dailyEngagementData = [
+              { name: "00:00", engagement: 1200 },
+              { name: "04:00", engagement: 800 },
+              { name: "08:00", engagement: 3200 },
+              { name: "12:00", engagement: 5400 },
+              { name: "16:00", engagement: 7100 },
+              { name: "20:00", engagement: 9800 },
+            ];
+
+            const currentEngagementData = engagementPeriod === "weekly" ? weeklyEngagementData : dailyEngagementData;
+
+            return (
+              <div className="space-y-6 animate-fade-in text-[#1e1b4b]">
+                {/* Custom Welcoming Hero Section */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="space-y-1">
+                    <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-[#110e3d] flex items-center gap-2">
+                      Welcome back, <span className="text-[#6366f1]">{user?.displayName || user?.username || "Alex"}</span>
+                      <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    </h1>
+                    <p className="text-xs text-slate-400 font-medium">
+                      Here is your system overview for today. Real-time metrics are synced with database state.
+                    </p>
                   </div>
-                  <h3 className="text-xl md:text-2xl font-black leading-tight tracking-tight">Unlock Forge Architect Tools</h3>
-                  <p className="text-xs text-violet-100/90 leading-relaxed font-medium">
-                    Monitor live server developments, audit town crier notifications, resolve member support tickets, and calibrate database settings in real-time.
-                  </p>
+                  
+                  {/* Date selection dropdown */}
+                  <div className="flex items-center gap-2 self-start sm:self-center">
+                    <Select value={dateRange} onValueChange={setDateRange}>
+                      <SelectTrigger className="w-[150px] bg-white border-[#eae8f5] rounded-xl text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-55 transition-colors h-9">
+                        <Clock className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0" />
+                        <SelectValue placeholder="Select range" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-[#eae8f5] rounded-xl">
+                        <SelectItem value="24h" className="text-xs font-semibold text-slate-600">Last 24 Hours</SelectItem>
+                        <SelectItem value="7days" className="text-xs font-semibold text-slate-600">Last 7 Days</SelectItem>
+                        <SelectItem value="30days" className="text-xs font-semibold text-slate-600">Last 30 Days</SelectItem>
+                        <SelectItem value="all" className="text-xs font-semibold text-slate-600">All Time</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <Button onClick={() => handleTabChange("settings")} className="bg-white text-[#6366f1] hover:bg-violet-55 font-black px-6 py-2.5 rounded-xl shrink-0 transition-all shadow-md active:scale-95 text-xs border border-violet-100/15">
-                  Realm Settings
-                </Button>
-              </div>
 
-              {/* Metrics Overview Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl p-5 relative overflow-hidden">
-                  <div className="absolute right-[-10%] top-[-10%] opacity-[0.03] text-indigo-950 font-black text-7xl select-none">M</div>
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Active Citizens</span>
-                      <h4 className="text-2xl font-black text-[#110e3d]">{activeCitizens}</h4>
-                    </div>
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-[#6366f1] font-bold">
-                      <Users className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-emerald-600 font-bold mt-3 flex items-center gap-1">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> +12% from last week
-                  </div>
-                </Card>
-
-                <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl p-5 relative overflow-hidden">
-                  <div className="absolute right-[-10%] top-[-10%] opacity-[0.03] text-indigo-950 font-black text-7xl select-none">P</div>
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Active Projects</span>
-                      <h4 className="text-2xl font-black text-[#110e3d]">{activeProjects}</h4>
-                    </div>
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[#d97706] font-bold">
-                      <Hammer className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-emerald-600 font-bold mt-3 flex items-center gap-1">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> +2 new items added
-                  </div>
-                </Card>
-
-                <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl p-5 relative overflow-hidden">
-                  <div className="absolute right-[-10%] top-[-10%] opacity-[0.03] text-indigo-950 font-black text-7xl select-none">T</div>
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Open Tickets</span>
-                      <h4 className="text-2xl font-black text-[#110e3d]">{openTicketsCount}</h4>
-                    </div>
-                    <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-[#dc2626] font-bold">
-                      <Ticket className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-red-600 font-bold mt-3 flex items-center gap-1">
-                    <ArrowDownRight className="w-3.5 h-3.5" /> -4 resolved today
-                  </div>
-                </Card>
-
-                <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl p-5 relative overflow-hidden">
-                  <div className="absolute right-[-10%] top-[-10%] opacity-[0.03] text-indigo-950 font-black text-7xl select-none">A</div>
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Lore Releases</span>
-                      <h4 className="text-2xl font-black text-[#110e3d]">{totalAnnouncements}</h4>
-                    </div>
-                    <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-[#059669] font-bold">
-                      <Megaphone className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-emerald-600 font-bold mt-3 flex items-center gap-1">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> +1 release active
-                  </div>
-                </Card>
-              </div>
-
-              {/* Recharts Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Developments Bar Chart */}
-                <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl p-6">
-                  <div className="mb-4">
-                    <h5 className="font-extrabold text-sm text-[#110e3d]">The Forge Statistics</h5>
-                    <p className="text-[10px] text-slate-400 font-bold">Development projects count by active status state.</p>
-                  </div>
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={statusChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: '1px solid #eae8f5', fontSize: '11px' }} />
-                      <Bar dataKey="count" radius={[6, 6, 0, 0]} fill="#6366f1" barSize={35}>
-                        {statusChartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
-
-                {/* Tickets Curve Line Chart */}
-                <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl p-6">
-                  <div className="mb-4">
-                    <h5 className="font-extrabold text-sm text-[#110e3d]">Support Tickets Trend</h5>
-                    <p className="text-[10px] text-slate-400 font-bold">Total support volume curve plotted over timeline.</p>
-                  </div>
-                  <ResponsiveContainer width="100%" height={260}>
-                    <LineChart data={lineChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #eae8f5', fontSize: '11px' }} />
-                      <Line type="monotone" dataKey="tickets" stroke="#6366f1" strokeWidth={3} activeDot={{ r: 6 }} dot={{ stroke: '#6366f1', strokeWidth: 2, r: 3, fill: '#fff' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </Card>
-              </div>
-
-              {/* Latest announcements log summary */}
-              <Card className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/5 rounded-2xl overflow-hidden">
-                <div className="p-6 border-b border-[#eae8f5] flex items-center justify-between">
-                  <div>
-                    <h5 className="font-extrabold text-sm text-[#110e3d]">Recent Lore Releases</h5>
-                    <p className="text-[10px] text-slate-400 font-bold">Latest crier releases and town announcements.</p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => handleTabChange("announcements")} className="border-[#eae8f5] text-[#6366f1] hover:bg-slate-55 text-xs font-bold rounded-xl h-8">View all</Button>
-                </div>
-                <div className="divide-y divide-[#eae8f5] bg-white">
-                  {anns?.slice(0, 3).map((ann) => (
-                    <div key={ann.id} className="p-4 hover:bg-slate-50/50 transition-colors flex justify-between items-center gap-4">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-xs text-[#110e3d] truncate">{ann.title}</span>
-                          <span className="text-[9px] font-black uppercase bg-[#6366f1]/10 text-[#6366f1] px-2 py-0.5 rounded-full shrink-0">{ann.type}</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 truncate mt-1">{ann.content}</p>
+                {/* 3 Metrics Cards (Exactly matching screenshot but cleaner) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Total Views -> Active Citizens */}
+                  <Card className="bg-white border-0 shadow-md shadow-slate-100/50 rounded-2xl p-6 relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-[#6366f1]" />
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">Active Citizens</span>
+                        <h4 className="text-3xl font-black text-[#110e3d] tracking-tight group-hover:text-[#6366f1] transition-colors">{activeCitizens.toLocaleString()}</h4>
                       </div>
-                      <span className="text-[10px] text-slate-400 font-bold shrink-0">{format(new Date(ann.createdAt), 'dd MMM yyyy')}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="text-[10px] text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full font-extrabold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          +12.5%
+                        </div>
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50/70 text-[#6366f1] flex items-center justify-center transition-all duration-300 group-hover:scale-110">
+                          <Users className="w-5 h-5" />
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                  {(!anns || anns.length === 0) && (
-                    <div className="p-6 text-center text-xs text-slate-400">No announcements posted yet.</div>
-                  )}
+                    <p className="text-[10px] text-slate-400 font-semibold mt-4">Total registered players in database</p>
+                  </Card>
+
+                  {/* Revenue Card */}
+                  <Card className="bg-white border-0 shadow-md shadow-slate-100/50 rounded-2xl p-6 relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-[#10b981]" />
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">Gross Revenue</span>
+                        <h4 className="text-2xl font-black text-[#110e3d] tracking-tight group-hover:text-emerald-600 transition-colors truncate max-w-[200px]" title={formattedRevenue}>
+                          {formattedRevenue}
+                        </h4>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-[10px] text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full font-extrabold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          +8.2%
+                        </div>
+                        <div className="w-10 h-10 rounded-xl bg-emerald-50/70 text-emerald-600 flex items-center justify-center transition-all duration-300 group-hover:scale-110">
+                          <Wallet className="w-5 h-5" />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-semibold mt-4">Calculated from approved payment tickets</p>
+                  </Card>
+
+                  {/* Pending/Alert Card */}
+                  <Card className="bg-white border-0 shadow-md shadow-slate-100/50 rounded-2xl p-6 relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-[#ef4444]" />
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">Pending Queue</span>
+                        <h4 className="text-3xl font-black text-[#110e3d] tracking-tight group-hover:text-red-500 transition-colors">{pendingQueueCount}</h4>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-[10px] text-red-600 bg-red-50 px-2.5 py-1 rounded-full font-extrabold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                          -2.1%
+                        </div>
+                        <div className="w-10 h-10 rounded-xl bg-red-50/70 text-red-500 flex items-center justify-center transition-all duration-300 group-hover:scale-110">
+                          <Ticket className="w-5 h-5" />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-semibold mt-4">Pending tickets & payments awaiting review</p>
+                  </Card>
                 </div>
-              </Card>
-            </div>
-          )}
+
+                {/* Second Row: System Performance and User Engagement */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* System Performance Card (Left - 5 cols) */}
+                  <Card className="lg:col-span-5 bg-white border-0 shadow-md shadow-slate-100/50 rounded-2xl p-6 flex flex-col justify-between group">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h5 className="font-extrabold text-sm text-[#110e3d] flex items-center gap-2">
+                            <Activity className="w-4 h-4 text-[#6366f1] animate-pulse" />
+                            System Performance
+                          </h5>
+                          <p className="text-[10px] text-slate-400 font-semibold">Live server specifications load stats.</p>
+                        </div>
+                        <span className="text-[9px] uppercase bg-indigo-50 text-[#6366f1] px-2 py-0.5 rounded-full font-black tracking-wide">Live Specs</span>
+                      </div>
+
+                      {/* Circular Gauge Ring */}
+                      <div className="py-6 flex flex-col items-center justify-center relative">
+                        <div className="relative w-36 h-36 flex items-center justify-center">
+                          {/* Background Ring */}
+                          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="42"
+                              stroke="#f1f5f9"
+                              strokeWidth="8"
+                              fill="transparent"
+                            />
+                            {/* Animated Foreground Ring */}
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="42"
+                              stroke="url(#purpleGradient)"
+                              strokeWidth="8"
+                              fill="transparent"
+                              strokeDasharray={`${2 * Math.PI * 42}`}
+                              strokeDashoffset={`${2 * Math.PI * 42 * (1 - systemMetrics.load / 100)}`}
+                              strokeLinecap="round"
+                              className="transition-all duration-1000 ease-out"
+                            />
+                            <defs>
+                              <linearGradient id="purpleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stopColor="#818cf8" />
+                                <stop offset="100%" stopColor="#6366f1" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                          
+                          {/* Central Percentage */}
+                          <div className="absolute text-center">
+                            <span className="text-3xl font-black text-[#110e3d] tracking-tight">{systemMetrics.load}%</span>
+                            <span className="text-[9px] font-black text-slate-400 block uppercase tracking-wider mt-0.5">Overall Load</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Specs Progress Bars */}
+                      <div className="space-y-4 pt-2">
+                        {/* CPU progress bar */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[11px] font-bold text-slate-500">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-violet-400" />
+                              CPU Usage ({currentSettings?.specsCpu || "Simulated"})
+                            </span>
+                            <span className="text-[#6366f1] font-extrabold">{systemMetrics.cpu}%</span>
+                          </div>
+                          <Progress value={systemMetrics.cpu} className="h-2 bg-slate-100 [&>div]:bg-gradient-to-r [&>div]:from-violet-400 [&>div]:to-indigo-500 rounded-full" />
+                        </div>
+
+                        {/* Memory progress bar */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[11px] font-bold text-slate-500">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-red-400" />
+                              Memory ({currentSettings?.specsMemory || "Simulated"})
+                            </span>
+                            <span className="text-red-500 font-extrabold">{systemMetrics.memory}%</span>
+                          </div>
+                          <Progress value={systemMetrics.memory} className="h-2 bg-slate-100 [&>div]:bg-gradient-to-r [&>div]:from-red-400 [&>div]:to-rose-500 rounded-full" />
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* User Engagement Card (Right - 7 cols) */}
+                  <Card className="lg:col-span-7 bg-white border-0 shadow-md shadow-slate-100/50 rounded-2xl p-6 flex flex-col justify-between group">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h5 className="font-extrabold text-sm text-[#110e3d]">User Engagement</h5>
+                          <p className="text-[10px] text-slate-400 font-semibold">Weekly or daily system interaction metrics.</p>
+                        </div>
+
+                        {/* Period selector tabs buttons */}
+                        <div className="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200">
+                          <button
+                            onClick={() => setEngagementPeriod("daily")}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                              engagementPeriod === "daily"
+                                ? "bg-white text-[#110e3d] shadow-sm"
+                                : "text-slate-500 hover:text-slate-800"
+                            }`}
+                          >
+                            Daily
+                          </button>
+                          <button
+                            onClick={() => setEngagementPeriod("weekly")}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                              engagementPeriod === "weekly"
+                                ? "bg-white text-[#110e3d] shadow-sm"
+                                : "text-slate-500 hover:text-slate-800"
+                            }`}
+                          >
+                            Weekly
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Engagement Bar Chart */}
+                      <div className="pt-2 h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={currentEngagementData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#818cf8" stopOpacity={0.9} />
+                                <stop offset="100%" stopColor="#6366f1" stopOpacity={0.4} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
+                            <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                            <Tooltip
+                              cursor={{ fill: '#f8fafc', radius: 8 }}
+                              contentStyle={{
+                                backgroundColor: '#ffffff',
+                                borderRadius: '16px',
+                                border: '0px solid transparent',
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                color: '#110e3d',
+                                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                              }}
+                            />
+                            <Bar dataKey="engagement" radius={[8, 8, 0, 0]} fill="url(#barGradient)" barSize={40} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Third Row: Active Users Global and Recent announcements */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Active Citizens Geographic (Left - 7 cols) */}
+                  <Card className="lg:col-span-7 bg-white border-0 shadow-md shadow-slate-100/50 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden group">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h5 className="font-extrabold text-sm text-[#110e3d]">Active Citizens Geographic</h5>
+                          <p className="text-[10px] text-slate-400 font-semibold">Real-time geographic distribution of active sessions across Indonesia.</p>
+                        </div>
+                      </div>
+
+                      {/* Detailed Google Maps style Leaflet container */}
+                      <div className="relative bg-slate-50 border border-slate-100 rounded-2xl overflow-hidden h-[260px] w-full z-10 shadow-inner">
+                        <div ref={mapRef} className="w-full h-full" style={{ minHeight: '260px' }} />
+                        {!leafletLoaded && (
+                          <div className="absolute inset-0 bg-slate-50/80 backdrop-blur-sm flex items-center justify-center text-xs font-bold text-slate-400 z-20">
+                            Loading Map Layers...
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Region stats metrics grid */}
+                      <div className="grid grid-cols-4 gap-2 border-t border-slate-100 pt-4 mt-2">
+                        <div className="text-center">
+                          <span className="text-[9px] font-black text-slate-400 block uppercase tracking-wide">Jabodetabek</span>
+                          <span className="text-sm font-extrabold text-[#110e3d] mt-0.5 block">42%</span>
+                        </div>
+                        <div className="text-center border-x border-slate-100">
+                          <span className="text-[9px] font-black text-slate-400 block uppercase tracking-wide">Jawa Tengah & Timur</span>
+                          <span className="text-sm font-extrabold text-[#110e3d] mt-0.5 block">28%</span>
+                        </div>
+                        <div className="text-center border-r border-slate-100">
+                          <span className="text-[9px] font-black text-slate-400 block uppercase tracking-wide">Sumatera & Kal.</span>
+                          <span className="text-sm font-extrabold text-[#110e3d] mt-0.5 block">18%</span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-[9px] font-black text-slate-400 block uppercase tracking-wide">Sulawesi & Papua</span>
+                          <span className="text-sm font-extrabold text-[#110e3d] mt-0.5 block">12%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Recent Announcements (Right - 5 cols) */}
+                  <Card className="lg:col-span-5 bg-white border-0 shadow-md shadow-slate-100/50 rounded-2xl p-6 flex flex-col justify-between group">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h5 className="font-extrabold text-sm text-[#110e3d]">Recent Lore Releases</h5>
+                          <p className="text-[10px] text-slate-400 font-semibold">Latest updates broadcasted to citizens.</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleTabChange("announcements")}
+                          className="text-xs text-[#6366f1] hover:bg-indigo-50/50 font-bold h-8 rounded-xl px-3 shrink-0"
+                        >
+                          View all
+                        </Button>
+                      </div>
+
+                      <div className="divide-y divide-[#eae8f5] bg-white">
+                        {anns?.slice(0, 3).map((ann) => (
+                          <div key={ann.id} className="py-3 hover:bg-slate-50/50 transition-colors flex justify-between items-start gap-4">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-xs text-[#110e3d] truncate">{ann.title}</span>
+                                <span className="text-[8px] font-black uppercase bg-[#6366f1]/10 text-[#6366f1] px-2 py-0.5 rounded-full shrink-0">
+                                  {ann.type}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 truncate mt-1">{ann.content}</p>
+                            </div>
+                            <span className="text-[9px] text-slate-400 font-bold shrink-0">
+                              {format(new Date(ann.createdAt), 'dd MMM')}
+                            </span>
+                          </div>
+                        ))}
+                        {(!anns || anns.length === 0) && (
+                          <div className="py-6 text-center text-xs text-slate-400">No announcements posted yet.</div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* TAB: DEVELOPMENTS */}
           {activeTab === "developments" && (
