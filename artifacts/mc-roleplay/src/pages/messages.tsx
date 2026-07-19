@@ -10503,7 +10503,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                         checked={(selectedConv as any).isVerified ?? false}
                         onCheckedChange={async (v) => {
                           try {
-                            await useAdminUpdateConversationMutation.mutateAsync({ id: selectedConv.id, data: { isVerified: v } });
+                            await useAdminUpdateConversationMutation.mutateAsync({ id: selectedConv?.id || 0, data: { isVerified: v } });
                             queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
                             toast({ title: v ? "Group terverifikasi ✓" : "Verifikasi dicabut" });
                           } catch {
@@ -11108,7 +11108,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             <div className="flex items-center gap-1">
                               <p className="text-xs font-black text-white truncate">{m.displayName || m.username}</p>
                               {m.userId === selectedConv?.ownerId && (
-                                <Crown className="w-3 h-3 text-amber-500 fill-amber-500" title="Owner" />
+                                <span title="Owner"><Crown className="w-3 h-3 text-amber-500 fill-amber-500" /></span>
                               )}
                             </div>
                             <p className="text-[9px] text-slate-500 font-bold truncate">@{m.username}</p>
@@ -11189,10 +11189,10 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
                             <DropdownMenuContent className="bg-[#1E1F22] border-[#3F4147] text-white">
                               <DropdownMenuLabel className="text-[10px] font-bold text-slate-400">Add Group Role</DropdownMenuLabel>
                               <DropdownMenuSeparator className="bg-[#3F4147]" />
-                              {roles.filter(r => !(m.roles || []).some(gr => gr.id === r.id)).length === 0 ? (
+                              {roles.filter(r => !(m.roles || []).some((gr: any) => gr.id === r.id)).length === 0 ? (
                                 <div className="px-2 py-1.5 text-[10px] text-slate-400 italic">No roles available</div>
                               ) : (
-                                roles.filter(r => !(m.roles || []).some(gr => gr.id === r.id)).map((role) => (
+                                roles.filter(r => !(m.roles || []).some((gr: any) => gr.id === r.id)).map((role) => (
                                   <DropdownMenuItem
                                     key={role.id}
                                     onClick={async () => {
