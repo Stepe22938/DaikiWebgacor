@@ -6036,6 +6036,8 @@ function MusicTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentTrack, setCurrentTrack] = useState<any | null>(null);
   const [audioSrc, setAudioSrc] = useState("");
+  const [ytVideoId, setYtVideoId] = useState<string | null>(null);
+  const ytIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [playingPlaylistTracks, setPlayingPlaylistTracks] = useState<any[]>([]);
   const [activePlaylist, setActivePlaylist] = useState("All Tracks");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -6249,6 +6251,8 @@ function MusicTab() {
   }, [playlistTitle, displayTracks.length]);
 
   const playTrack = async (track: any, playlist: any[]) => {
+    // Clear any existing YouTube fallback so audio element gets first try.
+    setYtVideoId(null);
     const playableUrl = getPlayableUrl(track);
     setCurrentTrack(track);
     setPlayingPlaylistTracks(playlist);
@@ -6281,6 +6285,17 @@ function MusicTab() {
   };
 
   const handlePlayPause = async () => {
+    // If YouTube fallback is active, control it via postMessage.
+    if (ytVideoId) {
+      if (isPlaying) {
+        ytPostMessage("pauseVideo");
+        setIsPlaying(false);
+      } else {
+        ytPostMessage("playVideo");
+        setIsPlaying(true);
+      }
+      return;
+    }
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
@@ -6320,13 +6335,54 @@ function MusicTab() {
     }
     setDuration(Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : fallbackDuration);
   };
-  const handleAudioError = () => {
-    pendingAutoPlayRef.current = false;
+  const ytPostMessage = (action: string, value?: any) => {
+    if (!ytIframeRef.current?.contentWindow) return;
+    ytIframeRef.current.contentWindow.postMessage(JSON.stringify({ event: "command", func: action, args: value !== undefined ? [value] : [] }), "*");
+  };
+  const clearYt = () => {
+    ytPostMessage("stopVideo");
+    setYtVideoId(null);
     setIsPlaying(false);
     setIsStreamLoading(false);
     setLoadingTrackId(null);
-    const mediaError = audioRef.current?.error;
-    toast({ title: "Audio gagal diputar", description: mediaError ? `Media error code ${mediaError.code}` : "Coba klik lagu itu lagi untuk refresh stream.", variant: "destructive" });
+  };
+  const handleAudioError = () => {
+    pendingAutoPlayRef.current = false;
+    setIsStreamLoading(false);
+    setLoadingTrackId(null);
+    // Audio source failed — try YouTube as fallback silently.
+    if (!currentTrack?.title || !currentTrack?.artist) {
+      setIsPlaying(false);
+      toast({ title: "Audio gagal diputar", description: "Tidak ada sumber audio.", variant: "destructive" });
+      return;
+    }
+    const ytKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+    if (!ytKey) {
+      setIsPlaying(false);
+      toast({ title: "Audio gagal diputar", description: "YouTube API key tidak tersedia.", variant: "destructive" });
+      return;
+    }
+    setIsStreamLoading(true);
+    fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(currentTrack.title + " " + currentTrack.artist + " audio")}&type=video&maxResults=1&videoCategoryId=10&key=${ytKey}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        const vid = data?.items?.[0]?.id?.videoId;
+        if (vid) {
+          setYtVideoId(vid);
+          setIsPlaying(true);
+          setIsStreamLoading(false);
+          setLoadingTrackId(null);
+        } else {
+          setIsPlaying(false);
+          setIsStreamLoading(false);
+          toast({ title: "Audio tidak tersedia", description: `Lagu "${currentTrack.title}" tidak ditemukan di YouTube.`, variant: "destructive" });
+        }
+      })
+      .catch(() => {
+        setIsPlaying(false);
+        setIsStreamLoading(false);
+        toast({ title: "Audio gagal diputar", description: "Gagal mencari audio di YouTube.", variant: "destructive" });
+      });
   };
   const handleAudioWaiting = () => {
     if (currentTrack) {
@@ -6455,6 +6511,16 @@ function MusicTab() {
   return (
     <div className="flex flex-col rounded-3xl overflow-hidden bg-[#121212] border border-[#282828] text-slate-300 font-sans shadow-2xl relative">
       <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onDurationChange={handleLoadedMetadata} onLoadStart={handleAudioWaiting} onWaiting={handleAudioWaiting} onPlaying={handleAudioPlaying} onCanPlay={handleCanPlay} onError={handleAudioError} onEnded={handleEnded} src={audioSrc} />
+      {/* Hidden YouTube fallback iframe — used when audio has no playable src */}
+      {ytVideoId && (
+        <iframe
+          ref={ytIframeRef}
+          style={{ display: "none" }}
+          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
+          allow="autoplay"
+          title="yt-audio-fallback"
+        />
+      )}
 
       {isAdmin && (
         <div className="px-4 pt-3 pb-3 flex items-center gap-3 border-b border-[#282828] flex-wrap">
