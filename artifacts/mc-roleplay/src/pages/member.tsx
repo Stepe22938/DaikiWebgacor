@@ -6357,7 +6357,7 @@ function MusicTab() {
   // Searches YouTube Data API for the track and sets ytVideoId to play via iframe.
   // Called immediately when a track has no direct audio file, or as a fallback on audio error.
   const resolveYtFallback = (track: any) => {
-    const ytKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+    const ytKey = import.meta.env.VITE_YOUTUBE_API_KEY || "AIzaSyC7sBIfC07hNnUw5dOoNvv5tilT84Wj-cA";
     if (!track?.title || !track?.artist || !ytKey) {
       setIsPlaying(false);
       setIsStreamLoading(false);
