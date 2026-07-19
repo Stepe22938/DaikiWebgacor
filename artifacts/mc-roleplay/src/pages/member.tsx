@@ -6365,7 +6365,7 @@ function MusicTab() {
       return;
     }
     setIsStreamLoading(true);
-    fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(track.title + " " + track.artist + " audio")}&type=video&maxResults=1&videoCategoryId=10&key=${ytKey}`)
+    fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(track.title + " " + track.artist + " official audio")}&type=video&maxResults=1&key=${ytKey}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         const vid = data?.items?.[0]?.id?.videoId;
