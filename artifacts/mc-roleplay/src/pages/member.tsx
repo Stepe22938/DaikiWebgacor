@@ -6251,16 +6251,25 @@ function MusicTab() {
   }, [playlistTitle, displayTracks.length]);
 
   const playTrack = async (track: any, playlist: any[]) => {
-    // Clear any existing YouTube fallback so audio element gets first try.
     setYtVideoId(null);
-    const playableUrl = getPlayableUrl(track);
     setCurrentTrack(track);
     setPlayingPlaylistTracks(playlist);
     setCurrentTime(0);
     setDuration(getTrackDuration(track));
-    setAudioSrc(playableUrl);
-    setIsStreamLoading(!track.file || track.file.startsWith?.("/api/music/tracks/stream"));
     setLoadingTrackId(track.id);
+
+    // If there is no direct playable file, skip the yt-dlp backend stream
+    // (which hangs for 30+ seconds) and go straight to YouTube iframe.
+    if (!track?.file) {
+      setAudioSrc("");
+      if (audioRef.current) { audioRef.current.src = ""; audioRef.current.load(); }
+      resolveYtFallback(track);
+      return;
+    }
+
+    const playableUrl = getPlayableUrl(track);
+    setAudioSrc(playableUrl);
+    setIsStreamLoading(true);
     if (audioRef.current) {
       pendingAutoPlayRef.current = true;
       audioRef.current.src = playableUrl;
@@ -6276,7 +6285,6 @@ function MusicTab() {
         setLoadingTrackId(null);
       } catch (err: any) {
         setIsPlaying(false);
-        // Keep pendingAutoPlayRef on; browsers can reject while the proxied stream is still resolving.
         console.warn("Initial audio play failed, waiting for canplay", describeAudioError(err));
       }
     } else {
@@ -6346,43 +6354,42 @@ function MusicTab() {
     setIsStreamLoading(false);
     setLoadingTrackId(null);
   };
-  const handleAudioError = () => {
-    pendingAutoPlayRef.current = false;
-    setIsStreamLoading(false);
-    setLoadingTrackId(null);
-    // Audio source failed — try YouTube as fallback silently.
-    if (!currentTrack?.title || !currentTrack?.artist) {
-      setIsPlaying(false);
-      toast({ title: "Audio gagal diputar", description: "Tidak ada sumber audio.", variant: "destructive" });
-      return;
-    }
+  // Searches YouTube Data API for the track and sets ytVideoId to play via iframe.
+  // Called immediately when a track has no direct audio file, or as a fallback on audio error.
+  const resolveYtFallback = (track: any) => {
     const ytKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-    if (!ytKey) {
+    if (!track?.title || !track?.artist || !ytKey) {
       setIsPlaying(false);
-      toast({ title: "Audio gagal diputar", description: "YouTube API key tidak tersedia.", variant: "destructive" });
+      setIsStreamLoading(false);
+      setLoadingTrackId(null);
       return;
     }
     setIsStreamLoading(true);
-    fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(currentTrack.title + " " + currentTrack.artist + " audio")}&type=video&maxResults=1&videoCategoryId=10&key=${ytKey}`)
+    fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(track.title + " " + track.artist + " audio")}&type=video&maxResults=1&videoCategoryId=10&key=${ytKey}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         const vid = data?.items?.[0]?.id?.videoId;
+        setIsStreamLoading(false);
+        setLoadingTrackId(null);
         if (vid) {
           setYtVideoId(vid);
           setIsPlaying(true);
-          setIsStreamLoading(false);
-          setLoadingTrackId(null);
         } else {
           setIsPlaying(false);
-          setIsStreamLoading(false);
-          toast({ title: "Audio tidak tersedia", description: `Lagu "${currentTrack.title}" tidak ditemukan di YouTube.`, variant: "destructive" });
+          toast({ title: "Audio tidak tersedia", description: `"${track.title}" tidak ditemukan di YouTube.`, variant: "destructive" });
         }
       })
       .catch(() => {
         setIsPlaying(false);
         setIsStreamLoading(false);
+        setLoadingTrackId(null);
         toast({ title: "Audio gagal diputar", description: "Gagal mencari audio di YouTube.", variant: "destructive" });
       });
+  };
+  const handleAudioError = () => {
+    pendingAutoPlayRef.current = false;
+    // Audio element failed — fall back to YouTube immediately.
+    resolveYtFallback(currentTrack);
   };
   const handleAudioWaiting = () => {
     if (currentTrack) {
