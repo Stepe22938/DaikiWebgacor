@@ -102,7 +102,11 @@ function formatMsToMinSec(ms: number) {
 }
 
 function getYtDlpCommand(): string {
-  if (process.platform !== "win32") return "yt-dlp";
+  if (process.platform !== "win32") {
+    const venvPath = path.resolve(process.cwd(), ".venv/bin/yt-dlp");
+    if (fs.existsSync(venvPath)) return venvPath;
+    return "yt-dlp";
+  }
 
   const possiblePaths = [
     path.resolve(process.cwd(), "yt-dlp.exe"),
