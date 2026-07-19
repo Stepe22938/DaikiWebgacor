@@ -141,7 +141,11 @@ function mapSpotifyTrack(t: any, type = "Global Charts") {
     album: t.album?.name || "",
     cover: t.album?.images?.[0]?.url || "/village.png",
     duration: formatMsToMinSec(Number(t.duration_ms) || 0),
-    file: "",
+    durationMs: t.duration_ms || 0,
+    // Use Spotify 30-second preview URL as the audio source.
+    // This is a direct CDN link that works immediately without yt-dlp.
+    file: t.preview_url || "",
+    previewUrl: t.preview_url || "",
     type,
     createdAt: new Date().toISOString(),
   };
