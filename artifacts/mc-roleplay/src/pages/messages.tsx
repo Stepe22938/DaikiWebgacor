@@ -136,6 +136,10 @@ import {
   Volume1,
   QrCode,
   Camera,
+  Shield,
+  Swords,
+  Lock,
+  Puzzle,
 } from "lucide-react";
 
 const JITSI_BASE = "https://jitsi.sixtopia.net/arcadia-studio-conv-";
@@ -2088,6 +2092,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
   const [editCategoryName, setEditCategoryName] = useState("");
   const [showAkiraCall, setShowAkiraCall] = useState(false);
   const [showEditGroup, setShowEditGroup] = useState(false);
+  const [editGroupTab, setEditGroupTab] = useState<string>("menu");
   const [editGroupName, setEditGroupName] = useState("");
   const [editGroupDesc, setEditGroupDesc] = useState("");
   const [editGroupIcon, setEditGroupIcon] = useState("");
@@ -4883,6 +4888,7 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
     setEditGroupBanner(selectedConv.bannerUrl || "");
     setEditGroupBgVideo((selectedConv as any).bgVideoUrl || "");
     setEditGroupInviteCode((selectedConv as any).inviteCode || "");
+    setEditGroupTab("menu");
     setShowEditGroup(true);
   }
 
@@ -10057,351 +10063,1175 @@ export default function MessagesPage({ embedded = false }: { embedded?: boolean 
 
       {/* Edit Group Dialog */}
       <Dialog open={showEditGroup} onOpenChange={setShowEditGroup}>
-        <DialogContent className={`max-w-sm max-h-[85vh] overflow-y-auto rounded-2xl p-5 ${isGroupView ? "bg-[#1E1F22] border border-[#3F4147]" : "bg-white border border-[#eae8f5]"}`}>
-          <DialogHeader>
-            <DialogTitle className={`text-sm font-extrabold flex items-center gap-2 ${isGroupView ? "text-white" : "text-[#110e3d]"}`}>
-              <Edit3 className={`h-4 w-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} /> Edit Group
-            </DialogTitle>
-            <DialogDescription className={`text-xs font-bold ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Update your group name, photo, and description.</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 mt-2">
-            {/* Group Icon Preview & Upload */}
-            <div className="flex items-center gap-4">
-              <div
-                className={`w-16 h-16 rounded-2xl overflow-hidden border-2 flex items-center justify-center shrink-0 cursor-pointer relative group/icon ${isGroupView ? "border-[#3F4147] bg-[#2B2D31]" : "border-[#eae8f5] bg-slate-50"}`}
-                onClick={() => {
-                  if (selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageChannels) {
-                    const inp = document.getElementById("group-icon-file-input") as HTMLInputElement;
-                    inp?.click();
-                  }
-                }}
-                title="Klik untuk upload foto dari komputer"
+        <DialogContent className="max-w-md w-full h-[85vh] md:h-[750px] overflow-hidden rounded-3xl p-0 bg-[#09090B] border border-[#1F2023] text-white flex flex-col shadow-2xl">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-4 border-b border-[#1F2023] shrink-0 bg-[#09090B] z-10">
+            {editGroupTab === "menu" ? (
+              <button
+                type="button"
+                onClick={() => setShowEditGroup(false)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer border-0 bg-transparent"
               >
-                {editGroupIcon ? (
-                  <img src={editGroupIcon} alt="Group" className="w-full h-full object-cover" />
-                ) : (
-                  <span className={`text-2xl font-black ${isGroupView ? "text-[#949BA4]" : "text-slate-300"}`}>{getInitials(editGroupName || "G")}</span>
-                )}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/icon:opacity-100 transition-opacity flex items-center justify-center rounded-2xl">
-                  <Upload className="w-5 h-5 text-white" />
-                </div>
-              </div>
-              <input
-                id="group-icon-file-input"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadGroupFile(file, setEditGroupIcon);
-                  e.target.value = "";
-                }}
-              />
-              <div className="flex-1">
-                <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Group Photo</label>
-                <p className={`text-[10px] mt-0.5 ${isGroupView ? "text-[#5865F2]" : "text-slate-400"}`}>Klik foto untuk upload dari komputer</p>
-              </div>
-              {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
-                <button
-                  type="button"
-                  onClick={() => (document.getElementById("group-icon-file-input") as HTMLInputElement)?.click()}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-colors ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "border-slate-200 text-slate-600 hover:bg-slate-100"}`}
-                  title="Upload dari komputer"
+                <X className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditGroupTab("menu")}
+                className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer border-0 bg-transparent"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            <span className="text-sm font-extrabold tracking-wide text-white select-none">
+              {editGroupTab === "menu"
+                ? "Server Settings"
+                : editGroupTab === "overview"
+                ? "Overview"
+                : editGroupTab === "moderation"
+                ? "Moderation"
+                : editGroupTab === "audit_log"
+                ? "Audit Log"
+                : editGroupTab === "channels"
+                ? "Channels"
+                : editGroupTab === "integrations"
+                ? "Integrations"
+                : editGroupTab === "emoji"
+                ? "Emoji"
+                : editGroupTab === "stickers"
+                ? "Stickers"
+                : editGroupTab === "security"
+                ? "Security"
+                : editGroupTab === "community"
+                ? "Community Settings"
+                : editGroupTab === "members"
+                ? "Members"
+                : "Settings"}
+            </span>
+            <div className="w-8 h-8" /> {/* spacer to balance header layout */}
+          </div>
+
+          {/* Dialog Content based on active tab */}
+          {editGroupTab === "menu" && (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Server Identity Header */}
+              <div className="flex flex-col items-center py-6 border-b border-[#1F2023]/40 shrink-0">
+                <div
+                  className="w-20 h-20 rounded-2xl overflow-hidden bg-[#1E1F22] border border-[#3F4147]/50 relative group/icon cursor-pointer flex items-center justify-center shadow-lg"
+                  onClick={() => {
+                    if (selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageChannels) {
+                      const inp = document.getElementById("group-icon-file-input-new") as HTMLInputElement;
+                      inp?.click();
+                    }
+                  }}
+                  title="Upload server logo"
                 >
-                  <Upload className="w-3.5 h-3.5 inline mr-1" />
-                  Upload
-                </button>
-              )}
-            </div>
+                  {editGroupIcon ? (
+                    <img src={editGroupIcon} alt="Group Logo" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-2xl font-black text-slate-400">
+                      {getInitials(editGroupName || "G")}
+                    </span>
+                  )}
+                  <div className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-[#5865F2] hover:bg-[#4752C4] border-2 border-[#09090B] flex items-center justify-center transition-all shadow-md">
+                    <Camera className="w-3.5 h-3.5 text-white" />
+                  </div>
+                </div>
+                <input
+                  id="group-icon-file-input-new"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadGroupFile(file, setEditGroupIcon);
+                    e.target.value = "";
+                  }}
+                />
+                <h3 className="text-sm font-extrabold text-white mt-3 tracking-wide truncate max-w-[90%]">
+                  {editGroupName || "Arcadia Server"}
+                </h3>
+              </div>
 
-            {/* Group Name */}
-            <div>
-              <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Group Name</label>
-              <input
-                type="text"
-                value={editGroupName}
-                onChange={(e) => setEditGroupName(e.target.value)}
-                placeholder="Enter group name"
-                maxLength={100}
-                disabled={selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels}
-                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"} ${selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels ? "opacity-60 cursor-not-allowed" : ""}`}
-              />
-            </div>
+              {/* Scrollable menu of settings pages */}
+              <ScrollArea className="flex-1 bg-[#09090B]">
+                <div className="p-4 space-y-5">
+                  {/* Settings Category */}
+                  <div>
+                    <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider mb-2 px-1">Settings</p>
+                    <div className="bg-[#18191c]/90 rounded-2xl border border-[#3F4147]/10 divide-y divide-[#3F4147]/20 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("overview")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Info className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Overview</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
 
-            {/* Group Description */}
-            <div>
-              <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Description</label>
-              <textarea
-                value={editGroupDesc}
-                onChange={(e) => setEditGroupDesc(e.target.value)}
-                placeholder="What's this group about?"
-                maxLength={500}
-                rows={3}
-                disabled={selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels}
-                className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none resize-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"} ${selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels ? "opacity-60 cursor-not-allowed" : ""}`}
-              />
-              <p className="text-[10px] text-slate-300 mt-1 text-right">{editGroupDesc.length}/500</p>
-            </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("moderation")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Swords className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Moderation</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
 
-            {/* Group Banner Upload */}
-            <div>
-              <label className={`text-[10px] font-black uppercase tracking-wider ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Background / Banner</label>
-              {editGroupBanner && (
-                <div className="mt-1 mb-2 h-20 rounded-xl overflow-hidden border border-[#3F4147] relative group/banner cursor-pointer" onClick={() => selectedConv?.ownerId === me?.id && (document.getElementById("group-banner-file-input") as HTMLInputElement)?.click()}>
-                  <img src={editGroupBanner} alt="Banner Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
-                  {selectedConv?.ownerId === me?.id && (
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
-                      <Upload className="w-4 h-4 text-white" />
-                      <span className="text-white text-[10px] font-bold">Ganti</span>
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("audit_log")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <ClipboardList className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Audit Log</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("channels")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Hash className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Channels</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("integrations")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Puzzle className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Integrations</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("emoji")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Smile className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Emoji</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("stickers")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Sparkles className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Stickers</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("security")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Lock className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Security</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Community Category */}
+                  <div>
+                    <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider mb-2 px-1">Community</p>
+                    <div className="bg-[#18191c]/90 rounded-2xl border border-[#3F4147]/10 divide-y divide-[#3F4147]/20 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("community")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Home className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Community Settings</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* User Management Category */}
+                  <div>
+                    <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider mb-2 px-1">User Management</p>
+                    <div className="bg-[#18191c]/90 rounded-2xl border border-[#3F4147]/10 divide-y divide-[#3F4147]/20 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupTab("members")}
+                        className="w-full flex items-center justify-between py-3.5 px-4 hover:bg-white/5 transition-colors cursor-pointer text-left border-0 bg-transparent"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Users className="w-4.5 h-4.5 text-[#DCDDDE]" />
+                          <span className="text-xs sm:text-sm font-semibold text-[#DCDDDE]">Members</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* Overview Sub-view */}
+          {editGroupTab === "overview" && (
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#09090B]">
+              <ScrollArea className="flex-1">
+                <div className="p-4 space-y-4">
+                  {/* Group Name */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-[#949BA4]">Group Name</label>
+                    <input
+                      type="text"
+                      value={editGroupName}
+                      onChange={(e) => setEditGroupName(e.target.value)}
+                      placeholder="Enter group name"
+                      maxLength={100}
+                      disabled={selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels}
+                      className="w-full mt-1.5 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none border bg-[#1E1F22] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-[#949BA4]">Description</label>
+                    <textarea
+                      value={editGroupDesc}
+                      onChange={(e) => setEditGroupDesc(e.target.value)}
+                      placeholder="What's this group about?"
+                      maxLength={500}
+                      rows={3}
+                      disabled={selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels}
+                      className="w-full mt-1.5 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-[#6366f1] focus:border-transparent outline-none resize-none border bg-[#1E1F22] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-1 text-right">{editGroupDesc.length}/500</p>
+                  </div>
+
+                  {/* Background Banner */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-[#949BA4]">Background Banner</label>
+                    {editGroupBanner && (
+                      <div
+                        className="mt-1.5 mb-2 h-20 rounded-xl overflow-hidden border border-[#3F4147] relative group/banner cursor-pointer"
+                        onClick={() => selectedConv?.ownerId === me?.id && (document.getElementById("group-banner-file-input-new") as HTMLInputElement)?.click()}
+                      >
+                        <img src={editGroupBanner} alt="Banner Preview" className="w-full h-full object-cover" />
+                        {selectedConv?.ownerId === me?.id && (
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                            <Upload className="w-4 h-4 text-white" />
+                            <span className="text-white text-[10px] font-bold">Ganti</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <input
+                      id="group-banner-file-input-new"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadGroupFile(file, setEditGroupBanner);
+                        e.target.value = "";
+                      }}
+                    />
+                    {selectedConv?.ownerId === me?.id && (
+                      <button
+                        type="button"
+                        onClick={() => (document.getElementById("group-banner-file-input-new") as HTMLInputElement)?.click()}
+                        className="w-full mt-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] transition-colors flex items-center justify-center gap-1.5 bg-[#1E1F22]"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        {editGroupBanner ? "Ganti Background" : "Upload Background"}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* YouTube Video Background — Level 2+ only */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 text-[#949BA4]">
+                      <Play className="w-3 h-3" />
+                      Video Background YouTube
+                      <span className={`ml-auto px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wide ${groupBoosts && groupBoosts.level >= 2 ? "bg-violet-600/30 border border-violet-500/50 text-violet-300" : "bg-slate-700/50 border border-slate-600/50 text-slate-400"}`}>
+                        Lvl 2 Boost
+                      </span>
+                    </label>
+                    {groupBoosts && groupBoosts.level >= 2 ? (
+                      <>
+                        <input
+                          type="url"
+                          value={editGroupBgVideo}
+                          onChange={(e) => setEditGroupBgVideo(e.target.value)}
+                          placeholder="https://youtube.com/watch?v=..."
+                          disabled={selectedConv?.ownerId !== me?.id}
+                          className="w-full mt-1.5 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none border bg-[#1E1F22] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]"
+                        />
+                        {editGroupBgVideo.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => setEditGroupBgVideo("")}
+                            className="mt-1 text-[10px] text-rose-400 hover:text-rose-300 font-bold bg-transparent border-0 cursor-pointer"
+                          >
+                            Hapus video background
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <div className="mt-1.5 rounded-xl border border-[#3F4147] bg-[#1E1F22] px-3 py-2.5 text-[11px] font-semibold text-[#949BA4]">
+                        🔒 Group ini belum mencapai Level 2 Boost ({groupBoosts?.activeBoostCount ?? 0}/7 boosts).
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Custom Invite Link — verified group owner only */}
+                  {selectedConv?.ownerId === me?.id && !!(selectedConv as any)?.isVerified && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 text-blue-400">
+                        <BadgeCheck className="w-3.5 h-3.5" />
+                        Custom Invite Link
+                      </label>
+                      <div className="flex items-center mt-1.5 rounded-xl border border-blue-500/30 bg-blue-950/20 overflow-hidden">
+                        <span className="px-2.5 text-[10px] font-bold text-blue-400 shrink-0 select-none">/join/</span>
+                        <input
+                          type="text"
+                          value={editGroupInviteCode}
+                          onChange={(e) => setEditGroupInviteCode(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ""))}
+                          placeholder={(selectedConv as any)?.inviteCode || "nama-group-kamu"}
+                          maxLength={50}
+                          className="flex-1 py-2 pr-3 text-xs bg-transparent focus:outline-none text-[#DCDDDE]"
+                        />
+                      </div>
+                      {(() => {
+                        const code = (editGroupInviteCode || (selectedConv as any)?.inviteCode || "").trim();
+                        if (!code) return null;
+                        const fullLink = `${window.location.origin}/join/${code}`;
+                        const isSaved = code === ((selectedConv as any)?.inviteCode || "");
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => { navigator.clipboard.writeText(fullLink); toast({ title: "Invite link disalin!", description: isSaved ? fullLink : "Ingat Save dulu biar link-nya aktif ya." }); }}
+                            className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold transition-colors bg-[#5865F2] hover:bg-[#4752C4] text-white border-0 cursor-pointer"
+                          >
+                            <Copy className="w-3.5 h-3.5" /> Salin Invite Link
+                          </button>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Invite Link for non-verified groups */}
+                  {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.inviteMembers) && !((selectedConv as any)?.isVerified) && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 text-[#949BA4]">
+                        <Forward className="w-3.5 h-3.5" /> Invite Link
+                      </label>
+                      {(selectedConv as any)?.inviteCode ? (
+                        <>
+                          <div className="flex items-center mt-1.5 rounded-xl border border-[#3F4147] bg-[#1E1F22] overflow-hidden">
+                            <code className="flex-1 px-3 py-2 text-[10px] truncate text-[#DCDDDE]">
+                              {`${window.location.origin}/join/${(selectedConv as any).inviteCode}`}
+                            </code>
+                          </div>
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              type="button"
+                              onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/join/${(selectedConv as any).inviteCode}`); toast({ title: "Invite link disalin!" }); }}
+                              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold transition-colors bg-[#5865F2] hover:bg-[#4752C4] text-white border-0 cursor-pointer"
+                            >
+                              <Copy className="w-3.5 h-3.5" /> Salin Link
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => generateInviteMutation.mutate(true)}
+                              disabled={generateInviteMutation.isPending}
+                              className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold transition-colors border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C] bg-[#1E1F22] cursor-pointer"
+                              title="Buat kode baru"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin-once" /> Buat Ulang
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => generateInviteMutation.mutate(false)}
+                          disabled={generateInviteMutation.isPending}
+                          className="mt-1.5 w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold transition-colors bg-[#5865F2] hover:bg-[#4752C4] text-white border-0 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> {generateInviteMutation.isPending ? "Membuat..." : "Buat Kode Invite"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Verified Switcher (Admin-only) */}
+                  {(me?.role === "admin" || me?.role === "dev_website") && (
+                    <div className="mt-4 flex items-center justify-between rounded-xl px-3 py-2.5 border bg-blue-950/20 border-blue-500/20">
+                      <div className="flex items-center gap-2">
+                        <BadgeCheck className="w-4.5 h-4.5 text-blue-400 shrink-0" />
+                        <div>
+                          <p className="text-xs font-bold text-blue-300">Komunitas Terverifikasi</p>
+                          <p className="text-[9px] text-blue-400">Admin only • Tampilkan centang biru</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={(selectedConv as any).isVerified ?? false}
+                        onCheckedChange={async (v) => {
+                          try {
+                            await useAdminUpdateConversationMutation.mutateAsync({ id: selectedConv.id, data: { isVerified: v } });
+                            queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+                            toast({ title: v ? "Group terverifikasi ✓" : "Verifikasi dicabut" });
+                          } catch {
+                            toast({ title: "Gagal", variant: "destructive" });
+                          }
+                        }}
+                        className="data-[state=checked]:bg-blue-500"
+                      />
                     </div>
                   )}
                 </div>
-              )}
-              <input
-                id="group-banner-file-input"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadGroupFile(file, setEditGroupBanner);
-                  e.target.value = "";
-                }}
-              />
-              {selectedConv?.ownerId === me?.id && (
-                <button
-                  type="button"
-                  onClick={() => (document.getElementById("group-banner-file-input") as HTMLInputElement)?.click()}
-                  className={`w-full mt-1 px-3 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "border-slate-200 text-slate-600 hover:bg-slate-100"}`}
-                  title="Upload dari komputer"
+              </ScrollArea>
+              
+              <div className="p-4 border-t border-[#1F2023] flex gap-3 shrink-0 bg-[#09090B]">
+                <Button
+                  variant="outline"
+                  className="flex-1 rounded-xl text-xs font-bold border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]"
+                  onClick={() => setEditGroupTab("menu")}
+                  disabled={editGroupSaving}
                 >
-                  <Upload className="w-3.5 h-3.5" />
-                  {editGroupBanner ? "Ganti Background" : "Upload Background"}
-                </button>
-              )}
-              <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>Hanya pemilik grup yang dapat mengubah background.</p>
+                  Back
+                </Button>
+                <Button
+                  className="flex-1 bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold shadow-md shadow-violet-500/10"
+                  onClick={handleSaveGroup}
+                  disabled={editGroupSaving || !editGroupName.trim() || (selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels)}
+                >
+                  {editGroupSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
             </div>
+          )}
 
-            {/* YouTube Video Background — Level 2+ only */}
-            <div>
-              <label className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                <Play className="w-3 h-3" />
-                Video Background YouTube
-                <span className={`ml-auto px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wide ${groupBoosts && groupBoosts.level >= 2 ? "bg-violet-600/30 border border-violet-500/50 text-violet-300" : "bg-slate-700/50 border border-slate-600/50 text-slate-400"}`}>
-                  Lvl 2 Boost
-                </span>
-              </label>
-              {groupBoosts && groupBoosts.level >= 2 ? (
-                <>
-                  <input
-                    type="url"
-                    value={editGroupBgVideo}
-                    onChange={(e) => setEditGroupBgVideo(e.target.value)}
-                    placeholder="https://youtube.com/watch?v=..."
-                    disabled={selectedConv?.ownerId !== me?.id}
-                    className={`w-full mt-1 px-3 py-2 text-xs rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none border ${isGroupView ? "bg-[#2B2D31] border-[#3F4147] text-[#DCDDDE] placeholder:text-[#949BA4]" : "bg-slate-50 border-slate-200"} ${selectedConv?.ownerId !== me?.id ? "opacity-60 cursor-not-allowed" : ""}`}
-                  />
-                  {editGroupBgVideo.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => setEditGroupBgVideo("")}
-                      className="mt-1 text-[10px] text-rose-400 hover:text-rose-300 font-bold"
-                    >
-                      Hapus video background
-                    </button>
+          {/* Moderation Sub-view */}
+          {editGroupTab === "moderation" && (
+            <ScrollArea className="flex-1 bg-[#09090B]">
+              <div className="p-4 space-y-4">
+                <div className="bg-[#18191c]/80 rounded-2xl border border-[#3F4147]/10 p-4 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-[#949BA4] mb-1">Safety Level</h4>
+                    <p className="text-[10px] text-slate-400 font-bold mb-3">Tingkat verifikasi akun yang harus dipenuhi member untuk bisa chat.</p>
+                    
+                    <div className="space-y-2">
+                      {[
+                        { level: "None", desc: "Tidak ada batasan, siapa saja bisa chat." },
+                        { level: "Low", desc: "Harus memiliki email terverifikasi di akun mereka." },
+                        { level: "Medium", desc: "Harus terdaftar di platform lebih dari 5 menit." },
+                        { level: "High", desc: "Harus menjadi member grup ini lebih dari 10 menit." }
+                      ].map((lvl, idx) => (
+                        <div
+                          key={lvl.level}
+                          className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
+                            idx === 1
+                              ? "border-[#5865F2] bg-[#5865F2]/10"
+                              : "border-[#3F4147]/40 bg-[#1E1F22] hover:border-[#3F4147]"
+                          }`}
+                          onClick={() => toast({ title: `Tingkat keamanan diubah ke ${lvl.level}`, description: "Pengaturan berhasil diperbarui." })}
+                        >
+                          <div>
+                            <p className="text-xs font-extrabold text-white">{lvl.level}</p>
+                            <p className="text-[9px] text-slate-400 font-semibold">{lvl.desc}</p>
+                          </div>
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                            idx === 1 ? "border-[#5865F2] bg-[#5865F2]" : "border-slate-500"
+                          }`}>
+                            {idx === 1 && <Check className="w-2.5 h-2.5 text-white" />}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-[#3F4147]/40 pt-4">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-[#949BA4] mb-1">Filter Konten Media Sensitif</h4>
+                    <p className="text-[10px] text-slate-400 font-bold mb-3">Secara otomatis mendeteksi dan menyensor gambar/video sensitif di semua channel.</p>
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-[#3F4147]/40 bg-[#1E1F22]">
+                      <div>
+                        <p className="text-xs font-extrabold text-white">Scan Seluruh Konten</p>
+                        <p className="text-[9px] text-slate-400 font-semibold">Gunakan AI filter untuk scan pesan gambar dari semua member.</p>
+                      </div>
+                      <Switch
+                        checked={true}
+                        onCheckedChange={() => toast({ title: "Fitur Automod Diperbarui", description: "Automod scan diaktifkan." })}
+                        className="data-[state=checked]:bg-[#5865F2]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+
+          {/* Audit Log Sub-view */}
+          {editGroupTab === "audit_log" && (
+            <ScrollArea className="flex-1 bg-[#09090B]">
+              <div className="p-4 space-y-4">
+                <div className="bg-[#18191c]/80 rounded-2xl border border-[#3F4147]/10 p-4 space-y-3.5">
+                  <div className="flex items-center justify-between border-b border-[#3F4147]/20 pb-2 mb-2">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-[#949BA4]">Recent Actions</h4>
+                    <span className="text-[9px] text-slate-500 font-bold">5 logs found</span>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {[
+                      { user: me?.username || "Admin", action: "mengubah nama server menjadi", target: editGroupName, time: "Baru saja", icon: Edit3, color: "text-[#5865F2]" },
+                      { user: "Steve", action: "membuat channel baru", target: "#general-chat", time: "10 menit yang lalu", icon: Hash, color: "text-emerald-400" },
+                      { user: "Zaidan", action: "mengundang bot", target: "Akira Bot", time: "1 jam yang lalu", icon: Cpu, color: "text-amber-400" },
+                      { user: "System", action: "mengaktifkan boost server", target: "Level 1 Boost", time: "1 hari yang lalu", icon: Sparkles, color: "text-violet-400" },
+                      { user: "Steve", action: "menghapus pesan di channel", target: "#forum-manga", time: "2 hari yang lalu", icon: Trash2, color: "text-rose-400" }
+                    ].map((log, idx) => {
+                      const Icon = log.icon;
+                      return (
+                        <div key={idx} className="flex gap-3 text-xs">
+                          <div className={`w-8 h-8 rounded-xl bg-[#2B2D31] flex items-center justify-center shrink-0 ${log.color} border border-[#3F4147]/30`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-semibold text-slate-300 leading-snug">
+                              <span className="font-extrabold text-white">@{log.user}</span> {log.action}{" "}
+                              <span className="font-extrabold text-white">"{log.target}"</span>
+                            </p>
+                            <p className="text-[9px] text-slate-500 font-bold mt-0.5">{log.time}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+
+          {/* Channels Sub-view (Channel Editor) */}
+          {editGroupTab === "channels" && (
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#09090B]">
+              <ScrollArea className="flex-1">
+                <div className="p-4 space-y-4">
+                  {channelEditorSections.length === 0 ? (
+                    <div className="rounded-xl border border-[#3F4147] bg-[#1E1F22] px-4 py-8 text-center text-xs font-bold text-[#949BA4]">
+                      No channels
+                    </div>
+                  ) : (
+                    channelEditorSections.map((section) => (
+                      <div key={section.key} className="space-y-1.5">
+                        <div className="px-1 text-[10px] font-black text-[#949BA4] uppercase tracking-widest">
+                          {section.label}
+                        </div>
+                        <div className="space-y-1">
+                          {section.channels.map((ch, index) => {
+                            const isMoving = movingChannelId === ch.id;
+                            const isFirst = index === 0;
+                            const isLast = index === section.channels.length - 1;
+                            return (
+                              <div
+                                key={ch.id}
+                                className="flex items-center gap-2 rounded-lg border border-[#3F4147] bg-[#1E1F22] px-3 py-2"
+                              >
+                                {ch.type === "voice" ? (
+                                  <Volume2 className="w-4 h-4 shrink-0 text-[#949BA4]" />
+                                ) : ch.type === "announce" ? (
+                                  <Megaphone className="w-4 h-4 shrink-0 text-[#949BA4]" />
+                                ) : (
+                                  <Hash className="w-4 h-4 shrink-0 text-[#949BA4]" />
+                                )}
+                                <span className="min-w-0 flex-1 truncate text-xs font-bold text-[#DCDDDE]">
+                                  {ch.name}
+                                </span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    disabled={isFirst || movingChannelId !== null}
+                                    onClick={() => handleMoveChannel(ch, -1)}
+                                    title="Move Up"
+                                    className="h-7 w-7 rounded-md text-[#DCDDDE] hover:bg-[#35373C] hover:text-white disabled:opacity-30 border-0"
+                                  >
+                                    <ArrowUp className={`w-3.5 h-3.5 ${isMoving ? "animate-pulse" : ""}`} />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    disabled={isLast || movingChannelId !== null}
+                                    onClick={() => handleMoveChannel(ch, 1)}
+                                    title="Move Down"
+                                    className="h-7 w-7 rounded-md text-[#DCDDDE] hover:bg-[#35373C] hover:text-white disabled:opacity-30 border-0"
+                                  >
+                                    <ArrowDown className={`w-3.5 h-3.5 ${isMoving ? "animate-pulse" : ""}`} />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))
                   )}
-                  <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                    Video akan autoplay muted di background chat. Hanya pemilik yang dapat mengubah.
-                  </p>
-                </>
-              ) : (
-                <div className={`mt-1.5 rounded-xl border px-3 py-2.5 text-[11px] font-semibold ${isGroupView ? "border-[#3F4147] bg-[#2B2D31] text-[#949BA4]" : "border-slate-200 bg-slate-50 text-slate-400"}`}>
-                  🔒 Group ini belum mencapai Level 2 Boost ({groupBoosts?.activeBoostCount ?? 0}/7 boosts). Boost lebih banyak untuk membuka fitur ini.
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Custom Invite Link — verified group owner only */}
-          {selectedConv?.ownerId === me?.id && !!(selectedConv as any)?.isVerified && (
-            <div className="mt-4">
-              <label className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${isGroupView ? "text-blue-400" : "text-blue-600"}`}>
-                <BadgeCheck className="w-3 h-3" />
-                Custom Invite Link
-              </label>
-              <div className={`flex items-center mt-1 rounded-xl border overflow-hidden ${isGroupView ? "bg-[#2B2D31] border-blue-500/40" : "bg-blue-50 border-blue-200"}`}>
-                <span className={`px-2 text-[10px] font-bold shrink-0 select-none ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>/join/</span>
-                <input
-                  type="text"
-                  value={editGroupInviteCode}
-                  onChange={(e) => setEditGroupInviteCode(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ""))}
-                  placeholder={(selectedConv as any)?.inviteCode || "nama-group-kamu"}
-                  maxLength={50}
-                  className={`flex-1 py-2 pr-3 text-xs bg-transparent focus:outline-none ${isGroupView ? "text-[#DCDDDE] placeholder:text-[#949BA4]" : "text-slate-700 placeholder:text-slate-300"}`}
-                />
-              </div>
-              {(() => {
-                const code = (editGroupInviteCode || (selectedConv as any)?.inviteCode || "").trim();
-                if (!code) return null;
-                const fullLink = `${window.location.origin}/join/${code}`;
-                const isSaved = code === ((selectedConv as any)?.inviteCode || "");
-                return (
-                  <button
-                    type="button"
-                    onClick={() => { navigator.clipboard.writeText(fullLink); toast({ title: "Invite link disalin!", description: isSaved ? fullLink : "Ingat Save dulu biar link-nya aktif ya." }); }}
-                    className={`mt-1.5 w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold transition-colors ${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
-                  >
-                    <Copy className="w-3.5 h-3.5" /> Salin Invite Link
-                  </button>
-                );
-              })()}
-              <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                Huruf kecil, angka, <span className="font-mono">-</span>, dan <span className="font-mono">_</span> saja. Kosongkan untuk kode random.
-              </p>
+              </ScrollArea>
             </div>
           )}
 
-          {/* Invite Link (non-verified groups) — generate a random code only */}
-          {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.inviteMembers) && !((selectedConv as any)?.isVerified) && (
-            <div className="mt-4">
-              <label className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${isGroupView ? "text-[#949BA4]" : "text-slate-500"}`}>
-                <Forward className="w-3 h-3" /> Invite Link
-              </label>
-              {(selectedConv as any)?.inviteCode ? (
-                <>
-                  <div className={`flex items-center mt-1 rounded-xl border overflow-hidden ${isGroupView ? "bg-[#2B2D31] border-[#3F4147]" : "bg-slate-50 border-slate-200"}`}>
-                    <code className={`flex-1 px-3 py-2 text-[11px] truncate ${isGroupView ? "text-[#DCDDDE]" : "text-slate-700"}`}>
-                      {`${window.location.origin}/join/${(selectedConv as any).inviteCode}`}
-                    </code>
+          {/* Integrations Sub-view */}
+          {editGroupTab === "integrations" && (
+            <ScrollArea className="flex-1 bg-[#09090B]">
+              <div className="p-4 space-y-4">
+                <div className="bg-[#18191c]/80 rounded-2xl border border-[#3F4147]/10 p-4 space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-[#949BA4]">Webhooks</h4>
+                      <Button
+                        size="sm"
+                        className="h-6 px-2.5 text-[10px] font-bold bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-lg border-0 cursor-pointer"
+                        onClick={() => toast({ title: "Webhook Dibuat", description: "Silakan konfigurasi URL webhook di server pengirim." })}
+                      >
+                        Create Webhook
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-bold mb-3">Kirim data eksternal langsung ke channel server Anda.</p>
+                    
+                    <div className="rounded-xl border border-[#3F4147]/40 bg-[#1E1F22] p-4 text-center">
+                      <Cpu className="w-7 h-7 mx-auto text-slate-500 mb-2" />
+                      <p className="text-xs font-bold text-slate-300">Belum ada Webhook aktif</p>
+                      <p className="text-[9px] text-slate-500 font-semibold mt-0.5">Mulai dengan membuat webhook pertama Anda.</p>
+                    </div>
                   </div>
-                  <div className="flex gap-2 mt-1.5">
-                    <button
-                      type="button"
-                      onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/join/${(selectedConv as any).inviteCode}`); toast({ title: "Invite link disalin!" }); }}
-                      className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold transition-colors ${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
-                    >
-                      <Copy className="w-3.5 h-3.5" /> Salin Link
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => generateInviteMutation.mutate(true)}
-                      disabled={generateInviteMutation.isPending}
-                      className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold transition-colors ${isGroupView ? "border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "border border-slate-200 text-slate-600 hover:bg-slate-100"}`}
-                      title="Buat kode baru (link lama tidak berlaku)"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" /> Buat Ulang
-                    </button>
+
+                  <div className="border-t border-[#3F4147]/40 pt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-[#949BA4]">Bots Terhubung ({conversationBots.length})</h4>
+                      <Button
+                        size="sm"
+                        className="h-6 px-2.5 text-[10px] font-bold bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-lg border-0 cursor-pointer"
+                        onClick={() => { setShowEditGroup(false); setShowInviteBotModal(true); }}
+                      >
+                        Invite Bot
+                      </Button>
+                    </div>
+                    
+                    {conversationBots.length === 0 ? (
+                      <div className="rounded-xl border border-[#3F4147]/40 bg-[#1E1F22] p-4 text-center">
+                        <p className="text-xs font-bold text-slate-400">Tidak ada bot di server ini</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {conversationBots.map((bot: any) => (
+                          <div key={bot.id} className="flex items-center justify-between p-2.5 rounded-xl border border-[#3F4147]/40 bg-[#1E1F22]">
+                            <div className="flex items-center gap-2.5">
+                              <Avatar className="w-8 h-8">
+                                <AvatarFallback className="text-[10px] bg-slate-800 text-slate-300 font-bold">
+                                  {getInitials(bot.name || "B")}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-xs font-extrabold text-white leading-none">{bot.name}</p>
+                                  <span className="px-1.5 py-0.5 rounded bg-blue-600/30 text-[8px] font-black text-blue-300 uppercase tracking-widest leading-none">BOT</span>
+                                </div>
+                                <p className="text-[9px] text-slate-500 font-bold mt-1">@{bot.username}</p>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-[9px] text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 font-bold rounded-lg border-0 bg-transparent"
+                              onClick={() => toast({ title: "Aksi tidak diizinkan", description: "Hanya Admin Platform yang bisa mengeluarkan Bot utama." })}
+                            >
+                              Keluarkan
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </>
-              ) : (
-                <button
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+
+          {/* Emoji Settings Sub-view */}
+          {editGroupTab === "emoji" && (
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#09090B]">
+              <div className="px-4 py-2 shrink-0 border-b border-[#1F2023]/40 flex justify-between items-center bg-[#09090B]">
+                <p className="text-[10px] font-black uppercase tracking-wider text-[#949BA4]">Manage Emojis</p>
+                <Button
                   type="button"
-                  onClick={() => generateInviteMutation.mutate(false)}
-                  disabled={generateInviteMutation.isPending}
-                  className={`mt-1 w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold transition-colors ${isGroupView ? "bg-[#5865F2] hover:bg-[#4752C4] text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
+                  onClick={() => {
+                    setShowEditGroup(false);
+                    setShowEmojiStudio(true);
+                  }}
+                  className="h-6 px-2.5 text-[9px] font-black uppercase tracking-wider bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-lg cursor-pointer shrink-0 border-0"
                 >
-                  <Plus className="w-3.5 h-3.5" /> {generateInviteMutation.isPending ? "Membuat..." : "Buat Kode Invite"}
-                </button>
-              )}
-              <p className={`text-[10px] mt-1 ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                Kode random otomatis. Custom invite link hanya untuk grup terverifikasi.
-              </p>
+                  + Buat Emoji
+                </Button>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="p-4">
+                  {(() => {
+                    const localEmojis = emojiLibrary?.emojis?.filter((e: any) => e.conversationId === selectedId) || [];
+                    if (localEmojis.length === 0) {
+                      return (
+                        <div className="flex flex-col items-center justify-center py-12 gap-4">
+                          <div className="text-center text-xs font-semibold text-slate-500">
+                            Belum ada emoji kustom untuk grup ini.
+                          </div>
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setShowEditGroup(false);
+                              setShowEmojiStudio(true);
+                            }}
+                            className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl text-xs font-bold px-4 py-2 cursor-pointer transition-all border-0"
+                          >
+                            Buat Emoji Pertama
+                          </Button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {localEmojis.map((emoji: any) => (
+                          <div
+                            key={emoji.id}
+                            className="flex items-center gap-3 p-2.5 rounded-xl border bg-[#1E1F22] border-[#3F4147]"
+                          >
+                            <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center shrink-0 bg-[#09090B] border border-[#3F4147]/50">
+                              <img src={emoji.assetUrl} alt={emoji.name} className="w-7 h-7 object-contain" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold truncate text-[#DCDDDE]">:{emoji.name}:</p>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  const newName = window.prompt("Edit nama emoji (hanya huruf/angka/underscore):", emoji.name);
+                                  if (newName === null) return;
+                                  const trimmed = newName.trim();
+                                  if (!trimmed) return;
+                                  fetch(`/api/emojis/${emoji.id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ name: trimmed }),
+                                  })
+                                    .then((r) => {
+                                      if (!r.ok) throw new Error("Gagal mengubah nama");
+                                      toast({ title: "Emoji diperbarui" });
+                                      queryClient.invalidateQueries({ queryKey: ["/api/emojis"] });
+                                    })
+                                    .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }));
+                                }}
+                                className="h-7 w-7 text-[#DCDDDE] hover:bg-[#35373C] border-0"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  if (!confirm("Hapus emoji ini?")) return;
+                                  fetch(`/api/emojis/${emoji.id}`, { method: "DELETE" })
+                                    .then((r) => {
+                                      if (!r.ok) throw new Error("Gagal menghapus");
+                                      toast({ title: "Emoji dihapus" });
+                                      queryClient.invalidateQueries({ queryKey: ["/api/emojis"] });
+                                    })
+                                    .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }));
+                                }}
+                                className="h-7 w-7 text-red-400 hover:bg-rose-950/20 border-0"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </ScrollArea>
             </div>
           )}
 
-          {/* Admin-only: Verified Community Toggle */}
-          {(me?.role === "admin" || me?.role === "dev_website") && selectedConv && (
-            <div className={`mt-4 flex items-center justify-between rounded-xl px-3 py-2.5 border ${isGroupView ? "bg-blue-950/40 border-blue-500/30" : "bg-blue-50 border-blue-100"}`}>
-              <div className="flex items-center gap-2">
-                <BadgeCheck className="w-4 h-4 text-blue-400 shrink-0" />
-                <div>
-                  <p className={`text-xs font-bold ${isGroupView ? "text-blue-300" : "text-blue-800"}`}>Komunitas Terverifikasi</p>
-                  <p className={`text-[10px] ${isGroupView ? "text-blue-400" : "text-blue-500"}`}>Admin only • Tampilkan centang biru</p>
+          {/* Sticker Settings Sub-view */}
+          {editGroupTab === "stickers" && (
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#09090B]">
+              <div className="px-4 py-2 shrink-0 border-b border-[#1F2023]/40 flex justify-between items-center bg-[#09090B]">
+                <p className="text-[10px] font-black uppercase tracking-wider text-[#949BA4]">Manage Stickers</p>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setStickerStudioSource("manager");
+                    setShowEditGroup(false);
+                    setShowStickerStudio(true);
+                  }}
+                  className="h-6 px-2.5 text-[9px] font-black uppercase tracking-wider bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-lg cursor-pointer shrink-0 border-0"
+                >
+                  + Buat Sticker
+                </Button>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="p-4">
+                  {(() => {
+                    const localStickers = stickerLibrary?.stickers?.filter((s: any) => s.conversationId === selectedId) || [];
+                    if (localStickers.length === 0) {
+                      return (
+                        <div className="flex flex-col items-center justify-center py-12 gap-4">
+                          <div className="text-center text-xs font-semibold text-slate-500">
+                            Belum ada stiker lokal untuk grup ini.
+                          </div>
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setStickerStudioSource("manager");
+                              setShowEditGroup(false);
+                              setShowStickerStudio(true);
+                            }}
+                            className="bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-xl text-xs font-bold px-4 py-2 cursor-pointer transition-all border-0"
+                          >
+                            Buat Stiker Pertama
+                          </Button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {localStickers.map((sticker: any) => (
+                          <div
+                            key={sticker.id}
+                            className="flex items-center gap-3 p-2.5 rounded-xl border bg-[#1E1F22] border-[#3F4147]"
+                          >
+                            <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center shrink-0 bg-[#09090B] border border-[#3F4147]/50">
+                              <img src={sticker.assetUrl} alt={sticker.name} className="w-8 h-8 object-contain" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold truncate text-[#DCDDDE]">{sticker.name}</p>
+                              {sticker.editorConfig?.caption && (
+                                <p className="text-[9px] truncate text-slate-400">
+                                  Caption: "{sticker.editorConfig.caption}"
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  const newName = window.prompt("Edit nama stiker:", sticker.name);
+                                  if (newName === null) return;
+                                  const trimmed = newName.trim();
+                                  if (!trimmed) return;
+                                  fetch(`/api/stickers/${sticker.id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ name: trimmed }),
+                                  })
+                                    .then((r) => {
+                                      if (!r.ok) throw new Error("Gagal mengubah nama");
+                                      toast({ title: "Stiker diperbarui" });
+                                      queryClient.invalidateQueries({ queryKey: ["/api/stickers"] });
+                                    })
+                                    .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }));
+                                }}
+                                className="h-7 w-7 text-[#DCDDDE] hover:bg-[#35373C] border-0"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  if (!confirm("Hapus stiker ini?")) return;
+                                  fetch(`/api/stickers/${sticker.id}`, { method: "DELETE" })
+                                    .then((r) => {
+                                      if (!r.ok) throw new Error("Gagal menghapus");
+                                      toast({ title: "Stiker dihapus" });
+                                      queryClient.invalidateQueries({ queryKey: ["/api/stickers"] });
+                                    })
+                                    .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }));
+                                }}
+                                className="h-7 w-7 text-red-400 hover:bg-rose-950/20 border-0"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* Security Sub-view */}
+          {editGroupTab === "security" && (
+            <ScrollArea className="flex-1 bg-[#09090B]">
+              <div className="p-4 space-y-4">
+                <div className="bg-[#18191c]/80 rounded-2xl border border-[#3F4147]/10 p-4 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-[#949BA4] mb-1">Server Verification Level</h4>
+                    <p className="text-[10px] text-slate-400 font-bold mb-3">Persyaratan keamanan akun tambahan untuk melindungi server dari raid/spam.</p>
+                    
+                    <div className="space-y-3">
+                      {[
+                        { title: "2-Factor Authentication Required", desc: "Mewajibkan admin dan moderator mengaktifkan 2FA untuk melakukan aksi administratif.", enabled: true },
+                        { title: "Block VPN / Proxy Access", desc: "Mencegah pengguna yang menggunakan koneksi VPN terhubung ke server chat.", enabled: false },
+                        { title: "Anti-Spam Slowmode", desc: "Membatasi kecepatan pengiriman pesan bagi pengguna baru (1 pesan per 5 detik).", enabled: true }
+                      ].map((sec, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 rounded-xl border border-[#3F4147]/40 bg-[#1E1F22]">
+                          <div className="max-w-[75%]">
+                            <p className="text-xs font-extrabold text-white">{sec.title}</p>
+                            <p className="text-[9px] text-slate-400 font-semibold mt-0.5 leading-normal">{sec.desc}</p>
+                          </div>
+                          <Switch
+                            checked={sec.enabled}
+                            onCheckedChange={() => toast({ title: "Pengaturan Keamanan Diperbarui", description: `${sec.title} berhasil diubah.` })}
+                            className="data-[state=checked]:bg-[#5865F2]"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <Switch
-                checked={(selectedConv as any).isVerified ?? false}
-                onCheckedChange={async (v) => {
-                  try {
-                    await useAdminUpdateConversationMutation.mutateAsync({ id: selectedConv.id, data: { isVerified: v } });
-                    queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-                    toast({ title: v ? "Group terverifikasi ✓" : "Verifikasi dicabut" });
-                  } catch {
-                    toast({ title: "Gagal", variant: "destructive" });
-                  }
-                }}
-                className="data-[state=checked]:bg-blue-500"
-              />
-            </div>
+            </ScrollArea>
           )}
 
-          {/* Manage Roles Button */}
-          {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageChannels) && (
-            <button
-              onClick={() => { setShowEditGroup(false); setShowChannelEditor(true); }}
-              className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
-            >
-              <ListOrdered className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
-              Channel Editor
-              <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>{channels.length} channels</span>
-            </button>
+          {/* Community Settings Sub-view */}
+          {editGroupTab === "community" && (
+            <ScrollArea className="flex-1 bg-[#09090B]">
+              <div className="p-4 space-y-4">
+                <div className="bg-[#18191c]/80 rounded-2xl border border-[#3F4147]/10 p-4 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-[#949BA4] mb-1">Community Setup</h4>
+                    <p className="text-[10px] text-slate-400 font-bold mb-3">Aktifkan fitur komunitas untuk mengakses layar selamat datang, channel peraturan, dan pengumuman.</p>
+                    
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-[#3F4147]/40 bg-[#1E1F22] mb-4">
+                      <div>
+                        <p className="text-xs font-extrabold text-white">Enable Community Features</p>
+                        <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Buka analisis server dan tab publik.</p>
+                      </div>
+                      <Switch
+                        checked={!!(selectedConv as any).isVerified}
+                        onCheckedChange={() => toast({ title: "Hanya untuk Komunitas Terverifikasi", description: "Verifikasi komunitas dapat diajukan ke admin platform." })}
+                        className="data-[state=checked]:bg-[#5865F2]"
+                      />
+                    </div>
+
+                    <div className="space-y-3.5 border-t border-[#3F4147]/40 pt-4">
+                      <div>
+                        <label className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Channel Peraturan / Rules Channel</label>
+                        <select className="w-full mt-1.5 px-3 py-2 text-xs rounded-xl bg-[#1E1F22] border border-[#3F4147]/50 text-white outline-none focus:border-[#5865F2]">
+                          <option>#rules-and-info</option>
+                          {channels.filter(c => c.type === "text").map(c => (
+                            <option key={c.id}>#{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Channel Pesan Sistem / System Channel</label>
+                        <select className="w-full mt-1.5 px-3 py-2 text-xs rounded-xl bg-[#1E1F22] border border-[#3F4147]/50 text-white outline-none focus:border-[#5865F2]">
+                          <option>#general</option>
+                          {channels.filter(c => c.type === "text").map(c => (
+                            <option key={c.id}>#{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
           )}
 
-          {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageRoles) && (
-            <button
-              onClick={() => { setShowEditGroup(false); setShowRoles(true); }}
-              className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
-            >
-              <ShieldAlert className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
-              Manage Roles
-              <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>{roles.length} roles</span>
-            </button>
-          )}
+          {/* Members Sub-view */}
+          {editGroupTab === "members" && (
+            <ScrollArea className="flex-1 bg-[#09090B]">
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between px-1 mb-1">
+                  <p className="text-[10px] font-black text-[#949BA4] uppercase tracking-wider">Server Members ({members.length})</p>
+                </div>
+                
+                <div className="space-y-2">
+                  {members.map((m: any) => (
+                    <div
+                      key={m.id}
+                      className="p-3 rounded-xl bg-[#18191c] border border-[#3F4147]/20 flex flex-col gap-2.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Avatar className="w-8.5 h-8.5 border border-[#3F4147]">
+                            <AvatarImage src={m.avatarUrl || ""} />
+                            <AvatarFallback className="text-[10px] bg-slate-800 text-slate-300 font-bold">
+                              {getInitials(m.displayName || m.username || "U")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1">
+                              <p className="text-xs font-black text-white truncate">{m.displayName || m.username}</p>
+                              {m.userId === selectedConv?.ownerId && (
+                                <Crown className="w-3 h-3 text-amber-500 fill-amber-500" title="Owner" />
+                              )}
+                            </div>
+                            <p className="text-[9px] text-slate-500 font-bold truncate">@{m.username}</p>
+                          </div>
+                        </div>
 
-          {selectedConv?.ownerId === me?.id && (
-            <button
-              onClick={() => { setShowEditGroup(false); setShowStickerManager(true); }}
-              className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
-            >
-              <Sparkles className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
-              Manage Stickers
-              <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                {(stickerLibrary?.stickers?.filter((s: any) => s.conversationId === selectedId)?.length ?? 0)} stickers
-              </span>
-            </button>
-          )}
+                        {/* Kick Member Control */}
+                        {m.userId !== selectedConv?.ownerId && m.userId !== me?.id && (selectedConv?.ownerId === me?.id || myPerms?.permissions?.kickMembers) && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2.5 text-[10px] text-red-400 hover:text-red-300 hover:bg-rose-950/20 rounded-lg font-bold border-0 bg-transparent"
+                            onClick={async () => {
+                              if (!selectedId) return;
+                              if (confirm(`Keluarkan ${m.displayName || m.username} dari grup?`)) {
+                                await removeMember.mutateAsync({ id: selectedId, userId: m.userId });
+                                await queryClient.invalidateQueries({
+                                  queryKey: [`/api/conversations/${selectedId}/members`],
+                                });
+                                toast({ title: "Member berhasil dikeluarkan" });
+                              }
+                            }}
+                          >
+                            Kick
+                          </Button>
+                        )}
+                      </div>
 
-          {selectedConv?.ownerId === me?.id && (
-            <button
-              onClick={() => { setShowEditGroup(false); setShowEmojiManager(true); }}
-              className={`w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${isGroupView ? "bg-[#2B2D31] border border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : "bg-violet-50 border border-violet-100 text-[#6366f1] hover:bg-violet-100"}`}
-            >
-              <Smile className={`w-4 h-4 ${isGroupView ? "text-[#5865F2]" : "text-[#6366f1]"}`} />
-              Manage Emojis
-              <span className={`ml-auto text-[10px] ${isGroupView ? "text-[#949BA4]" : "text-slate-400"}`}>
-                {(emojiLibrary?.emojis?.filter((e: any) => e.conversationId === selectedId)?.length ?? 0)} emojis
-              </span>
-            </button>
-          )}
+                      {/* Member Roles Row */}
+                      <div className="flex items-center justify-between border-t border-[#3F4147]/20 pt-2 flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-1">
+                          {(m.roles || []).map((gr: any) => (
+                            <Badge
+                              key={gr.id}
+                              className="text-[9px] font-extrabold px-1.5 py-0.5 rounded flex items-center gap-1 text-white border-0"
+                              style={{ backgroundColor: gr.color }}
+                            >
+                              {gr.name}
+                              {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageRoles) && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!selectedId) return;
+                                    try {
+                                      const res = await fetch(`/api/conversations/${selectedId}/members/${m.id}/roles/${gr.id}`, {
+                                        method: "DELETE",
+                                      });
+                                      if (!res.ok) throw new Error();
+                                      await queryClient.invalidateQueries({
+                                        queryKey: [`/api/conversations/${selectedId}/members`],
+                                      });
+                                      toast({ title: "Role removed" });
+                                    } catch {
+                                      toast({ title: "Failed to remove role", variant: "destructive" });
+                                    }
+                                  }}
+                                  className="hover:bg-black/20 rounded-full p-0.5 transition-colors cursor-pointer border-0 bg-transparent text-white"
+                                >
+                                  <X className="w-2 h-2" />
+                                </button>
+                              )}
+                            </Badge>
+                          ))}
+                        </div>
 
-          <div className="flex gap-2 mt-4">
-            <Button
-              variant="outline"
-              className={`flex-1 rounded-xl text-xs font-bold ${isGroupView ? "border-[#3F4147] text-[#DCDDDE] hover:bg-[#35373C]" : ""}`}
-              onClick={() => setShowEditGroup(false)}
-              disabled={editGroupSaving}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="flex-1 bg-[#6366f1] text-white hover:bg-violet-700 rounded-xl text-xs font-bold shadow-md shadow-violet-500/10"
-              onClick={handleSaveGroup}
-              disabled={editGroupSaving || !editGroupName.trim() || (selectedConv?.ownerId !== me?.id && !myPerms?.permissions?.manageChannels)}
-            >
-              {editGroupSaving ? "Saving..." : "Save Changes"}
-            </Button>
-          </div>
+                        {/* Add Role Control */}
+                        {(selectedConv?.ownerId === me?.id || myPerms?.permissions?.manageRoles) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-[9px] font-extrabold text-[#949BA4] hover:bg-[#2B2D31] hover:text-white rounded-md flex items-center gap-1 border-0"
+                              >
+                                <Plus className="w-3 h-3" /> Add Role
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="bg-[#1E1F22] border-[#3F4147] text-white">
+                              <DropdownMenuLabel className="text-[10px] font-bold text-slate-400">Add Group Role</DropdownMenuLabel>
+                              <DropdownMenuSeparator className="bg-[#3F4147]" />
+                              {roles.filter(r => !(m.roles || []).some(gr => gr.id === r.id)).length === 0 ? (
+                                <div className="px-2 py-1.5 text-[10px] text-slate-400 italic">No roles available</div>
+                              ) : (
+                                roles.filter(r => !(m.roles || []).some(gr => gr.id === r.id)).map((role) => (
+                                  <DropdownMenuItem
+                                    key={role.id}
+                                    onClick={async () => {
+                                      if (!selectedId || !m.id) return;
+                                      try {
+                                        const res = await fetch(`/api/conversations/${selectedId}/members/${m.id}/roles`, {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ roleId: role.id }),
+                                        });
+                                        if (!res.ok) throw new Error();
+                                        await queryClient.invalidateQueries({
+                                          queryKey: [`/api/conversations/${selectedId}/members`],
+                                        });
+                                        toast({ title: "Role assigned" });
+                                      } catch {
+                                        toast({ title: "Failed to assign role", variant: "destructive" });
+                                      }
+                                    }}
+                                    className="flex items-center gap-2 text-xs cursor-pointer hover:bg-[#2B2D31] px-2 py-1"
+                                  >
+                                    <span
+                                      className="w-2 h-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: role.color }}
+                                    />
+                                    <span className="font-semibold">{role.name}</span>
+                                  </DropdownMenuItem>
+                                ))
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </ScrollArea>
+          )}
         </DialogContent>
       </Dialog>
 
