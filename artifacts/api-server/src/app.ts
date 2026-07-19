@@ -47,16 +47,20 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use(
-  clerkMiddleware((req) => ({
+app.use((req, res, next) => {
+  // Bypass Clerk middleware for health checks to prevent crashes if keys are not ready
+  if (req.path === "/api/healthz" || req.path === "/api" || req.path === "/api/") {
+    return next();
+  }
+  return clerkMiddleware((req) => ({
     publishableKey: process.env.NODE_ENV === "production"
       ? publishableKeyFromHost(
           getClerkProxyHost(req) ?? "",
           process.env.CLERK_PUBLISHABLE_KEY,
         )
       : process.env.CLERK_PUBLISHABLE_KEY,
-  })),
-);
+  }))(req, res, next);
+});
 
 // Keep the selected local switch account visible to downstream handlers.
 app.use((req, res, next) => {
@@ -68,6 +72,10 @@ app.use((req, res, next) => {
 });
 
 app.use(async (req, _res, next) => {
+  // Skip user sync on health checks
+  if (req.path === "/api/healthz" || req.path === "/api" || req.path === "/api/") {
+    return next();
+  }
   try {
     const auth = getAuth(req) as {
       userId: string | null;
