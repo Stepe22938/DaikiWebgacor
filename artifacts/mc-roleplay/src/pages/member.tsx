@@ -6867,87 +6867,83 @@ function MusicTab() {
         </div>
       </div>
 
-      {/* Spotify Embed Player Container — placed at the BOTTOM above footer */}
-      {spotifyEmbedId && (
-        <div className="px-4 py-3 bg-[#181818] border-t border-[#282828] flex flex-col items-center justify-center relative z-20">
-          <div className="w-full max-w-3xl flex items-center justify-between mb-2 px-1">
-            <span className="text-xs font-bold text-[#1db954] flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#1db954] animate-pulse" />
-              Pemutar Spotify Resmi
-            </span>
+      <footer className="bg-[#181818] border-t border-[#282828] px-3 py-2 sm:py-2.5 flex items-center justify-between z-25 rounded-b-3xl relative">
+        {spotifyEmbedId ? (
+          <div className="w-full flex items-center gap-2">
+            <iframe
+              src={`https://open.spotify.com/embed/track/${spotifyEmbedId}?utm_source=generator&theme=0`}
+              width="100%"
+              height="80"
+              frameBorder="0"
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+              className="rounded-xl border border-[#282828] w-full"
+              title="spotify-footer-embed"
+            />
             <button
               onClick={() => setSpotifyEmbedId(null)}
-              className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+              className="text-[10px] font-bold text-slate-400 hover:text-white underline shrink-0 px-2.5 py-1 bg-[#222] rounded-lg border border-[#333] cursor-pointer"
+              title="Ganti ke kontrol kustom"
             >
-              Tutup Embed Player
+              Biasa
             </button>
           </div>
-          <iframe
-            src={`https://open.spotify.com/embed/track/${spotifyEmbedId}?utm_source=generator&theme=0`}
-            width="100%"
-            height="152"
-            frameBorder="0"
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            loading="lazy"
-            className="rounded-2xl shadow-xl border border-[#282828] max-w-3xl"
-            title="spotify-embed-player"
-          />
-        </div>
-      )}
+        ) : (
+          <>
+            {/* Mobile Thin Progress Bar */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#282828] md:hidden">
+              <div className="h-full bg-[#1db954] transition-all duration-300" style={{ width: `${((currentTime || 0) / (visualDuration || 1)) * 100}%` }} />
+            </div>
 
-      <footer className="bg-[#181818] border-t border-[#282828] px-4 py-3 sm:py-3.5 flex items-center justify-between z-25 rounded-b-3xl relative">
-        {/* Mobile Thin Progress Bar */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#282828] md:hidden">
-          <div className="h-full bg-[#1db954] transition-all duration-300" style={{ width: `${((currentTime || 0) / (visualDuration || 1)) * 100}%` }} />
-        </div>
-
-        <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-initial md:max-w-[30%]">
-          <img src={currentTrack?.cover || "/village.png"} alt="" className="w-10 h-10 sm:w-13 sm:h-13 rounded-lg object-cover bg-black shadow-lg shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
-          <div className="min-w-0">
-            <span className="text-white text-xs sm:text-[13px] font-bold tracking-wide truncate block">{currentTrack?.title || "—"}</span>
-            <span className="text-[9px] sm:text-[10px] text-slate-400 font-semibold truncate block mt-0.5">
-              {isStreamLoading ? (
-                <span className="text-amber-400 animate-pulse flex items-center gap-1">
-                  <span className="w-2 h-2 border border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                  Memuat...
+            <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-initial md:max-w-[30%]">
+              <img src={currentTrack?.cover || "/village.png"} alt="" className="w-10 h-10 sm:w-13 sm:h-13 rounded-lg object-cover bg-black shadow-lg shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
+              <div className="min-w-0">
+                <span className="text-white text-xs sm:text-[13px] font-bold tracking-wide truncate block">{currentTrack?.title || "—"}</span>
+                <span className="text-[9px] sm:text-[10px] text-slate-400 font-semibold truncate block mt-0.5">
+                  {isStreamLoading ? (
+                    <span className="text-amber-400 animate-pulse flex items-center gap-1">
+                      <span className="w-2 h-2 border border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                      Memuat...
+                    </span>
+                  ) : (
+                    currentTrack?.artist || "Pilih lagu"
+                  )}
                 </span>
-              ) : (
-                currentTrack?.artist || "Pilih lagu"
+              </div>
+              {currentTrack && (
+                <button onClick={() => toggleLike(currentTrack)} className={`cursor-pointer transition-colors shrink-0 ${likedTracks[currentTrack.id] ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}>
+                  <Heart className={`w-3.5 h-3.5 ${likedTracks[currentTrack.id] ? "fill-current" : ""}`} />
+                </button>
               )}
-            </span>
-          </div>
-          {currentTrack && (
-            <button onClick={() => toggleLike(currentTrack)} className={`cursor-pointer transition-colors shrink-0 ${likedTracks[currentTrack.id] ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}>
-              <Heart className={`w-3.5 h-3.5 ${likedTracks[currentTrack.id] ? "fill-current" : ""}`} />
-            </button>
-          )}
-        </div>
+            </div>
 
-        <div className="flex flex-col items-center gap-1.5 flex-1 md:max-w-[45%]">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <button onClick={() => setIsShuffling(!isShuffling)} className={`hidden md:block transition-colors cursor-pointer ${isShuffling ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Shuffle className="w-4 h-4" /></button>
-            <button onClick={handlePrevious} className="hidden md:block text-slate-300 hover:text-white transition-colors cursor-pointer"><SkipBack className="w-4.5 h-4.5 fill-current" /></button>
-            <button onClick={handlePlayPause} disabled={!currentTrack} className="w-8 h-8 rounded-full bg-white hover:scale-105 transition-transform flex items-center justify-center text-black shadow-md cursor-pointer active:scale-95 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">
-              {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
-            </button>
-            <button onClick={handleNext} className="text-slate-300 hover:text-white transition-colors cursor-pointer"><SkipForward className="w-4.5 h-4.5 fill-current" /></button>
-            <button onClick={() => setIsLooping(!isLooping)} className={`hidden md:block transition-colors cursor-pointer ${isLooping ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Repeat className="w-4 h-4" /></button>
-          </div>
-          <div className="hidden md:flex w-full items-center gap-3">
-            <span className="text-[9px] text-slate-500 font-bold min-w-[28px] text-right">{fmt(currentTime)}</span>
-            <input type="range" min={0} max={visualDuration} value={currentTime} onChange={handleScrub} className="w-full h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer"
-              style={{ background: `linear-gradient(to right, rgb(29,185,84) 0%, rgb(29,185,84) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40,40,40) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40,40,40) 100%)` }} />
-            <span className="text-[9px] text-slate-500 font-bold min-w-[28px]">{fmt(duration)}</span>
-          </div>
-        </div>
+            <div className="flex flex-col items-center gap-1.5 flex-1 md:max-w-[45%]">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <button onClick={() => setIsShuffling(!isShuffling)} className={`hidden md:block transition-colors cursor-pointer ${isShuffling ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Shuffle className="w-4 h-4" /></button>
+                <button onClick={handlePrevious} className="hidden md:block text-slate-300 hover:text-white transition-colors cursor-pointer"><SkipBack className="w-4.5 h-4.5 fill-current" /></button>
+                <button onClick={handlePlayPause} disabled={!currentTrack} className="w-8 h-8 rounded-full bg-white hover:scale-105 transition-transform flex items-center justify-center text-black shadow-md cursor-pointer active:scale-95 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">
+                  {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+                </button>
+                <button onClick={handleNext} className="text-slate-300 hover:text-white transition-colors cursor-pointer"><SkipForward className="w-4.5 h-4.5 fill-current" /></button>
+                <button onClick={() => setIsLooping(!isLooping)} className={`hidden md:block transition-colors cursor-pointer ${isLooping ? "text-[#1db954]" : "text-slate-500 hover:text-white"}`}><Repeat className="w-4 h-4" /></button>
+              </div>
+              <div className="hidden md:flex w-full items-center gap-3">
+                <span className="text-[9px] text-slate-500 font-bold min-w-[28px] text-right">{fmt(currentTime)}</span>
+                <input type="range" min={0} max={visualDuration} value={currentTime} onChange={handleScrub} className="w-full h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer"
+                  style={{ background: `linear-gradient(to right, rgb(29,185,84) 0%, rgb(29,185,84) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40,40,40) ${(currentTime / (visualDuration || 1)) * 100}%, rgb(40,40,40) 100%)` }} />
+                <span className="text-[9px] text-slate-500 font-bold min-w-[28px]">{fmt(duration)}</span>
+              </div>
+            </div>
 
-        <div className="flex items-center gap-2 min-w-[100px] justify-end max-w-[25%] text-slate-400">
-          <button onClick={() => setIsMuted(!isMuted)} className="hover:text-white transition-colors cursor-pointer">
-            {isMuted ? <VolumeX className="w-4 h-4 text-[#1db954]" /> : volume < 0.4 ? <Volume1 className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-          </button>
-          <input type="range" min={0} max={1} step={0.05} value={volume} onChange={e => { setVolume(parseFloat(e.target.value)); setIsMuted(false); }} className="w-20 sm:w-24 h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer"
-            style={{ background: `linear-gradient(to right, rgb(29,185,84) 0%, rgb(29,185,84) ${volume * 100}%, rgb(40,40,40) ${volume * 100}%, rgb(40,40,40) 100%)` }} />
-        </div>
+            <div className="flex items-center gap-2 min-w-[100px] justify-end max-w-[25%] text-slate-400">
+              <button onClick={() => setIsMuted(!isMuted)} className="hover:text-white transition-colors cursor-pointer">
+                {isMuted ? <VolumeX className="w-4 h-4 text-[#1db954]" /> : volume < 0.4 ? <Volume1 className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </button>
+              <input type="range" min={0} max={1} step={0.05} value={volume} onChange={e => { setVolume(parseFloat(e.target.value)); setIsMuted(false); }} className="w-20 sm:w-24 h-1 rounded bg-[#282828] accent-[#1db954] cursor-pointer"
+                style={{ background: `linear-gradient(to right, rgb(29,185,84) 0%, rgb(29,185,84) ${volume * 100}%, rgb(40,40,40) ${volume * 100}%, rgb(40,40,40) 100%)` }} />
+            </div>
+          </>
+        )}
       </footer>
     </div>
   );
