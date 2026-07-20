@@ -6564,34 +6564,6 @@ function MusicTab() {
   return (
     <div className="flex flex-col rounded-3xl overflow-hidden bg-[#121212] border border-[#282828] text-slate-300 font-sans shadow-2xl relative">
       <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onDurationChange={handleLoadedMetadata} onLoadStart={handleAudioWaiting} onWaiting={handleAudioWaiting} onPlaying={handleAudioPlaying} onCanPlay={handleCanPlay} onError={handleAudioError} onEnded={handleEnded} src={audioSrc} />
-      
-      {/* Spotify Embed Player Container — plays full Spotify audio stream directly */}
-      {spotifyEmbedId && (
-        <div className="px-4 py-3 bg-[#181818] border-b border-[#282828] flex flex-col items-center justify-center">
-          <div className="w-full max-w-3xl flex items-center justify-between mb-2 px-1">
-            <span className="text-xs font-bold text-[#1db954] flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#1db954] animate-pulse" />
-              Diputar via Spotify Embed Player
-            </span>
-            <button
-              onClick={() => setSpotifyEmbedId(null)}
-              className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
-            >
-              Tutup Embed
-            </button>
-          </div>
-          <iframe
-            src={`https://open.spotify.com/embed/track/${spotifyEmbedId}?utm_source=generator&theme=0`}
-            width="100%"
-            height="152"
-            frameBorder="0"
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            loading="lazy"
-            className="rounded-2xl shadow-xl border border-[#282828] max-w-3xl"
-            title="spotify-embed-player"
-          />
-        </div>
-      )}
 
       {/* Hidden YouTube fallback iframe — used for non-Spotify tracks when audio has no playable src */}
       {ytVideoId && (
@@ -6894,6 +6866,34 @@ function MusicTab() {
           </div>
         </div>
       </div>
+
+      {/* Spotify Embed Player Container — placed at the BOTTOM above footer */}
+      {spotifyEmbedId && (
+        <div className="px-4 py-3 bg-[#181818] border-t border-[#282828] flex flex-col items-center justify-center relative z-20">
+          <div className="w-full max-w-3xl flex items-center justify-between mb-2 px-1">
+            <span className="text-xs font-bold text-[#1db954] flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#1db954] animate-pulse" />
+              Pemutar Spotify Resmi
+            </span>
+            <button
+              onClick={() => setSpotifyEmbedId(null)}
+              className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+            >
+              Tutup Embed Player
+            </button>
+          </div>
+          <iframe
+            src={`https://open.spotify.com/embed/track/${spotifyEmbedId}?utm_source=generator&theme=0`}
+            width="100%"
+            height="152"
+            frameBorder="0"
+            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+            loading="lazy"
+            className="rounded-2xl shadow-xl border border-[#282828] max-w-3xl"
+            title="spotify-embed-player"
+          />
+        </div>
+      )}
 
       <footer className="bg-[#181818] border-t border-[#282828] px-4 py-3 sm:py-3.5 flex items-center justify-between z-25 rounded-b-3xl relative">
         {/* Mobile Thin Progress Bar */}
