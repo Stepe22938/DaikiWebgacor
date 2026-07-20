@@ -6422,7 +6422,23 @@ function MusicTab() {
       toast({ title: "Audio belum bisa diputar", description: describeAudioError(err), variant: "destructive" });
     }
   };
-  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => { const t = parseFloat(e.target.value); setCurrentTime(t); if (audioRef.current) audioRef.current.currentTime = t; };
+  useEffect(() => {
+    if (ytVideoId) {
+      if (isMuted) {
+        ytPostMessage("mute");
+      } else {
+        ytPostMessage("unMute");
+        ytPostMessage("setVolume", Math.round(volume * 100));
+      }
+    }
+  }, [volume, isMuted, ytVideoId]);
+
+  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const t = parseFloat(e.target.value);
+    setCurrentTime(t);
+    if (audioRef.current) audioRef.current.currentTime = t;
+    if (ytVideoId) ytPostMessage("seekTo", [t, true]);
+  };
   const handleNext = () => { if (!playingPlaylistTracks.length || !currentTrack) return; const i = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id); playTrack(playingPlaylistTracks[isShuffling ? Math.floor(Math.random() * playingPlaylistTracks.length) : (i + 1) % playingPlaylistTracks.length], playingPlaylistTracks); };
   const handlePrevious = () => { if (!playingPlaylistTracks.length || !currentTrack) return; const i = playingPlaylistTracks.findIndex(t => t.id === currentTrack.id); playTrack(playingPlaylistTracks[(i - 1 + playingPlaylistTracks.length) % playingPlaylistTracks.length], playingPlaylistTracks); };
   const handleEnded = () => { if (isLooping && audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); } else { handleNext(); } };
@@ -6522,7 +6538,7 @@ function MusicTab() {
       {ytVideoId && (
         <iframe
           ref={ytIframeRef}
-          style={{ display: "none" }}
+          style={{ position: "absolute", width: "1px", height: "1px", opacity: 0, pointerEvents: "none", top: "-9999px" }}
           src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
           allow="autoplay"
           title="yt-audio-fallback"
