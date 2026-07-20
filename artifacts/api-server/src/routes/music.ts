@@ -422,6 +422,23 @@ const uploadCover = multer({ storage: coverStorage, limits: { fileSize: 5 * 1024
 
 // ─── Public Routes ───────────────────────────────────────────────────────────
 
+const SPOTIFY_CATEGORY_QUERIES: Record<string, string> = {
+  "Global Charts": "top 50 global",
+  "Rilis Hari Ini": "new music friday",
+  "Lofi & Chill": "lofi hip hop beats",
+  "Pop Hits": "top pop hits",
+  "Synthwave Hits": "synthwave retrowave",
+  "Lobby Favorites": "chill gaming lounge",
+  "Combat & Adventure": "epic adventure soundtrack",
+  "Tavern Classics": "medieval tavern music",
+  "Hip Hop": "top hip hop",
+  "EDM": "top edm electro",
+  "R&B": "top r&b soul",
+  "Indie": "indie pop rock",
+  "K-Pop": "kpop top hits",
+  "OST": "best movie anime soundtrack ost",
+};
+
 /** GET /api/music/tracks — list all or search tracks */
 router.get("/music/tracks", async (req, res): Promise<void> => {
   const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
@@ -430,9 +447,9 @@ router.get("/music/tracks", async (req, res): Promise<void> => {
 
   try {
     const token = await getSpotifyAccessToken();
-    let spotifyQuery = query || type || "Global Charts";
-    if (spotifyQuery === "All Tracks") {
-      spotifyQuery = "Global Top Hits";
+    let spotifyQuery = query;
+    if (!spotifyQuery) {
+      spotifyQuery = SPOTIFY_CATEGORY_QUERIES[type] || (type && type !== "All Tracks" ? type : "top 50 global");
     }
 
     if (token) {
