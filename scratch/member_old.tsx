@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers, useGetGachaBoard, useSpinGacha, useListOwnedCosmetics, useEquipCosmetic, useListWalletTransactions, useListCalendarEvents } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMe, useListAnnouncements, useListDevelopments, useGetMySettings, useUpdateMySettings, useListTickets, useCreateTicket, useUpdateTicket, useListTicketMessages, useSendTicketMessage, getListTicketMessagesQueryOptions, useListForms, useGetForm, useSubmitVote, useSubmitForm, useGetMyFormResponse, customFetch, useListCredits, useListTicketReasons, useListSwitchableUsers, useGetGachaBoard, useSpinGacha, useListOwnedCosmetics, useEquipCosmetic, useListWalletTransactions } from "@workspace/api-client-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,7 +17,6 @@ import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import Premium from "./premium";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +26,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   LayoutGrid,
-  Calendar as CalendarIcon,
   Megaphone,
   Hammer,
   Ticket,
@@ -83,8 +81,6 @@ import {
 import {
   ResponsiveContainer,
   BarChart,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -450,7 +446,7 @@ function SellerHub({
           <div className="lg:col-span-1 space-y-5">
             <div className="bg-[#1e1f22]/60 rounded-2xl border border-zinc-800/80 p-5 shadow-xl space-y-4">
               <h3 className="text-sm font-black text-white flex items-center gap-1.5">
-                ⚙️ Profil Bisnis
+                ÔÜÖ´©Å Profil Bisnis
               </h3>
 
               {/* Verification Status Banner */}
@@ -569,7 +565,7 @@ function SellerHub({
                     : "text-zinc-400 hover:text-white"
                 }`}
               >
-                📦 Kelola Produk
+                ­ƒôª Kelola Produk
               </button>
               <button
                 type="button"
@@ -580,7 +576,7 @@ function SellerHub({
                     : "text-zinc-400 hover:text-white"
                 }`}
               >
-                📋 Pesanan Masuk
+                ­ƒôï Pesanan Masuk
                 {myOrders.filter((o: any) => o.status === "completed").length > 0 && (
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 )}
@@ -591,7 +587,7 @@ function SellerHub({
               <div className="bg-[#1e1f22]/60 rounded-2xl border border-zinc-800/80 p-5 shadow-xl space-y-4">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <h3 className="text-sm font-black text-white flex items-center gap-1.5">
-                    📦 Produk Saya ({myProducts.length})
+                    ­ƒôª Produk Saya ({myProducts.length})
                   </h3>
                   <Button
                     size="sm"
@@ -678,7 +674,7 @@ function SellerHub({
               <div className="bg-[#1e1f22]/60 rounded-2xl border border-zinc-800/80 p-5 shadow-xl space-y-4">
                 <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
                   <h3 className="text-sm font-black text-white flex items-center gap-1.5">
-                    📋 Pesanan Masuk
+                    ­ƒôï Pesanan Masuk
                   </h3>
                   
                   {/* Status Filter Tabs */}
@@ -778,10 +774,10 @@ function SellerHub({
                                   : "text-zinc-500"
                               }`}>
                                 {order.status === "completed"
-                                  ? "🟢 Sudah Bayar"
+                                  ? "­ƒƒó Sudah Bayar"
                                   : order.status === "pending"
-                                  ? "🟡 Menunggu Bayar"
-                                  : "✅ Selesai Dikirim"}
+                                  ? "­ƒƒí Menunggu Bayar"
+                                  : "Ô£à Selesai Dikirim"}
                               </span>
                             </div>
                           </div>
@@ -943,7 +939,7 @@ function SellerHub({
                                 : "bg-amber-950/20 border-amber-900/30 text-amber-400"
                             }`}>
                               <h4 className="text-xs font-black flex items-center gap-1.5">
-                                {activePurchase.status === "completed" ? "🟢 Status: Pembayaran Sukses" : "🟡 Status: Menunggu Pembayaran"}
+                                {activePurchase.status === "completed" ? "­ƒƒó Status: Pembayaran Sukses" : "­ƒƒí Status: Menunggu Pembayaran"}
                               </h4>
                               <p className="text-[10px] font-bold mt-1 opacity-90 leading-normal">
                                 {activePurchase.status === "completed"
@@ -955,7 +951,7 @@ function SellerHub({
 
                           <div className="rounded-xl bg-violet-950/20 border border-violet-900/30 p-3.5 space-y-1.5">
                             <h4 className="text-xs font-black text-violet-400 flex items-center gap-1">
-                              💳 Cara Pembelian
+                              ­ƒÆ│ Cara Pembelian
                             </h4>
                             <ol className="text-[10px] text-violet-300/80 font-bold list-decimal list-inside space-y-1 leading-normal">
                               <li>Klik tombol <b>Beli Sekarang</b> untuk diarahkan ke sayabayar.com.</li>
@@ -1114,10 +1110,6 @@ export default function Member() {
     queryFn: () => customFetch<any>("/api/settings"),
   });
   const updateSettings = useUpdateMySettings();
-  const { data: statsData = {} } = useQuery({
-    queryKey: ["/api/stats"],
-    queryFn: () => customFetch<any>("/api/stats"),
-  });
   const { data: tickets = [], isLoading: ticketsLoading } = useListTickets();
   const { data: ticketReasons = [], isLoading: ticketReasonsLoading } = useListTicketReasons();
   const createTicket = useCreateTicket();
@@ -1130,52 +1122,6 @@ export default function Member() {
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  // Calendar event query and state
-  const { data: calendarEvents = [], isLoading: calendarEventsLoading } = useListCalendarEvents();
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-
-  const sparklineData1 = [
-    { name: "Mon", value: 12000 },
-    { name: "Tue", value: 15000 },
-    { name: "Wed", value: 13000 },
-    { name: "Thu", value: 18000 },
-    { name: "Fri", value: 16000 },
-    { name: "Sat", value: 21000 },
-    { name: "Sun", value: 20560 }
-  ];
-
-  const sparklineData2 = [
-    { name: "Mon", value: 8000 },
-    { name: "Tue", value: 9500 },
-    { name: "Wed", value: 15000 },
-    { name: "Thu", value: 12000 },
-    { name: "Fri", value: 17000 },
-    { name: "Sat", value: 19000 },
-    { name: "Sun", value: 12840 }
-  ];
-
-  const sparklineData3 = [
-    { name: "Mon", value: 6000 },
-    { name: "Tue", value: 7500 },
-    { name: "Wed", value: 6500 },
-    { name: "Thu", value: 8000 },
-    { name: "Fri", value: 9000 },
-    { name: "Sat", value: 8200 },
-    { name: "Sun", value: 8560 }
-  ];
-
-  const mockCitizens = [
-    { name: "Zachary Gomez", company: "IBM", phone: "+1 454 544 85 58", date: "8 March 2078", avatar: "ZG", role: "Developer" },
-    { name: "Amanda Montgomery", company: "The Walt Disney Company", phone: "+1 454 544 85 58", date: "8 March 2078", avatar: "AM", role: "Citizen" },
-    { name: "Lester Holland", company: "Louis Vuitton", phone: "+1 454 544 85 58", date: "8 March 2078", avatar: "LH", role: "Staff" },
-    { name: "Max Allison", company: "Apple", phone: "+1 454 544 85 58", date: "8 March 2078", avatar: "MA", role: "Citizen" },
-    { name: "Richard Gregory", company: "MasterCard", phone: "+1 454 544 85 58", date: "8 March 2078", avatar: "RG", role: "VIP" },
-    { name: "Clifford Caldwell", company: "Starbucks", phone: "+1 454 544 85 58", date: "8 March 2078", avatar: "CC", role: "Developer" },
-    { name: "Dean Ortega", company: "Gillette", phone: "+1 454 544 85 58", date: "8 March 2078", avatar: "DO", role: "Citizen" },
-    { name: "Eugene Griffith", company: "eBay", phone: "+1 454 544 85 58", date: "8 March 2078", avatar: "EG", role: "Staff" }
-  ];
-  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState<any | null>(null);
   // Mount-once flag: MangaPage stays mounted after first open to preserve reader state
   const [mangaTabMounted, setMangaTabMounted] = useState(false);
 
@@ -1243,7 +1189,7 @@ export default function Member() {
         if (form && !form.querySelector('.email-cooldown-warning')) {
           const warning = document.createElement('div');
           warning.className = 'email-cooldown-warning bg-amber-950/20 border border-amber-900/30 border-l-4 border-l-amber-500 p-3 rounded-r-lg mb-4 shadow-sm text-xs text-amber-200 font-bold leading-relaxed';
-          warning.innerHTML = '⚠️ <strong>Keamanan Akun:</strong> Tunggu 7 hari setelah pembuatan akun, atau setelah ganti akun gmail untuk dapat mengubah email kembali demi keamanan akun Anda.';
+          warning.innerHTML = 'ÔÜá´©Å <strong>Keamanan Akun:</strong> Tunggu 7 hari setelah pembuatan akun, atau setelah ganti akun gmail untuk dapat mengubah email kembali demi keamanan akun Anda.';
           form.insertBefore(warning, form.firstChild);
         }
       }
@@ -1515,7 +1461,7 @@ export default function Member() {
 
   return (
     <div className={`${activeTab === "messages" ? "h-[100dvh] overflow-hidden overscroll-none" : "min-h-screen"} bg-[#f4f3f8] text-[#1e1b4b] flex font-sans antialiased`}>
-      {/* â”€â”€ Left Sidebar (Desktop) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ├óÔÇØÔé¼├óÔÇØÔé¼ Left Sidebar (Desktop) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼ */}
       <aside className="w-64 h-screen sticky top-0 bg-white border-r border-[#eae8f5] flex flex-col justify-between shrink-0 hidden md:flex">
         <div className="flex flex-col min-h-0 flex-1">
           {/* Logo Branding */}
@@ -1651,16 +1597,6 @@ export default function Member() {
                 >
                   <BookOpen className="w-4.5 h-4.5 text-amber-500" /> Baca Manga
                 </button>
-                <button
-                  onClick={() => handleTabChange("calendar")}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                    activeTab === "calendar"
-                      ? "bg-violet-50 text-[#6366f1]"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  <CalendarIcon className="w-4.5 h-4.5 text-[#6366f1]" /> Event Calendar
-                </button>
               </nav>
             </div>
 
@@ -1790,7 +1726,7 @@ export default function Member() {
         </div>
       </aside>
 
-      {/* ────────────────────────────────── Mobile Sidebar Drawer ────────────────────────────────── */}
+      {/* ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Mobile Sidebar Drawer ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */}
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden bg-black/40 backdrop-blur-sm">
           <div className="w-64 bg-white flex flex-col justify-between p-4 shadow-2xl animate-slide-in">
@@ -1809,7 +1745,7 @@ export default function Member() {
                     <span className="text-[10px] text-slate-400 font-bold">Player Hub</span>
                   </div>
                 </Link>
-                <Button variant="ghost" size="sm" onClick={() => setMobileSidebarOpen(false)} className="text-slate-400 hover:text-[#110e3d]">✕</Button>
+                <Button variant="ghost" size="sm" onClick={() => setMobileSidebarOpen(false)} className="text-slate-400 hover:text-[#110e3d]">Ô£ò</Button>
               </div>
 
               <nav className="space-y-1">
@@ -1900,14 +1836,6 @@ export default function Member() {
                   }`}
                 >
                   <BookOpen className="w-4.5 h-4.5 text-amber-500" /> Baca Manga
-                </button>
-                <button
-                  onClick={() => handleTabChangeMobile("calendar")}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                    activeTab === "calendar" ? "bg-violet-50 text-[#6366f1]" : "text-slate-500 hover:bg-slate-50"
-                  }`}
-                >
-                  <CalendarIcon className="w-4.5 h-4.5 text-[#6366f1]" /> Event Calendar
                 </button>
 
                 <div className="py-2 border-t border-[#eae8f5] my-2">
@@ -2013,7 +1941,7 @@ export default function Member() {
         </div>
       )}
 
-      {/* â”€â”€ Main Content Area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ├óÔÇØÔé¼├óÔÇØÔé¼ Main Content Area ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼ */}
       <main className={`flex-1 flex flex-col min-w-0 relative ${activeTab === "messages" ? "overflow-hidden" : "overflow-y-auto"} ${activeTab === "seller" || activeTab === "manga" ? "bg-[#09090b]" : ""}`}>
         {/* Top Header Bar */}
         <header className={`h-16 border-b px-6 flex items-center justify-between shrink-0 ${activeTab === "seller" || activeTab === "manga" ? "bg-[#0c0c0e] border-zinc-800/80" : "bg-white border-[#eae8f5]"}`}>
@@ -2031,7 +1959,7 @@ export default function Member() {
               <span>Guild Portal</span>
               <span>/</span>
               <span className={`capitalize ${activeTab === "seller" || activeTab === "manga" ? "text-white font-black" : "text-[#110e3d]"}`}>
-                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "membership" ? "Membership & Boost" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : activeTab === "seller" ? "Toko Saya" : activeTab === "premium" ? "Premium Area" : activeTab === "manga" ? "Baca Manga" : activeTab === "calendar" ? "Event Calendar" : "Arcadia Credits"}
+                {activeTab === "dashboard" ? "Dashboard" : activeTab === "announcements" ? "Town Crier" : activeTab === "developments" ? "The Forge" : activeTab === "tickets" ? "Support Tickets" : activeTab === "forms" ? "Voting & Forms" : activeTab === "profile" ? "My Profile" : activeTab === "settings" ? "Account Settings" : activeTab === "gacha" ? "Gacha Royale" : activeTab === "wallet" ? "My Wallet" : activeTab === "membership" ? "Membership & Boost" : activeTab === "music" ? "Music Player" : activeTab === "messages" ? "Messages" : activeTab === "seller" ? "Toko Saya" : activeTab === "premium" ? "Premium Area" : activeTab === "manga" ? "Baca Manga" : "Arcadia Credits"}
               </span>
             </div>
           </div>
@@ -2079,351 +2007,166 @@ export default function Member() {
 
         {/* Content Container */}
         {activeTab !== "messages" && activeTab !== "manga" && (
-          <div className={`flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6 overflow-y-auto ${activeTab === "seller" ? "bg-[#09090b]" : ""}`}>
-            {/* Guilds (Friends) Tab */}
-            {activeTab === "guilds" && (
-              <FriendsTab embedded={true} />
-            )}
-
-            {/* Profile Tab */}
-            {activeTab === "profile" && profileUserId !== null && (
-              <ProfileTab id={profileUserId} embedded={true} />
-            )}
-
-            {/* Dashboard Tab Overview */}
-            {activeTab === "dashboard" && (
-            <div className="space-y-6">
-              {/* Header section with Customize */}
-              <div className="flex justify-between items-center pb-2">
-                <h1 className="text-xl font-extrabold text-[#110e3d]">Realm Dashboard</h1>
-                <button className="text-xs font-bold text-slate-500 hover:text-slate-900 border border-[#eae8f5] bg-white px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition-all hover:bg-slate-50">
-                  <Sparkles className="w-3.5 h-3.5" /> Customize
-                </button>
-              </div>
-
-              {/* Total Metrics (Row of 3 cards) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border transition-all hover:shadow-md">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Citizens</span>
-                  <div className="flex items-baseline gap-2 mt-2">
-                    <h3 className="text-2xl font-black text-[#110e3d]">{statsData?.totalMembers ?? 0}</h3>
-                    <span className="text-xs font-bold text-emerald-500 flex items-center">📈 10%</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-semibold block mt-1">registered members</span>
-                </Card>
-
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border transition-all hover:shadow-md">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Forge Items</span>
-                  <div className="flex items-baseline gap-2 mt-2">
-                    <h3 className="text-2xl font-black text-[#110e3d]">{activeRoadmapCount}</h3>
-                    <span className="text-xs font-bold text-emerald-500 flex items-center">📈 12%</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-semibold block mt-1">active updates</span>
-                </Card>
-
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border transition-all hover:shadow-md">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">My Active Tickets</span>
-                  <div className="flex items-baseline gap-2 mt-2">
-                    <h3 className="text-2xl font-black text-[#110e3d]">{myOpenTicketsCount}</h3>
-                    <span className="text-xs font-bold text-rose-500 flex items-center">⚠️ {myOpenTicketsCount > 0 ? "Pending" : "None"}</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-semibold block mt-1">help desk requests</span>
-                </Card>
-              </div>
-
-              {/* Sparkline line charts (Row of 3 cards) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Sparkline Card 1 */}
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border flex flex-col justify-between transition-all hover:shadow-md">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Daily Citizen Activity</span>
-                    <div className="flex items-center justify-between mt-1">
-                      <h4 className="text-xl font-black text-[#110e3d]">{statsData?.totalMembers ?? 0} Hits</h4>
-                      <span className="text-[10px] font-extrabold text-slate-800 bg-[#f4f3f8] px-2 py-0.5 rounded-lg">Realtime</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] font-bold text-emerald-500">📈 Active</span>
-                      <span className="text-[9px] font-semibold text-slate-400">citizen traffic tracking</span>
-                    </div>
-                  </div>
-                  
-                  <div className="h-20 w-full my-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={sparklineData1}>
-                        <Tooltip contentStyle={{ display: 'none' }} />
-                        <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  <div className="flex justify-between items-center border-t border-[#eae8f5] pt-3 text-[10px] font-bold text-slate-400">
-                    <button onClick={() => setActiveTab("guilds")} className="hover:text-slate-850 flex items-center gap-1">View Members &gt;</button>
-                    <button className="hover:text-slate-850">Live Sync</button>
-                  </div>
-                </Card>
-
-                {/* Sparkline Card 2 */}
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border flex flex-col justify-between transition-all hover:shadow-md">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Forge Project Status</span>
-                    <div className="flex items-center justify-between mt-1">
-                      <h4 className="text-xl font-black text-[#110e3d]">{developments?.length ?? 0} Items</h4>
-                      <span className="text-[10px] font-extrabold text-slate-800 bg-[#f4f3f8] px-2 py-0.5 rounded-lg">Updates</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] font-bold text-emerald-500">📈 Sync</span>
-                      <span className="text-[9px] font-semibold text-slate-400">total roadmap milestones</span>
-                    </div>
-                  </div>
-                  
-                  <div className="h-20 w-full my-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={sparklineData2}>
-                        <Tooltip contentStyle={{ display: 'none' }} />
-                        <Line type="monotone" dataKey="value" stroke="#ec4899" strokeWidth={2} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  <div className="flex justify-between items-center border-t border-[#eae8f5] pt-3 text-[10px] font-bold text-slate-400">
-                    <button onClick={() => setActiveTab("developments")} className="hover:text-slate-850 flex items-center gap-1">View Forge &gt;</button>
-                    <button className="hover:text-slate-850">Roadmap</button>
-                  </div>
-                </Card>
-
-                {/* Sparkline Card 3 */}
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border flex flex-col justify-between transition-all hover:shadow-md">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Broadcast Updates</span>
-                    <div className="flex items-center justify-between mt-1">
-                      <h4 className="text-xl font-black text-[#110e3d]">{announcementsCount} Posts</h4>
-                      <span className="text-[10px] font-extrabold text-slate-800 bg-[#f4f3f8] px-2 py-0.5 rounded-lg">Crier</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] font-bold text-emerald-500">📈 Pinned</span>
-                      <span className="text-[9px] font-semibold text-slate-400">broadcast distribution</span>
-                    </div>
-                  </div>
-                  
-                  <div className="h-20 w-full my-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={sparklineData3}>
-                        <Tooltip contentStyle={{ display: 'none' }} />
-                        <Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  <div className="flex justify-between items-center border-t border-[#eae8f5] pt-3 text-[10px] font-bold text-slate-400">
-                    <button onClick={() => setActiveTab("announcements")} className="hover:text-slate-850 flex items-center gap-1">View Crier &gt;</button>
-                    <button className="hover:text-slate-850">Broadcasts</button>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Announcements Table section */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-extrabold text-[#110e3d]">Broadcasts & Announcements</h3>
-                
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl border overflow-hidden">
-                  {/* Actions Header bar */}
-                  <div className="p-4 border-b border-[#eae8f5] flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
-                    <div className="flex items-center gap-2">
-                      <input type="checkbox" className="rounded border-slate-350 w-4 h-4 text-[#6366f1] focus:ring-[#6366f1]" defaultChecked />
-                      <span className="text-[11px] font-bold text-slate-600">Select All</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button className="text-[11px] font-bold text-slate-600 bg-white border border-[#eae8f5] px-3 py-1.5 rounded-xl hover:bg-slate-50 shadow-sm flex items-center gap-1">
-                        🔍 Filters
-                      </button>
-                      <input type="text" placeholder="Search announcements..." className="text-[11px] bg-white border border-[#eae8f5] px-3 py-1.5 rounded-xl shadow-sm focus:outline-none focus:ring-1 focus:ring-[#6366f1] w-48" />
-                      <button className="text-[11px] font-bold text-slate-600 bg-white border border-[#eae8f5] px-3 py-1.5 rounded-xl hover:bg-slate-50 shadow-sm">
-                        ✏️ Edit
-                      </button>
-                      <button className="text-[11px] font-bold text-rose-600 bg-white border border-[#eae8f5] px-3 py-1.5 rounded-xl hover:bg-rose-50 shadow-sm">
-                        🗑️ Delete
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Table body */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-[#eae8f5] text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                          <th className="p-4 w-12 text-center">Select</th>
-                          <th className="p-4">Announcement Title</th>
-                          <th className="p-4">Content Snippet</th>
-                          <th className="p-4">Author</th>
-                          <th className="p-4">Posted Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {announcementsLoading ? (
-                          <tr>
-                            <td colSpan={5} className="p-8 text-center text-xs text-slate-400 font-semibold">
-                              Loading announcements...
-                            </td>
-                          </tr>
-                        ) : announcements?.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className="p-8 text-center text-xs text-slate-400 font-semibold">
-                              No announcements active in the realm.
-                            </td>
-                          </tr>
-                        ) : (
-                          announcements?.slice(0, 8).map((ann, idx) => (
-                            <tr key={ann.id} className="border-b border-[#eae8f5] last:border-0 hover:bg-slate-50/50 transition-all text-xs font-semibold text-slate-700">
-                              <td className="p-4 text-center">
-                                <input type="checkbox" className="rounded border-slate-350 w-3.5 h-3.5 text-[#6366f1]" defaultChecked={idx === 0} />
-                              </td>
-                              <td className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => setSelectedAnnouncement(ann)}>
-                                <div className="w-8 h-8 rounded-full bg-violet-50 border border-violet-100 flex items-center justify-center text-[#6366f1] text-[12px] font-bold shadow-inner">
-                                  📢
-                                </div>
-                                <div>
-                                  <span className="font-extrabold text-[#110e3d] block group-hover:text-[#6366f1] transition-colors">{ann.title}</span>
-                                  <span className="text-[9px] text-[#6366f1] block">{ann.pinned ? "📌 Pinned" : "Broadcast"}</span>
-                                </div>
-                              </td>
-                              <td className="p-4 text-slate-500 font-bold max-w-xs truncate">{ann.content}</td>
-                              <td className="p-4 text-slate-500 font-bold flex items-center gap-1.5">
-                                <span>🛡️</span>
-                                <span>{ann.authorName || "Administrator"}</span>
-                              </td>
-                              <td className="p-4 text-slate-400 font-bold">
-                                {ann.createdAt ? format(new Date(ann.createdAt), 'd MMMM yyyy') : "N/A"}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Footer pagination */}
-                  <div className="p-4 border-t border-[#eae8f5] flex items-center justify-between bg-slate-50/50">
-                    <div className="flex items-center gap-1">
-                      <button className="w-8 h-8 rounded-xl border border-[#eae8f5] bg-white flex items-center justify-center text-xs font-bold text-slate-400 hover:text-slate-800 hover:bg-slate-50 shadow-sm">&lt;</button>
-                      <button className="w-8 h-8 rounded-xl border border-[#eae8f5] bg-white flex items-center justify-center text-xs font-bold text-slate-850 hover:bg-slate-50 shadow-sm">1</button>
-                      <span className="px-2 text-slate-400 font-bold text-xs">...</span>
-                      <button className="w-8 h-8 rounded-xl border border-[#eae8f5] bg-white flex items-center justify-center text-xs font-bold text-slate-400 hover:text-slate-800 hover:bg-slate-50 shadow-sm">&gt;</button>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab("announcements")}
-                      className="text-[11px] font-black text-slate-600 bg-white border border-[#eae8f5] px-4 py-2 rounded-xl hover:bg-slate-50 shadow-sm"
-                    >
-                      View All Broadcasts
-                    </button>
-                  </div>
-                </Card>
-              </div>
-            </div>
+        <div className={`flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6 overflow-y-auto ${activeTab === "seller" ? "bg-[#09090b]" : ""}`}>
+          {/* Guilds (Friends) Tab */}
+          {activeTab === "guilds" && (
+            <FriendsTab embedded={true} />
           )}
 
-          {/* Calendar Tab Page (Separate Page) */}
-          {activeTab === "calendar" && (
-            <div className="space-y-6 relative">
-              {/* Background decorative glowing circles (Bento/Spline style) */}
-              <div className="absolute -top-10 -left-10 w-96 h-96 bg-violet-500/10 rounded-full blur-[130px] pointer-events-none" />
-              <div className="absolute top-[30%] right-[-10%] w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[150px] pointer-events-none" />
+          {/* Profile Tab */}
+          {activeTab === "profile" && profileUserId !== null && (
+            <ProfileTab id={profileUserId} embedded={true} />
+          )}
 
-              <div className="flex flex-col gap-1">
-                <h1 className="text-xl font-black text-[#110e3d] flex items-center gap-2">
-                  <CalendarIcon className="w-5.5 h-5.5 text-[#6366f1]" /> Event Calendar & Schedules
-                </h1>
-                <p className="text-xs text-slate-400 font-bold">Keep track of community events, schedules, and active timeslots</p>
+          {/* Dashboard Tab Overview */}
+          {activeTab === "dashboard" && (
+            <div className="space-y-6">
+              {/* Premium Welcome Banner */}
+              <div className="relative rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 p-6 md:p-8 text-white overflow-hidden shadow-lg shadow-indigo-500/10">
+                <div className="absolute right-0 top-0 w-1/3 h-full opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white to-transparent" />
+                <div className="relative z-10 space-y-2 max-w-xl">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 text-xs font-bold backdrop-blur-sm">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300 animate-bounce" /> Season II: Rise of the Guilds
+                  </div>
+                  <h1 className="text-2xl md:text-3xl font-black tracking-tight">Rise of the Guilds is Live!</h1>
+                  <p className="text-xs md:text-sm text-indigo-100 font-semibold leading-relaxed">
+                    Connect to <strong className="text-white">play.arcadiamc.net</strong> to build your town, forge your legacy, and climb the guild ranks. Let's write history together!
+                  </p>
+                </div>
               </div>
 
-              {/* Calendar & Scheduling Bento Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Calendar picker */}
-                <Card className="bg-white/80 border-[#eae8f5] shadow-xl shadow-slate-200/40 rounded-3xl lg:col-span-5 flex flex-col items-center justify-center p-6 border border-white/40 backdrop-blur-xl transition-all hover:shadow-2xl">
-                  <CardHeader className="pb-4 w-full px-0 pt-0">
-                    <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
-                      <CalendarIcon className="w-4.5 h-4.5 text-[#6366f1]" /> Event Calendar
-                    </CardTitle>
-                    <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Select a date to filter active time slots</p>
-                  </CardHeader>
-                  <CardContent className="pt-2 w-full flex justify-center p-0">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={setSelectedDate}
-                      className="border border-[#eae8f5] rounded-2xl bg-white shadow-sm p-4 w-full flex justify-center"
-                    />
+              {/* Overview Metrics Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardContent className="p-5 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Guild Citizen</span>
+                      <h3 className="text-base font-extrabold text-[#110e3d] mt-1 truncate max-w-[150px]">{user?.displayName || user?.username}</h3>
+                      <span className="text-[10px] text-[#6366f1] font-bold mt-0.5 block">{user?.userTag || "@citizen"}</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center text-[#6366f1]">
+                      <User className="w-5 h-5" />
+                    </div>
                   </CardContent>
                 </Card>
 
-                {/* Events list */}
-                <Card className="bg-white/80 border-[#eae8f5] shadow-xl shadow-slate-200/40 rounded-3xl lg:col-span-7 flex flex-col justify-between border border-white/40 backdrop-blur-xl transition-all hover:shadow-2xl">
-                  <CardHeader className="pb-3">
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardContent className="p-5 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Forge Items</span>
+                      <h3 className="text-2xl font-black text-[#110e3d] mt-1">{activeRoadmapCount}</h3>
+                      <span className="text-[10px] text-slate-400 font-bold mt-0.5 block">Active Roadmap Updates</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500">
+                      <Hammer className="w-5 h-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardContent className="p-5 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Tickets</span>
+                      <h3 className="text-2xl font-black text-[#110e3d] mt-1">{myOpenTicketsCount}</h3>
+                      <span className="text-[10px] text-slate-400 font-bold mt-0.5 block">My Help Desk Requests</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500">
+                      <Ticket className="w-5 h-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardContent className="p-5 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Announcements</span>
+                      <h3 className="text-2xl font-black text-[#110e3d] mt-1">{announcementsCount}</h3>
+                      <span className="text-[10px] text-slate-400 font-bold mt-0.5 block">Total Town Crier Posts</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
+                      <Megaphone className="w-5 h-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Interactive charts and mini Announcement feed */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Forge status graph */}
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-[#6366f1]" /> Development Activity
+                    </CardTitle>
+                    <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Distribution of features in The Forge roadmap</p>
+                  </CardHeader>
+                  <CardContent className="pt-2">
+                    {developmentsLoading ? (
+                      <div className="h-[200px] flex items-center justify-center"><Skeleton className="h-full w-full rounded-xl" /></div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={devChartData}>
+                          <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                          <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={25} />
+                          <Tooltip
+                            contentStyle={{ background: "#ffffff", border: "1px solid #eae8f5", borderRadius: "12px", fontSize: "11px" }}
+                            labelStyle={{ fontWeight: "bold", color: "#110e3d" }}
+                            cursor={{ fill: "#f1f0f7" }}
+                          />
+                          <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                            {devChartData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Latest Announcements */}
+                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-2xl">
+                  <CardHeader className="pb-3 flex flex-row items-center justify-between">
                     <div>
                       <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
-                        <Clock className="w-4.5 h-4.5 text-[#6366f1]" /> Events for {selectedDate ? format(selectedDate, 'MMM d, yyyy') : 'Selected Date'}
+                        <Megaphone className="w-4 h-4 text-[#6366f1]" /> Latest from Town Crier
                       </CardTitle>
-                      <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Realm scheduled slots and activities</p>
+                      <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Latest announcements and events</p>
                     </div>
+                    <button
+                      onClick={() => setActiveTab("announcements")}
+                      className="text-xs font-bold text-[#6366f1] hover:text-indigo-700 transition-colors"
+                    >
+                      View all
+                    </button>
                   </CardHeader>
-                  <CardContent className="flex-1 overflow-y-auto max-h-[450px] min-h-[350px] space-y-3">
-                    {calendarEventsLoading ? (
+                  <CardContent className="space-y-3">
+                    {announcementsLoading ? (
                       <div className="space-y-2">
-                        <Skeleton className="h-16 w-full rounded-2xl" />
-                        <Skeleton className="h-16 w-full rounded-2xl" />
+                        <Skeleton className="h-14 w-full rounded-xl" />
+                        <Skeleton className="h-14 w-full rounded-xl" />
                       </div>
-                    ) : (() => {
-                      const formattedSelectedDate = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '';
-                      const eventsOnSelectedDate = calendarEvents.filter((ev: any) => ev.eventDate === formattedSelectedDate);
-                      const todayStr = format(new Date(), 'yyyy-MM-dd');
-                      const upcomingEvents = calendarEvents.filter((ev: any) => ev.eventDate >= todayStr);
-
-                      if (eventsOnSelectedDate.length === 0) {
-                        return (
-                          <div className="flex flex-col items-center justify-center h-full text-center py-12 text-xs text-slate-400 font-semibold space-y-4">
-                            <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 border border-[#eae8f5]">
-                              📅
-                            </div>
-                            <div className="space-y-1">
-                              <p className="font-extrabold text-[#110e3d]">No events scheduled for this day</p>
-                              <p className="text-[10px] text-slate-400">Try selecting another date or check upcoming events below.</p>
-                            </div>
-                            {upcomingEvents.length > 0 && (
-                              <button
-                                onClick={() => setSelectedDate(new Date(upcomingEvents[0].eventDate))}
-                                className="text-[10px] text-white bg-[#6366f1] px-3.5 py-1.5 rounded-xl hover:bg-indigo-600 font-bold transition-all shadow-md shadow-indigo-500/10"
-                              >
-                                Next scheduled event: {upcomingEvents[0].title} ({format(new Date(upcomingEvents[0].eventDate), 'MMM d')})
-                              </button>
-                            )}
-                          </div>
-                        );
-                      }
-
-                      return eventsOnSelectedDate.map((ev: any) => (
+                    ) : recentAnnouncements.length === 0 ? (
+                      <div className="text-center py-8 text-xs text-slate-400 font-semibold">The town crier is silent today.</div>
+                    ) : (
+                      recentAnnouncements.map((ann) => (
                         <div
-                          key={ev.id}
-                          onClick={() => setSelectedCalendarEvent(ev)}
-                          className="p-4 bg-slate-50 border border-[#eae8f5] rounded-2xl hover:border-violet-200 hover:bg-violet-50/20 transition-all cursor-pointer group flex items-center justify-between"
+                          key={ann.id}
+                          onClick={() => setSelectedAnnouncement(ann)}
+                          className="p-3 bg-slate-50 border border-[#eae8f5] rounded-xl hover:border-violet-200 hover:bg-violet-50/20 transition-all cursor-pointer group"
                         >
-                          <div className="space-y-1 min-w-0 flex-1 pr-4">
-                            <h4 className="text-xs font-extrabold text-[#110e3d] truncate group-hover:text-[#6366f1] transition-colors">{ev.title}</h4>
-                            <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
-                              <span>⏰ {ev.startTime} - {ev.endTime}</span>
-                            </p>
-                            {ev.description && (
-                              <p className="text-[10px] text-slate-500 truncate leading-relaxed mt-0.5">{ev.description}</p>
-                            )}
+                          <div className="flex justify-between items-start">
+                            <h4 className="text-xs font-extrabold text-[#110e3d] truncate group-hover:text-[#6366f1] transition-colors">{ann.title}</h4>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase shrink-0 ml-2">
+                              {format(new Date(ann.createdAt), 'MMM d')}
+                            </span>
                           </div>
-                          <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border shrink-0 ${
-                            ev.color === "emerald" ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                            ev.color === "amber" ? "bg-amber-50 text-amber-600 border-amber-100" :
-                            ev.color === "rose" ? "bg-rose-50 text-rose-600 border-rose-100" :
-                            ev.color === "indigo" ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
-                            "bg-violet-50 text-violet-600 border-violet-100"
-                          }`}>{ev.color || "violet"}</span>
+                          <p className="text-[10px] text-slate-500 font-semibold line-clamp-2 mt-1 leading-relaxed">
+                            {ann.content}
+                          </p>
                         </div>
-                      ));
-                    })()}
+                      ))
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -2459,7 +2202,7 @@ export default function Member() {
                               {ann.title}
                             </CardTitle>
                             <span className="text-[10px] text-slate-400 font-bold mt-1 block">
-                              By {ann.authorName} â€¢ {format(new Date(ann.createdAt), 'MMMM d, yyyy')}
+                              By {ann.authorName} ├óÔé¼┬ó {format(new Date(ann.createdAt), 'MMMM d, yyyy')}
                             </span>
                           </div>
                           <span className="text-[9px] font-black tracking-wider uppercase bg-violet-50 text-[#6366f1] border border-violet-100 px-2 py-0.5 rounded-lg">
@@ -2663,7 +2406,7 @@ export default function Member() {
                   <p className="text-[11px] text-slate-400 font-semibold mt-1">
                     Handle: <span className="text-slate-800 font-bold">@{user?.username}</span>
                     {user?.userTag && <> <span className="text-[#6366f1] font-bold">{user.userTag}</span></>}
-                    {user?.displayName && <> Â· Display Name: <span className="text-slate-800 font-bold">{user.displayName}</span></>}
+                    {user?.displayName && <> ├é┬À Display Name: <span className="text-slate-800 font-bold">{user.displayName}</span></>}
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -2770,7 +2513,7 @@ export default function Member() {
                     <Input
                       id="currentPassword"
                       type="password"
-                      placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                      placeholder="├óÔé¼┬ó├óÔé¼┬ó├óÔé¼┬ó├óÔé¼┬ó├óÔé¼┬ó├óÔé¼┬ó├óÔé¼┬ó├óÔé¼┬ó"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9"
@@ -3160,7 +2903,7 @@ export default function Member() {
         )}
       </main>
 
-      {/* â”€â”€ Dialog Modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ├óÔÇØÔé¼├óÔÇØÔé¼ Dialog Modals ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼ */}
 
       {/* Announcement Detail Modal */}
       <Dialog open={selectedAnnouncement !== null} onOpenChange={() => setSelectedAnnouncement(null)}>
@@ -3204,56 +2947,6 @@ export default function Member() {
               </DialogFooter>
             </>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Calendar Event Details Modal */}
-      <Dialog open={selectedCalendarEvent !== null} onOpenChange={(open) => { if (!open) setSelectedCalendarEvent(null); }}>
-        <DialogContent className="bg-white border-[#eae8f5] max-w-md rounded-2xl p-6 shadow-2xl animate-fade-in">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              <span className={`w-3.5 h-3.5 rounded-full border shadow-sm ${
-                selectedCalendarEvent?.color === "emerald" ? "bg-emerald-500 border-emerald-400" :
-                selectedCalendarEvent?.color === "amber" ? "bg-amber-500 border-amber-400" :
-                selectedCalendarEvent?.color === "rose" ? "bg-rose-500 border-rose-400" :
-                selectedCalendarEvent?.color === "indigo" ? "bg-indigo-500 border-indigo-400" :
-                "bg-violet-500 border-violet-400"
-              }`} />
-              <DialogTitle className="text-[#110e3d] font-black text-lg truncate">
-                {selectedCalendarEvent?.title}
-              </DialogTitle>
-            </div>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex flex-col gap-1.5 p-3.5 bg-slate-50 border border-[#eae8f5] rounded-xl text-xs font-semibold text-slate-500">
-              <div className="flex items-center gap-2">
-                <span>📅 Date:</span>
-                <span className="text-[#1e1b4b] font-bold">{selectedCalendarEvent?.eventDate}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span>⏰ Time:</span>
-                <span className="text-[#1e1b4b] font-bold">
-                  {selectedCalendarEvent?.startTime} - {selectedCalendarEvent?.endTime}
-                </span>
-              </div>
-            </div>
-            {selectedCalendarEvent?.description && (
-              <div className="space-y-1">
-                <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Description</span>
-                <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap">
-                  {selectedCalendarEvent.description}
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              onClick={() => setSelectedCalendarEvent(null)}
-              className="w-full bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs shadow-md shadow-violet-500/10 h-9"
-            >
-              Close
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -3419,7 +3112,7 @@ function DevSwitchAccountCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-amber-600 font-extrabold text-sm flex items-center gap-2">
-            <span>ðŸ› ï¸ Switch Account (Roblox Style)</span>
+            <span>├░┼©ÔÇ║┬á├»┬©┬Å Switch Account (Roblox Style)</span>
           </CardTitle>
           {activeSwitchClerkId && (
             <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-lg font-bold uppercase tracking-wider">
@@ -3486,7 +3179,7 @@ function DevSwitchAccountCard() {
                         <p className="text-[10px] text-slate-400 font-semibold truncate">
                           @{sessionUsername}
                           {u.primaryEmailAddress?.emailAddress && (
-                            <span className="text-slate-400/70"> Â· {u.primaryEmailAddress.emailAddress}</span>
+                            <span className="text-slate-400/70"> ├é┬À {u.primaryEmailAddress.emailAddress}</span>
                           )}
                         </p>
                       </div>
@@ -3524,7 +3217,7 @@ function DevSwitchAccountCard() {
               onClick={() => void handleAddAccount()}
               className="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl h-9 shadow-sm"
             >
-              âž• Add Account (Sign In to Another Account)
+              ├ó┼¥ÔÇó Add Account (Sign In to Another Account)
             </Button>
             <p className="text-[9px] text-slate-400 font-semibold text-center leading-relaxed">
               *Ensure multi-sessions are enabled in your Clerk dashboard configuration.
@@ -3572,7 +3265,7 @@ function DevSwitchAccountCard() {
                           </span>
                           {u.mcUsername && (
                             <span className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-100 px-1.5 py-0.2 rounded-lg font-bold font-mono">
-                              ðŸŽ® {u.mcUsername}
+                              ├░┼©┼¢┬« {u.mcUsername}
                             </span>
                           )}
                         </div>
@@ -3785,7 +3478,7 @@ function FormsTab() {
   if (forms.length === 0) {
     return (
       <div className="text-center py-16 bg-white border border-[#eae8f5] rounded-2xl text-slate-400 font-bold text-sm">
-        <div className="text-4xl mb-3">ðŸ—³ï¸</div>
+        <div className="text-4xl mb-3">├░┼©ÔÇö┬│├»┬©┬Å</div>
         <p>No active voting options or forms at this time.</p>
       </div>
     );
@@ -3804,7 +3497,7 @@ function FormsTab() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1.5">
                   <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${form.type === "poll" ? "bg-violet-50 text-[#6366f1] border-violet-100" : "bg-blue-50 text-blue-600 border-blue-100"}`}>
-                    {form.type === "poll" ? "ðŸ—³ï¸ Voting" : "📋 Form"}
+                    {form.type === "poll" ? "├░┼©ÔÇö┬│├»┬©┬Å Voting" : "­ƒôï Form"}
                   </span>
                   <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider border ${form.status === "open" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-slate-50 text-slate-500 border-slate-100"}`}>
                     {form.status === "open" ? "Open" : "Closed"}
@@ -3813,11 +3506,11 @@ function FormsTab() {
                 <h3 className="font-extrabold text-sm text-[#110e3d] group-hover:text-[#6366f1] transition-colors truncate">{form.title}</h3>
                 {form.description && <p className="text-[11px] text-slate-400 font-semibold mt-1 line-clamp-2 leading-relaxed">{form.description}</p>}
                 <div className="flex items-center gap-3 mt-3 text-[10px] text-slate-400 font-bold">
-                  <span>ðŸ‘¥ {form.responseCount} responses</span>
-                  {form.deadline && <span>â° Deadline: {format(new Date(form.deadline), "d MMM yyyy")}</span>}
+                  <span>├░┼©ÔÇÿ┬Ñ {form.responseCount} responses</span>
+                  {form.deadline && <span>├ó┬Å┬░ Deadline: {format(new Date(form.deadline), "d MMM yyyy")}</span>}
                 </div>
               </div>
-              <div className="text-[#6366f1] opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0 shrink-0 font-bold">â†’</div>
+              <div className="text-[#6366f1] opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0 shrink-0 font-bold">├óÔÇáÔÇÖ</div>
             </div>
           </div>
         ))}
@@ -3890,10 +3583,10 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
       <DialogHeader className="px-5 pt-5 pb-3 border-b border-slate-100 bg-white shrink-0">
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
           <span className={`text-[9px] px-2 py-0.5 rounded-lg font-black border ${form.type === "poll" ? "bg-violet-50 text-[#6366f1] border-violet-100" : "bg-blue-50 text-blue-600 border-blue-100"}`}>
-            {form.type === "poll" ? "ðŸ—³ï¸ Voting" : "📋 Form"}
+            {form.type === "poll" ? "├░┼©ÔÇö┬│├»┬©┬Å Voting" : "­ƒôï Form"}
           </span>
           {hasResponded && (
-            <span className="text-[9px] px-2 py-0.5 rounded-lg font-black border bg-emerald-50 text-emerald-600 border-emerald-100">âœ“ Submitted</span>
+            <span className="text-[9px] px-2 py-0.5 rounded-lg font-black border bg-emerald-50 text-emerald-600 border-emerald-100">├ó┼ôÔÇ£ Submitted</span>
           )}
         </div>
         <DialogTitle className="text-[#110e3d] font-extrabold text-base">{form.title}</DialogTitle>
@@ -3916,7 +3609,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
                   return (
                     <div key={opt.id} className="space-y-1">
                       <div className="flex justify-between text-xs font-bold">
-                        <span className={`${isMyVote ? "text-[#6366f1]" : "text-slate-700"}`}>{isMyVote ? "âœ“ " : ""}{opt.label}</span>
+                        <span className={`${isMyVote ? "text-[#6366f1]" : "text-slate-700"}`}>{isMyVote ? "├ó┼ôÔÇ£ " : ""}{opt.label}</span>
                         <span className="text-slate-400">{opt.voteCount} ({pct}%)</span>
                       </div>
                       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -3943,7 +3636,7 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
           <div className="space-y-4">
             {hasResponded ? (
               <div className="text-center py-8">
-                <div className="text-4xl mb-2">âœ…</div>
+                <div className="text-4xl mb-2">├ó┼ôÔÇª</div>
                 <p className="text-sm font-extrabold text-[#110e3d]">Form submitted successfully!</p>
                 <p className="text-xs text-slate-400 font-bold mt-1">Thank you for filling this form.</p>
                 {(myResponse?.answers ?? []).length > 0 && (
@@ -4000,11 +3693,11 @@ function FormDetailContent({ form, onClose }: { form: any; onClose: () => void }
         <div className="p-4 border-t border-slate-100 bg-white shrink-0">
           {form.type === "poll" ? (
             <Button className="w-full bg-[#6366f1] text-white hover:bg-indigo-700 font-extrabold text-xs h-9 rounded-xl shadow-md shadow-violet-500/5" disabled={!selectedOption || submitting} onClick={handleVote}>
-              {submitting ? "Submitting..." : "ðŸ—³ï¸ Cast Vote"}
+              {submitting ? "Submitting..." : "├░┼©ÔÇö┬│├»┬©┬Å Cast Vote"}
             </Button>
           ) : (
             <Button className="w-full bg-[#6366f1] text-white hover:bg-indigo-700 font-extrabold text-xs h-9 rounded-xl shadow-md shadow-violet-500/5" disabled={submitting} onClick={handleSubmitForm}>
-              {submitting ? "Submitting..." : "📋 Submit Answers"}
+              {submitting ? "Submitting..." : "­ƒôï Submit Answers"}
             </Button>
           )}
         </div>
@@ -4034,7 +3727,7 @@ function CreditsTab() {
   if (credits.length === 0) {
     return (
       <div className="text-center py-16 text-slate-400 font-bold border border-dashed border-[#eae8f5] rounded-2xl bg-white">
-        <div className="text-4xl mb-3">ðŸ›¡ï¸</div>
+        <div className="text-4xl mb-3">├░┼©ÔÇ║┬í├»┬©┬Å</div>
         <p className="text-xs">No team contributors registered in Arcadia Credits.</p>
       </div>
     );
@@ -4768,7 +4461,7 @@ function GachaTab() {
               {renderCosmeticPreview(previewItem, "sm")}
               {ownedIds.has(previewItem.id) && (
                 <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-black border border-slate-900">
-                  âœ“
+                  ├ó┼ôÔÇ£
                 </span>
               )}
             </div>
@@ -4943,11 +4636,11 @@ function GachaTab() {
           <div className="space-y-4 flex-1">
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black tracking-widest uppercase border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                âš¡ RUSH BOARD EVENT
+                ├ó┼í┬í RUSH BOARD EVENT
               </div>
               
               <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-rose-500/20 text-rose-400 text-[10px] font-black tracking-widest uppercase border border-rose-500/30">
-                â³ ENDS IN: 7d 6h
+                ├ó┬Å┬│ ENDS IN: 7d 6h
               </div>
 
               <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-black tracking-widest uppercase border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)] animate-pulse">
@@ -4977,7 +4670,7 @@ function GachaTab() {
             <div className="flex flex-col">
               <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest leading-none">Your Diamonds</span>
               <span className="text-2xl font-black text-amber-300 mt-1 flex items-center gap-1.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                {board.diamonds ?? 0} <span className="text-xl">💎</span>
+                {board.diamonds ?? 0} <span className="text-xl">­ƒÆÄ</span>
               </span>
               <span className="text-[9px] font-bold text-purple-200/60 uppercase tracking-wider mt-1">
                 Top up lewat Wallet
@@ -5122,7 +4815,7 @@ function GachaTab() {
             <div className="flex justify-between items-center mb-4">
               <div className="flex flex-col">
                 <span className="text-xs font-black text-purple-300 uppercase tracking-widest">SUMMON CONTROLS</span>
-                <span className="text-[10px] text-slate-400 font-semibold mt-0.5">Pilih jumlah spin — bulk spin aktifkan Rush Guarantee</span>
+                <span className="text-[10px] text-slate-400 font-semibold mt-0.5">Pilih jumlah spin ÔÇö bulk spin aktifkan Rush Guarantee</span>
               </div>
 
               <div className="flex items-center gap-2 text-[10px] text-purple-300 font-black">
@@ -5190,7 +4883,7 @@ function GachaTab() {
 
             <div className="hidden p-4 border-b border-purple-500/10 bg-black/40 flex items-center justify-between relative z-10">
               <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest">
-                â– COSMETIC PREVIEW SHOWCASE
+                ├ó┬ØÔÇô COSMETIC PREVIEW SHOWCASE
               </span>
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
@@ -5361,7 +5054,7 @@ function GachaTab() {
                   <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 border-b-2 border-r-2 border-cyan-400" />
                   
                   <div className="absolute inset-0 m-auto w-6 h-6 rounded bg-[#0b0417] border border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.4)] flex items-center justify-center text-[10px] text-cyan-400 font-black animate-pulse">
-                    â–
+                    ├ó┬ØÔÇô
                   </div>
                 </div>
 
@@ -5392,7 +5085,7 @@ function GachaTab() {
         <DialogContent className="bg-[#120a22] border-purple-500/30 text-white max-w-md flex flex-col p-6 rounded-2xl shadow-2xl z-[100]">
           <DialogHeader className="pb-4 border-b border-purple-500/10">
             <DialogTitle className="text-base font-black text-white italic tracking-wide flex items-center gap-2">
-              📋 PREVIEW HADIAH
+              ­ƒôï PREVIEW HADIAH
             </DialogTitle>
             <p className="text-[10px] text-purple-300 font-bold uppercase tracking-wider mt-1">
               Board NO. 780608
@@ -5453,10 +5146,10 @@ function GachaTab() {
           <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-purple-500/15 bg-black/40">
             <div className="flex items-center justify-between">
               <DialogTitle className="text-lg font-black text-white italic tracking-wider flex items-center gap-2">
-                🌟 Spin Results ({spinCount}x)
+                ­ƒîƒ Spin Results ({spinCount}x)
               </DialogTitle>
               <span className="text-[10px] bg-purple-950 border border-purple-500/30 text-amber-300 px-3 py-1 rounded-full font-black">
-                Balance: {board.diamonds} 💎
+                Balance: {board.diamonds} ­ƒÆÄ
               </span>
             </div>
           </DialogHeader>
@@ -5515,12 +5208,12 @@ function GachaTab() {
                           <div className="py-1.5 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex flex-col items-center">
                             <span className="text-[8px] font-black text-amber-400 uppercase tracking-wider leading-none">Duplicate</span>
                             <span className="text-xs font-black text-amber-300 mt-1 flex items-center gap-0.5">
-                              +{res.refundAmount ?? 0} 💎 Refunded
+                              +{res.refundAmount ?? 0} ­ƒÆÄ Refunded
                             </span>
                           </div>
                         ) : (
                           <div className="py-1.5 px-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-[10px] font-black uppercase tracking-widest animate-bounce">
-                            🎉 UNLOCKED!
+                            ­ƒÄë UNLOCKED!
                           </div>
                         )}
                       </div>
@@ -5582,12 +5275,12 @@ function GachaTab() {
                           {isDup ? (
                             <div className="py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg text-center">
                               <span className="text-[7px] font-black text-amber-300 mt-1 flex items-center gap-0.5 justify-center leading-none">
-                                +{res.refundAmount ?? 0} 💎
+                                +{res.refundAmount ?? 0} ­ƒÆÄ
                               </span>
                             </div>
                           ) : (
                             <div className="py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-[8px] font-black tracking-wider text-center leading-none">
-                              🎉 UNLOCKED
+                              ­ƒÄë UNLOCKED
                             </div>
                           )}
                         </div>
@@ -5602,7 +5295,7 @@ function GachaTab() {
 
           <DialogFooter className="flex-shrink-0 px-6 py-4 border-t border-purple-500/15 bg-black/40 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
-              <span>{shouldEquipWon ? "✓ Auto-Equipped highest tier item." : "Items stored in Inventory."}</span>
+              <span>{shouldEquipWon ? "Ô£ô Auto-Equipped highest tier item." : "Items stored in Inventory."}</span>
             </div>
 
             <div className="flex gap-3 w-full sm:w-auto shrink-0 justify-end">
@@ -5680,7 +5373,7 @@ function WalletTab() {
       headers: { "Content-Type": "application/json" },
     }),
     onSuccess: async (res: any) => {
-      toast({ title: "Tukar berhasil! 💎", description: `+${res.diamondsAdded} diamond (−${formatIdr(res.spentRp)})` });
+      toast({ title: "Tukar berhasil! ­ƒÆÄ", description: `+${res.diamondsAdded} diamond (ÔêÆ${formatIdr(res.spentRp)})` });
       setShowConvert(false);
       setConvertRupiah("");
       await refetchWallet();
@@ -5746,22 +5439,22 @@ function WalletTab() {
       {/* DIAMOND CARD */}
       <div className="rounded-2xl p-5 bg-white border border-[#eae8f5] shadow-sm flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-11 h-11 shrink-0 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-xl">💎</div>
+          <div className="w-11 h-11 shrink-0 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-xl">­ƒÆÄ</div>
           <div className="min-w-0">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Diamond</p>
-            <p className="text-xl font-black text-[#110e3d] leading-none mt-0.5">{Number(diamonds).toLocaleString("id-ID")} 💎</p>
+            <p className="text-xl font-black text-[#110e3d] leading-none mt-0.5">{Number(diamonds).toLocaleString("id-ID")} ­ƒÆÄ</p>
           </div>
         </div>
         <div className="text-right shrink-0">
           <p className="text-[10px] font-semibold text-slate-400">Rate tukar</p>
-          <p className="text-xs font-bold text-[#6366f1]">Rp {Number(packRupiah).toLocaleString("id-ID")} = {Number(packDiamonds).toLocaleString("id-ID")} 💎</p>
+          <p className="text-xs font-bold text-[#6366f1]">Rp {Number(packRupiah).toLocaleString("id-ID")} = {Number(packDiamonds).toLocaleString("id-ID")} ­ƒÆÄ</p>
         </div>
       </div>
 
       {/* TRANSACTION HISTORY */}
       <div className="bg-white border border-[#eae8f5] shadow-sm rounded-2xl p-5">
         <h3 className="text-sm font-extrabold text-[#110e3d] uppercase tracking-wider mb-4 pb-2 border-b border-[#eae8f5] flex items-center gap-2">
-          <span>📜</span> Transaction History
+          <span>­ƒô£</span> Transaction History
         </h3>
 
         {transactions.length === 0 ? (
@@ -5801,8 +5494,8 @@ function WalletTab() {
                       <td className="py-3 text-[#110e3d]">{t.description}</td>
                       <td className={`py-3 text-right font-black ${isCredit ? "text-emerald-500" : "text-red-500"}`}>
                         {t.currency === "rp"
-                          ? `${isCredit ? "+" : "−"}${formatIdr(Math.abs(t.amount))}`
-                          : `${isCredit ? "+" : ""}${t.amount} 💎`}
+                          ? `${isCredit ? "+" : "ÔêÆ"}${formatIdr(Math.abs(t.amount))}`
+                          : `${isCredit ? "+" : ""}${t.amount} ­ƒÆÄ`}
                       </td>
                     </tr>
                   );
@@ -5869,7 +5562,7 @@ function WalletTab() {
           </DialogHeader>
           <div className="space-y-4 mt-1">
             <div className="rounded-xl bg-violet-50 border border-violet-100 px-3 py-2 text-xs font-bold text-violet-700">
-              Rate: Rp {Number(packRupiah).toLocaleString("id-ID")} = {Number(packDiamonds).toLocaleString("id-ID")} 💎
+              Rate: Rp {Number(packRupiah).toLocaleString("id-ID")} = {Number(packDiamonds).toLocaleString("id-ID")} ­ƒÆÄ
             </div>
             <div>
               <Label className="text-xs font-bold text-slate-600">Jumlah saldo yang ditukar (Rp)</Label>
@@ -5885,7 +5578,7 @@ function WalletTab() {
             </div>
             <div className="rounded-xl bg-slate-50 border border-[#eae8f5] px-3 py-2.5 flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500">Kamu akan dapat</span>
-              <span className="text-lg font-black text-[#110e3d]">{previewDiamonds.toLocaleString("id-ID")} 💎</span>
+              <span className="text-lg font-black text-[#110e3d]">{previewDiamonds.toLocaleString("id-ID")} ­ƒÆÄ</span>
             </div>
           </div>
           <DialogFooter className="mt-2">
@@ -6036,7 +5729,7 @@ function MembershipTab() {
             onClick={() => setLocation("/member?tab=premium")}
             className="inline-flex shrink-0 items-center justify-center rounded-xl bg-white text-purple-700 hover:bg-purple-50 px-5 py-2.5 text-xs font-black transition-all shadow-sm"
           >
-            Buka Premium Area →
+            Buka Premium Area ÔåÆ
           </button>
         </div>
       </div>
@@ -6223,7 +5916,7 @@ function MembershipTab() {
                         {pkg.description && (
                           <p className="text-[10px] font-semibold text-slate-400 mt-0.5 truncate">{pkg.description}</p>
                         )}
-                        <p className="text-[10px] font-semibold text-slate-400">{pkg.boostCount} boost · {pkg.durationDays} hari</p>
+                        <p className="text-[10px] font-semibold text-slate-400">{pkg.boostCount} boost ┬À {pkg.durationDays} hari</p>
                       </div>
                     </div>
                     <Button
@@ -6239,7 +5932,7 @@ function MembershipTab() {
                     >
                       {paymentRequestMutation.isPending ? (
                         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin inline-block" />Loading</span>
-                      ) : "Beli →"}
+                      ) : "Beli ÔåÆ"}
                     </Button>
                   </div>
                 ))}
@@ -6516,7 +6209,7 @@ function MusicTab() {
   const visualDuration = duration || 100;
   const playlistCover = displayTracks[0]?.cover || currentTrack?.cover || "/village.png";
   const playlistTitle = searchQuery.trim() ? `Hasil Pencarian "${searchQuery}"` : activePlaylist;
-  const playlistSubtext = searchQuery.trim() ? `Ditemukan ${displayTracks.length} lagu di Spotify` : `Spotify Library · ${displayTracks.length} lagu`;
+  const playlistSubtext = searchQuery.trim() ? `Ditemukan ${displayTracks.length} lagu di Spotify` : `Spotify Library ┬À ${displayTracks.length} lagu`;
 
   const fmt = (s: number) => { if (!s || isNaN(s)) return "0:00"; return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; };
   const parseDuration = (value: any) => {
@@ -6877,7 +6570,7 @@ function MusicTab() {
     <div className="flex flex-col rounded-3xl overflow-hidden bg-[#121212] border border-[#282828] text-slate-300 font-sans shadow-2xl relative">
       <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onDurationChange={handleLoadedMetadata} onLoadStart={handleAudioWaiting} onWaiting={handleAudioWaiting} onPlaying={handleAudioPlaying} onCanPlay={handleCanPlay} onError={handleAudioError} onEnded={handleEnded} src={audioSrc} />
 
-      {/* Hidden YouTube fallback iframe — used for non-Spotify tracks when audio has no playable src */}
+      {/* Hidden YouTube fallback iframe ÔÇö used for non-Spotify tracks when audio has no playable src */}
       {ytVideoId && (
         <iframe
           ref={ytIframeRef}
@@ -6973,7 +6666,7 @@ function MusicTab() {
                       <img src={track.cover || "/village.png"} alt="" className="w-10 h-10 rounded object-cover bg-black shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
                       <div className="flex-1 min-w-0">
                         <span className="text-white text-xs font-bold block truncate">{track.title}</span>
-                        <span className="text-slate-500 text-[10px] font-bold block truncate">{track.artist} · {track.album} · {track.duration}</span>
+                        <span className="text-slate-500 text-[10px] font-bold block truncate">{track.artist} ┬À {track.album} ┬À {track.duration}</span>
                       </div>
                       <button
                         onClick={() => handleSpotifyDownload(track)}
@@ -7000,7 +6693,7 @@ function MusicTab() {
                   <img src={track.cover} alt="" className="w-8 h-8 rounded object-cover bg-black shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
                   <div className="flex-1 min-w-0">
                     <span className="text-white text-xs font-bold block truncate">{track.title}</span>
-                    <span className="text-slate-500 text-[10px] font-bold">{track.artist} · {track.type} · {track.duration}</span>
+                    <span className="text-slate-500 text-[10px] font-bold">{track.artist} ┬À {track.type} ┬À {track.duration}</span>
                   </div>
                   <button onClick={() => handleAdminDelete(track)} className="text-red-500 hover:text-red-300 text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0 px-2 py-1 rounded hover:bg-red-500/10">
                     Hapus
@@ -7047,7 +6740,7 @@ function MusicTab() {
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input type="text" placeholder="Cari lagu, artis, atau album..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-10 py-2 rounded-full bg-[#242424] text-white text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-white/20 transition-all placeholder-slate-500 border border-transparent focus:border-white/10" />
-              {searchQuery && <button onClick={() => setSearchQuery("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold cursor-pointer">✕</button>}
+              {searchQuery && <button onClick={() => setSearchQuery("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold cursor-pointer">Ô£ò</button>}
             </div>
             {isSearching && <span className="text-[10px] text-[#1db954] font-bold animate-pulse shrink-0">Mencari...</span>}
             {!isSearching && searchQuery && <span className="hidden sm:flex text-[9px] font-black text-[#1db954] bg-[#1db954]/10 border border-[#1db954]/30 px-2 py-0.5 rounded-full shrink-0 items-center gap-1"><Activity className="w-2.5 h-2.5" /> Spotify API</span>}
@@ -7116,7 +6809,7 @@ function MusicTab() {
                               <img src={track.cover} alt="" className="w-9 h-9 rounded object-cover shadow-sm bg-black shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
                               <div className="min-w-0">
                                 <span className={`block truncate text-sm transition-colors ${isCur ? "text-[#1db954] font-black" : "text-white"}`}>{track.title}</span>
-                                <span className="text-[10px] text-slate-500 font-bold block mt-0.5">{track.artist}{track.album ? ` · ${track.album}` : ""}</span>
+                                <span className="text-[10px] text-slate-500 font-bold block mt-0.5">{track.artist}{track.album ? ` ┬À ${track.album}` : ""}</span>
                               </div>
                             </div>
                           </td>
@@ -7188,7 +6881,7 @@ function MusicTab() {
         <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-initial md:max-w-[30%]">
           <img src={currentTrack?.cover || "/village.png"} alt="" className="w-10 h-10 sm:w-13 sm:h-13 rounded-lg object-cover bg-black shadow-lg shrink-0" onError={e => { (e.target as HTMLImageElement).src = "/village.png"; }} />
           <div className="min-w-0">
-            <span className="text-white text-xs sm:text-[13px] font-bold tracking-wide truncate block">{currentTrack?.title || "—"}</span>
+            <span className="text-white text-xs sm:text-[13px] font-bold tracking-wide truncate block">{currentTrack?.title || "ÔÇö"}</span>
             <span className="text-[9px] sm:text-[10px] text-slate-400 font-semibold truncate block mt-0.5">
               {isStreamLoading ? (
                 <span className="text-amber-400 animate-pulse flex items-center gap-1">

@@ -29,6 +29,7 @@ import blocksRouter from "./blocks";
 import specialGachaRouter from "./specialGacha";
 import businessRouter from "./business";
 import mangaRouter from "./manga";
+import calendarEventsRouter from "./calendarEvents";
 
 const router: IRouter = Router();
 
@@ -62,5 +63,6 @@ router.use(blocksRouter);
 router.use(specialGachaRouter);
 router.use(businessRouter);
 router.use(mangaRouter);
+router.use(calendarEventsRouter);
 
 export default router;

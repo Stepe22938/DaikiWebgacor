@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, Component, ErrorInfo, ReactNode } from "react";
 import { Sparkles } from "lucide-react";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk, useAuth } from "@clerk/react";
 import { MultisessionAppSupport } from "@clerk/react/internal";
@@ -1036,6 +1036,85 @@ function ClerkProviderWithRoutes() {
   );
 }
 
+interface ClerkErrorBoundaryProps {
+  children?: ReactNode;
+}
+
+interface ClerkErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ClerkErrorBoundary extends Component<ClerkErrorBoundaryProps, ClerkErrorBoundaryState> {
+  public state: ClerkErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
+
+  public static getDerivedStateFromError(error: Error): ClerkErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Clerk script loading error:", error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      const errMsg = this.state.error?.message || "";
+      const isClerkError = errMsg.toLowerCase().includes("clerk") || 
+                           errMsg.toLowerCase().includes("failed_to_load_clerk") ||
+                           String(this.state.error).toLowerCase().includes("clerk");
+
+      if (isClerkError) {
+        return (
+          <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+            <div className="max-w-md w-full bg-white rounded-3xl border border-[#eae8f5] p-6 md:p-8 shadow-xl shadow-slate-200/40 text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto text-2xl">
+                ⚠️
+              </div>
+              <h2 className="text-lg font-black text-[#110e3d]">Authentication Connection Error</h2>
+              <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+                We could not connect to the Clerk authentication server. This usually happens when you are offline or have DNS restrictions blocking Clerk's server domain.
+              </p>
+              <div className="pt-2">
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl text-xs font-bold transition-all shadow-md shadow-violet-500/10"
+                >
+                  Retry Connection
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-3xl border border-[#eae8f5] p-6 md:p-8 shadow-xl shadow-slate-200/40 text-center space-y-4">
+            <h2 className="text-lg font-black text-[#110e3d]">Something went wrong</h2>
+            <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+              {errMsg || "An unexpected error occurred."}
+            </p>
+            <div className="pt-2">
+              <button 
+                onClick={() => window.location.reload()}
+                className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl text-xs font-bold transition-all"
+              >
+                Reload Page
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+
 function App() {
   const hasNoKey = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   const isReplitClerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.includes("Y2xlcmsubG9jYWx0aG9zdCQ");
@@ -1047,7 +1126,9 @@ function App() {
 
   return (
     <WouterRouter base={basePath}>
-      <ClerkProviderWithRoutes />
+      <ClerkErrorBoundary>
+        <ClerkProviderWithRoutes />
+      </ClerkErrorBoundary>
       <Toaster />
     </WouterRouter>
   );

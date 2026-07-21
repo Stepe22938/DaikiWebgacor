@@ -37,15 +37,12 @@ export interface ConversationSummary {
   otherUserRole?: string | null;
   otherUserIsVerified?: boolean;
   /** @nullable */
-  otherUserIsBusinessVerified?: boolean | null;
-  /** @nullable */
-  otherUserIsSeller?: boolean | null;
-  /** @nullable */
   otherUserEquippedBorder?: string | null;
   /** @nullable */
-  otherUserEquippedBackground?: string | null;
-  /** @nullable */
   otherUserYoutubeLiveUrl?: string | null;
+  /** @nullable */
+  otherUserEquippedBackground?: string | null;
+  otherUserIsBusinessVerified?: boolean;
   /** @nullable */
   lastMessageContent?: string | null;
   /** @nullable */
@@ -55,8 +52,4 @@ export interface ConversationSummary {
   createdAt: string;
   /** @nullable */
   inviteCode?: string | null;
-  /** @nullable */
-  pinnedAt?: string | null;
-  /** @nullable */
-  archivedAt?: string | null;
 }

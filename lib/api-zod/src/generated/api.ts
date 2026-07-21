@@ -586,6 +586,99 @@ export const GetMyFollowersResponse = zod.array(GetMyFollowersResponseItem)
 
 
 /**
+ * @summary List all calendar events
+ */
+export const ListCalendarEventsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "eventDate": zod.string(),
+  "startTime": zod.string(),
+  "endTime": zod.string(),
+  "color": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+export const ListCalendarEventsResponse = zod.array(ListCalendarEventsResponseItem)
+
+
+/**
+ * @summary Create a calendar event (admin only)
+ */
+
+
+
+export const CreateCalendarEventBody = zod.object({
+  "title": zod.string().min(1),
+  "description": zod.string().optional(),
+  "eventDate": zod.string(),
+  "startTime": zod.string(),
+  "endTime": zod.string(),
+  "color": zod.string().optional()
+})
+
+
+/**
+ * @summary Get a calendar event
+ */
+export const GetCalendarEventParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCalendarEventResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "eventDate": zod.string(),
+  "startTime": zod.string(),
+  "endTime": zod.string(),
+  "color": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Update a calendar event (admin only)
+ */
+export const UpdateCalendarEventParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const UpdateCalendarEventBody = zod.object({
+  "title": zod.string().min(1).optional(),
+  "description": zod.string().optional(),
+  "eventDate": zod.string().optional(),
+  "startTime": zod.string().optional(),
+  "endTime": zod.string().optional(),
+  "color": zod.string().optional()
+})
+
+export const UpdateCalendarEventResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "eventDate": zod.string(),
+  "startTime": zod.string(),
+  "endTime": zod.string(),
+  "color": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Delete a calendar event (admin only)
+ */
+export const DeleteCalendarEventParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
  * @summary List all server developments
  */
 export const ListDevelopmentsResponseItem = zod.object({
@@ -821,6 +914,9 @@ export const AdminListConversationsResponseItem = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
+  "otherUserEquippedBackground": zod.string().nullish(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -861,6 +957,9 @@ export const AdminUpdateConversationResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
+  "otherUserEquippedBackground": zod.string().nullish(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -986,18 +1085,15 @@ export const ListConversationsResponseItem = zod.object({
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
-  "otherUserIsBusinessVerified": zod.boolean().nullish(),
-  "otherUserIsSeller": zod.boolean().nullish(),
   "otherUserEquippedBorder": zod.string().nullish(),
-  "otherUserEquippedBackground": zod.string().nullish(),
   "otherUserYoutubeLiveUrl": zod.string().nullish(),
+  "otherUserEquippedBackground": zod.string().nullish(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
   "createdAt": zod.string(),
-  "inviteCode": zod.string().nullish(),
-  "pinnedAt": zod.string().nullish(),
-  "archivedAt": zod.string().nullish()
+  "inviteCode": zod.string().nullish()
 })
 export const ListConversationsResponse = zod.array(ListConversationsResponseItem)
 
@@ -1041,6 +1137,9 @@ export const CreateOrGetDmResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
+  "otherUserEquippedBackground": zod.string().nullish(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
@@ -1074,18 +1173,15 @@ export const GetConversationResponse = zod.object({
   "otherAvatarUrl": zod.string().nullish(),
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
-  "otherUserIsBusinessVerified": zod.boolean().nullish(),
-  "otherUserIsSeller": zod.boolean().nullish(),
   "otherUserEquippedBorder": zod.string().nullish(),
-  "otherUserEquippedBackground": zod.string().nullish(),
   "otherUserYoutubeLiveUrl": zod.string().nullish(),
+  "otherUserEquippedBackground": zod.string().nullish(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),
   "createdAt": zod.string(),
-  "inviteCode": zod.string().nullish(),
-  "pinnedAt": zod.string().nullish(),
-  "archivedAt": zod.string().nullish()
+  "inviteCode": zod.string().nullish()
 })
 
 
@@ -1130,6 +1226,9 @@ export const UpdateGroupResponse = zod.object({
   "otherUserRole": zod.string().nullish(),
   "otherUserIsVerified": zod.boolean().optional(),
   "otherUserEquippedBorder": zod.string().nullish(),
+  "otherUserYoutubeLiveUrl": zod.string().nullish(),
+  "otherUserEquippedBackground": zod.string().nullish(),
+  "otherUserIsBusinessVerified": zod.boolean().optional(),
   "lastMessageContent": zod.string().nullish(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessageSenderId": zod.number().nullish(),

@@ -473,6 +473,93 @@ paths:
                 items:
                   $ref: "#/components/schemas/PublicUser"
 
+  /calendar-events:
+    get:
+      operationId: listCalendarEvents
+      tags: [calendar-events]
+      summary: List all calendar events
+      responses:
+        "200":
+          description: List of calendar events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalendarEvent"
+    post:
+      operationId: createCalendarEvent
+      tags: [calendar-events]
+      summary: Create a calendar event (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalendarEventInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+
+  /calendar-events/{id}:
+    get:
+      operationId: getCalendarEvent
+      tags: [calendar-events]
+      summary: Get a calendar event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Calendar event item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+    patch:
+      operationId: updateCalendarEvent
+      tags: [calendar-events]
+      summary: Update a calendar event (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalendarEventUpdate"
+      responses:
+        "200":
+          description: Updated calendar event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+    delete:
+      operationId: deleteCalendarEvent
+      tags: [calendar-events]
+      summary: Delete a calendar event (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
   /developments:
     get:
       operationId: listDevelopments
@@ -2186,6 +2273,64 @@ components:
         followingId:
           type: integer
 
+    CalendarEvent:
+      type: object
+      required: [id, title, eventDate, startTime, endTime, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        eventDate:
+          type: string
+        startTime:
+          type: string
+        endTime:
+          type: string
+        color:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    CalendarEventInput:
+      type: object
+      required: [title, eventDate, startTime, endTime]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        eventDate:
+          type: string
+        startTime:
+          type: string
+        endTime:
+          type: string
+        color:
+          type: string
+
+    CalendarEventUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        eventDate:
+          type: string
+        startTime:
+          type: string
+        endTime:
+          type: string
+        color:
+          type: string
+
     Development:
       type: object
       required: [id, title, description, category, status, order, createdAt]
@@ -2383,6 +2528,12 @@ components:
           type: boolean
         otherUserEquippedBorder:
           type: ["string", "null"]
+        otherUserYoutubeLiveUrl:
+          type: ["string", "null"]
+        otherUserEquippedBackground:
+          type: ["string", "null"]
+        otherUserIsBusinessVerified:
+          type: boolean
         lastMessageContent:
           type: ["string", "null"]
         lastMessageAt:

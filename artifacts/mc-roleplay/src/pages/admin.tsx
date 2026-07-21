@@ -46,6 +46,10 @@ import {
   useAdminListConversations,
   useAdminUpdateConversation,
   useAdminDeleteConversation,
+  useListCalendarEvents,
+  useCreateCalendarEvent,
+  useUpdateCalendarEvent,
+  useDeleteCalendarEvent,
 } from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -98,6 +102,7 @@ import {
   Video,
   ShoppingBag,
   Ban,
+  Calendar,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -167,7 +172,10 @@ interface ManualGrantForm {
   applyBoostCount: string;
 }
 
+interface CalendarEventForm { title: string; description: string; eventDate: string; startTime: string; endTime: string; color: string; }
+
 const emptyDev: DevForm = { title: "", description: "", category: "", status: "planned", progress: "", order: "" };
+const emptyCalendarEvent: CalendarEventForm = { title: "", description: "", eventDate: "", startTime: "10:00", endTime: "11:00", color: "violet" };
 const emptyAnn: AnnForm = { title: "", content: "", type: "general", pinned: false, imageUrl: "" };
 const emptyCredit: CreditForm = {
   name: "",
@@ -250,6 +258,7 @@ export default function Admin() {
   const isDevWebsite = role === "dev_website";
   const canQueryAdmin = role === "admin" || isDevWebsite;
   const { data: devs, isLoading: devsLoading } = useListDevelopments();
+  const { data: calendarEvents = [], isLoading: calendarEventsLoading } = useListCalendarEvents();
   const { data: anns, isLoading: annsLoading } = useListAnnouncements();
   const { data: users, isLoading: usersLoading } = useListUsers({
     query: { enabled: canQueryAdmin } as any,
@@ -281,6 +290,9 @@ export default function Admin() {
   const createAnn = useCreateAnnouncement();
   const updateAnn = useUpdateAnnouncement();
   const deleteAnn = useDeleteAnnouncement();
+  const createCalendarEvent = useCreateCalendarEvent();
+  const updateCalendarEvent = useUpdateCalendarEvent();
+  const deleteCalendarEvent = useDeleteCalendarEvent();
   const updateRole = useUpdateUserRole();
   const adminFollow = useAdminCreateFollow();
   const bulkFollow = useAdminBulkCreateFollowers();
@@ -573,6 +585,12 @@ export default function Admin() {
     }
 
   }, [leafletLoaded, users, currentUserGeo, user, clerkUser]);
+
+  // Calendar events state
+  const [calendarForm, setCalendarForm] = useState<CalendarEventForm>(emptyCalendarEvent);
+  const [editingCalendarEventId, setEditingCalendarEventId] = useState<number | null>(null);
+  const [calendarDialogOpen, setCalendarDialogOpen] = useState(false);
+  const [deletingCalendarEventId, setDeletingCalendarEventId] = useState<number | null>(null);
 
   // Dev state
   const [devForm, setDevForm] = useState<DevForm>(emptyDev);
@@ -1180,7 +1198,7 @@ export default function Admin() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["dashboard", "developments", "announcements", "tickets", "payments", "forms", "users", "credits", "settings", "gacha", "groups", "premium"].includes(tab)) {
+    if (tab && ["dashboard", "developments", "announcements", "tickets", "payments", "forms", "users", "credits", "settings", "gacha", "groups", "premium", "calendar"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [window.location.search]);
@@ -1202,6 +1220,58 @@ export default function Admin() {
   };
 
   const invalidate = (...keys: string[]) => keys.forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
+
+  // ── Calendar Events ──────────────────────────────────────────────────────────
+  const openNewCalendarEvent = () => { setCalendarForm(emptyCalendarEvent); setEditingCalendarEventId(null); setCalendarDialogOpen(true); };
+  const openEditCalendarEvent = (ev: any) => {
+    setCalendarForm({
+      title: ev.title,
+      description: ev.description || "",
+      eventDate: ev.eventDate,
+      startTime: ev.startTime,
+      endTime: ev.endTime,
+      color: ev.color || "violet"
+    });
+    setEditingCalendarEventId(ev.id);
+    setCalendarDialogOpen(true);
+  };
+  const handleSaveCalendarEvent = async () => {
+    if (!calendarForm.title.trim()) { toast({ title: "Error", description: "Title is required.", variant: "destructive" }); return; }
+    if (!calendarForm.eventDate) { toast({ title: "Error", description: "Date is required.", variant: "destructive" }); return; }
+    if (!calendarForm.startTime) { toast({ title: "Error", description: "Start time is required.", variant: "destructive" }); return; }
+    if (!calendarForm.endTime) { toast({ title: "Error", description: "End time is required.", variant: "destructive" }); return; }
+    try {
+      const payload = {
+        title: calendarForm.title.trim(),
+        description: calendarForm.description.trim() || undefined,
+        eventDate: calendarForm.eventDate,
+        startTime: calendarForm.startTime,
+        endTime: calendarForm.endTime,
+        color: calendarForm.color
+      };
+      if (editingCalendarEventId !== null) {
+        await updateCalendarEvent.mutateAsync({ id: editingCalendarEventId, data: payload });
+        toast({ title: "Updated", description: "Calendar event updated." });
+      } else {
+        await createCalendarEvent.mutateAsync({ data: payload });
+        toast({ title: "Created", description: "Calendar event created." });
+      }
+      setCalendarDialogOpen(false);
+      invalidate("/api/calendar-events");
+    } catch {
+      toast({ title: "Error", description: "Failed to save event.", variant: "destructive" });
+    }
+  };
+  const handleDeleteCalendarEvent = async (id: number) => {
+    try {
+      await deleteCalendarEvent.mutateAsync({ id });
+      toast({ title: "Deleted" });
+      invalidate("/api/calendar-events");
+      setDeletingCalendarEventId(null);
+    } catch {
+      toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
+    }
+  };
 
   // ── Developments ──────────────────────────────────────────────────────────────
   const openNewDev = () => { setDevForm(emptyDev); setEditingDevId(null); setDevDialogOpen(true); };
@@ -1621,6 +1691,18 @@ export default function Admin() {
                     }`}
                   >
                     <Hammer className="w-4.5 h-4.5" /> The Forge
+                  </button>
+                )}
+                {canManageAdmin && (
+                  <button
+                    onClick={() => handleTabChange("calendar")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === "calendar"
+                        ? "bg-violet-50 text-[#6366f1]"
+                        : "text-slate-500 hover:bg-slate-55 hover:text-slate-900"
+                    }`}
+                  >
+                    <Calendar className="w-4.5 h-4.5" /> Calendar
                   </button>
                 )}
                 {canManageAnnouncements && (
@@ -2456,6 +2538,55 @@ export default function Admin() {
                       <div className="flex gap-2 pt-2 border-t border-slate-50">
                         <Button size="sm" variant="outline" className="flex-1 border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-xs font-bold rounded-xl h-8" onClick={() => openEditDev(dev)}>Edit</Button>
                         <Button size="sm" variant="outline" className="border-red-100 text-red-500 hover:bg-red-55 hover:border-red-200 text-xs font-bold rounded-xl h-8" onClick={() => setDeletingDevId(dev.id)}>Delete</Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: CALENDAR */}
+          {activeTab === "calendar" && (
+            <div className="space-y-4 animate-fade-in">
+              <div className="flex justify-between items-center flex-wrap gap-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-[#110e3d]">Calendar Events</h2>
+                  <p className="text-xs text-slate-400 font-bold mt-1">Schedule realm events, slots, dates, and times.</p>
+                </div>
+                <Button onClick={openNewCalendarEvent} className="bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs shadow-md shadow-violet-500/10 px-5 py-2.5 h-10">+ New Event</Button>
+              </div>
+
+              {calendarEventsLoading ? <Skeleton className="h-48 w-full rounded-2xl" /> : calendarEvents?.length === 0 ? (
+                <div className="text-center py-16 text-slate-400 bg-white border border-[#eae8f5] rounded-2xl font-medium">No events scheduled yet.</div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-4">
+                  {calendarEvents?.map((ev: any) => (
+                    <Card key={ev.id} className="bg-white border-[#eae8f5] shadow-sm shadow-[#5a567a]/3 rounded-2xl hover:border-violet-300 transition-all p-5 space-y-4 flex flex-col justify-between">
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <span className="text-sm font-bold text-[#110e3d] line-clamp-1">{ev.title}</span>
+                          <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full shrink-0 border ${
+                            ev.color === "emerald" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                            ev.color === "amber" ? "bg-amber-50 text-amber-700 border-amber-100" :
+                            ev.color === "rose" ? "bg-rose-50 text-rose-700 border-rose-100" :
+                            ev.color === "indigo" ? "bg-indigo-50 text-indigo-700 border-indigo-100" :
+                            "bg-violet-50 text-violet-700 border-violet-100"
+                          }`}>{ev.color || "violet"}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-extrabold">
+                          <span>📅 {ev.eventDate}</span>
+                          <span>•</span>
+                          <span>⏰ {ev.startTime} - {ev.endTime}</span>
+                        </div>
+                        {ev.description && (
+                          <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed font-medium">{ev.description}</p>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2 pt-2 border-t border-slate-50">
+                        <Button size="sm" variant="outline" className="flex-1 border-[#eae8f5] text-slate-600 hover:bg-slate-55 text-xs font-bold rounded-xl h-8" onClick={() => openEditCalendarEvent(ev)}>Edit</Button>
+                        <Button size="sm" variant="outline" className="border-red-100 text-red-500 hover:bg-red-55 hover:border-red-200 text-xs font-bold rounded-xl h-8" onClick={() => setDeletingCalendarEventId(ev.id)}>Delete</Button>
                       </div>
                     </Card>
                   ))}
@@ -4555,6 +4686,127 @@ export default function Admin() {
       </div>
 
       {/* ── Dialog Modals ── */}
+      {/* Calendar Event Dialog */}
+      <Dialog open={calendarDialogOpen} onOpenChange={setCalendarDialogOpen}>
+        <DialogContent className="bg-white border-[#eae8f5] max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-[#110e3d] font-extrabold text-base">
+              {editingCalendarEventId ? "Edit Calendar Event" : "New Calendar Event"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Event Title *</Label>
+              <Input
+                value={calendarForm.title}
+                onChange={(e) => setCalendarForm({ ...calendarForm, title: e.target.value })}
+                placeholder="Event name (e.g. Guild Wars)"
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Description</Label>
+              <Textarea
+                value={calendarForm.description}
+                onChange={(e) => setCalendarForm({ ...calendarForm, description: e.target.value })}
+                placeholder="Provide event details..."
+                className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs resize-none text-slate-800"
+                rows={3}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">Date *</Label>
+                <Input
+                  type="date"
+                  value={calendarForm.eventDate}
+                  onChange={(e) => setCalendarForm({ ...calendarForm, eventDate: e.target.value })}
+                  className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">Start Time *</Label>
+                <Input
+                  type="time"
+                  value={calendarForm.startTime}
+                  onChange={(e) => setCalendarForm({ ...calendarForm, startTime: e.target.value })}
+                  className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">End Time *</Label>
+                <Input
+                  type="time"
+                  value={calendarForm.endTime}
+                  onChange={(e) => setCalendarForm({ ...calendarForm, endTime: e.target.value })}
+                  className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-slate-800"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-600">Accent Color</Label>
+              <Select
+                value={calendarForm.color}
+                onValueChange={(v) => setCalendarForm({ ...calendarForm, color: v })}
+              >
+                <SelectTrigger className="bg-slate-50 border-[#eae8f5] rounded-xl text-xs h-9 text-[#1e1b4b] font-bold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-[#eae8f5] rounded-xl">
+                  <SelectItem value="violet">Violet</SelectItem>
+                  <SelectItem value="indigo">Indigo</SelectItem>
+                  <SelectItem value="amber">Amber</SelectItem>
+                  <SelectItem value="emerald">Emerald</SelectItem>
+                  <SelectItem value="rose">Rose</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setCalendarDialogOpen(false)}
+              className="border-[#eae8f5] hover:bg-slate-55 text-xs font-bold rounded-xl h-9"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveCalendarEvent}
+              className="bg-[#6366f1] text-white hover:bg-violet-600 rounded-xl font-bold text-xs shadow-md shadow-violet-500/10 h-9 px-5"
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Calendar Event Confirm */}
+      <Dialog open={deletingCalendarEventId !== null} onOpenChange={() => setDeletingCalendarEventId(null)}>
+        <DialogContent className="bg-white border-[#eae8f5] max-w-sm rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-[#110e3d] font-extrabold text-base">Delete Calendar Event</DialogTitle>
+          </DialogHeader>
+          <div className="py-2 text-xs font-semibold text-slate-500 leading-relaxed">
+            Are you sure you want to delete this event? This action cannot be undone.
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeletingCalendarEventId(null)}
+              className="border-[#eae8f5] hover:bg-slate-55 text-xs font-bold rounded-xl h-9"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => deletingCalendarEventId && handleDeleteCalendarEvent(deletingCalendarEventId)}
+              className="bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-xs shadow-md shadow-red-500/10 h-9 px-5"
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dev Dialog */}
       <Dialog open={devDialogOpen} onOpenChange={setDevDialogOpen}>
         <DialogContent className="bg-white border-[#eae8f5] max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl p-6">

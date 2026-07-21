@@ -228,6 +228,40 @@ export interface FollowResult {
   followingId: number;
 }
 
+export interface CalendarEvent {
+  id: number;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+  /** @nullable */
+  color?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CalendarEventInput {
+  /** @minLength 1 */
+  title: string;
+  description?: string;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+  color?: string;
+}
+
+export interface CalendarEventUpdate {
+  /** @minLength 1 */
+  title?: string;
+  description?: string;
+  eventDate?: string;
+  startTime?: string;
+  endTime?: string;
+  color?: string;
+}
+
 export type DevelopmentStatus = typeof DevelopmentStatus[keyof typeof DevelopmentStatus];
 
 
@@ -433,15 +467,12 @@ export interface ConversationSummary {
   otherUserRole?: string | null;
   otherUserIsVerified?: boolean;
   /** @nullable */
-  otherUserIsBusinessVerified?: boolean | null;
-  /** @nullable */
-  otherUserIsSeller?: boolean | null;
-  /** @nullable */
   otherUserEquippedBorder?: string | null;
   /** @nullable */
-  otherUserEquippedBackground?: string | null;
-  /** @nullable */
   otherUserYoutubeLiveUrl?: string | null;
+  /** @nullable */
+  otherUserEquippedBackground?: string | null;
+  otherUserIsBusinessVerified?: boolean;
   /** @nullable */
   lastMessageContent?: string | null;
   /** @nullable */
@@ -451,10 +482,6 @@ export interface ConversationSummary {
   createdAt: string;
   /** @nullable */
   inviteCode?: string | null;
-  /** @nullable */
-  pinnedAt?: string | null;
-  /** @nullable */
-  archivedAt?: string | null;
 }
 
 export interface MessageReactionSummary {
