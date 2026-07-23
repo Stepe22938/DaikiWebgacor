@@ -79,6 +79,10 @@ import {
   Pencil,
   ShoppingBag,
   BookOpen,
+  TrendingUp,
+  AlertCircle,
+  ChevronRight,
+  Radio,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -1130,10 +1134,27 @@ export default function Member() {
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [broadcastSearch, setBroadcastSearch] = useState("");
 
   // Calendar event query and state
   const { data: calendarEvents = [], isLoading: calendarEventsLoading } = useListCalendarEvents();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [calendarPreset, setCalendarPreset] = useState("Today");
+
+  const selectCalendarPreset = (preset: string) => {
+    const target = new Date();
+    if (preset === "Yesterday") target.setDate(target.getDate() - 1);
+    if (preset === "Tomorrow") target.setDate(target.getDate() + 1);
+    if (preset === "Next event") {
+      const today = format(new Date(), "yyyy-MM-dd");
+      const nextEvent = [...calendarEvents]
+        .filter((event: any) => event.eventDate >= today)
+        .sort((a: any, b: any) => a.eventDate.localeCompare(b.eventDate))[0];
+      if (nextEvent) target.setTime(new Date(`${nextEvent.eventDate}T00:00:00`).getTime());
+    }
+    setCalendarPreset(preset);
+    setSelectedDate(target);
+  };
 
   const sparklineData1 = [
     { name: "Mon", value: 12000 },
@@ -1495,6 +1516,13 @@ export default function Member() {
   const activeRoadmapCount = developments ? developments.filter(d => d.status === "planned" || d.status === "in_progress").length : 0;
   const myOpenTicketsCount = tickets ? tickets.filter(t => t.status === "open" || t.status === "in_progress").length : 0;
   const announcementsCount = announcements ? announcements.length : 0;
+  const normalizedBroadcastSearch = broadcastSearch.trim().toLocaleLowerCase();
+  const filteredAnnouncements = (announcements ?? []).filter((announcement) => {
+    if (!normalizedBroadcastSearch) return true;
+    return [announcement.title, announcement.content, announcement.authorName]
+      .filter(Boolean)
+      .some((value) => String(value).toLocaleLowerCase().includes(normalizedBroadcastSearch));
+  });
 
   // Chart data calculations
   const devStatusCounts = developments ? {
@@ -2079,7 +2107,7 @@ export default function Member() {
 
         {/* Content Container */}
         {activeTab !== "messages" && activeTab !== "manga" && (
-          <div className={`flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto space-y-6 overflow-y-auto ${activeTab === "seller" ? "bg-[#09090b]" : ""}`}>
+          <div className={`flex-1 p-5 md:p-8 xl:px-10 max-w-[1440px] w-full mx-auto space-y-6 overflow-y-auto ${activeTab === "seller" ? "bg-[#09090b]" : ""}`}>
             {/* Guilds (Friends) Tab */}
             {activeTab === "guilds" && (
               <FriendsTab embedded={true} />
@@ -2092,49 +2120,76 @@ export default function Member() {
 
             {/* Dashboard Tab Overview */}
             {activeTab === "dashboard" && (
-            <div className="space-y-6">
+            <div className="space-y-7">
               {/* Header section with Customize */}
-              <div className="flex justify-between items-center pb-2">
-                <h1 className="text-xl font-extrabold text-[#110e3d]">Realm Dashboard</h1>
-                <button className="text-xs font-bold text-slate-500 hover:text-slate-900 border border-[#eae8f5] bg-white px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition-all hover:bg-slate-50">
-                  <Sparkles className="w-3.5 h-3.5" /> Customize
-                </button>
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <div className="mb-2 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-emerald-600">
+                    <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" /></span>
+                    Realm online
+                  </div>
+                  <h1 className="text-2xl font-black tracking-tight text-[#17133f] md:text-[28px]">
+                    Good morning, {user?.firstName || user?.username || "Citizen"} <span className="inline-block origin-bottom-right animate-[wave_1.8s_ease-in-out_infinite]">👋</span>
+                  </h1>
+                  <p className="mt-1.5 text-xs font-semibold text-slate-400">Here&apos;s what&apos;s happening across Arcadia today.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="hidden rounded-xl border border-[#e8e6f1] bg-white px-3 py-2.5 text-[10px] font-bold text-slate-500 shadow-sm sm:inline-flex">
+                    {format(new Date(), "MMM d, yyyy")}
+                  </span>
+                  <button className="flex w-fit items-center gap-2 rounded-xl bg-[#6c4df6] px-4 py-2.5 text-xs font-extrabold text-white shadow-lg shadow-violet-200/70 transition-all hover:bg-[#5f40ea]">
+                    <Sparkles className="h-4 w-4" /> Customize
+                  </button>
+                </div>
               </div>
 
               {/* Total Metrics (Row of 3 cards) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border transition-all hover:shadow-md">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Card className="group relative overflow-hidden rounded-2xl border border-[#e8e6f1] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-lg hover:shadow-violet-100/50">
+                  <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600 transition-colors group-hover:bg-violet-600 group-hover:text-white"><Users className="h-5 w-5" /></div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Citizens</span>
                   <div className="flex items-baseline gap-2 mt-2">
                     <h3 className="text-2xl font-black text-[#110e3d]">{statsData?.totalMembers ?? 0}</h3>
-                    <span className="text-xs font-bold text-emerald-500 flex items-center">📈 10%</span>
+                    <span className="flex items-center gap-1 text-xs font-bold text-emerald-500"><TrendingUp className="h-3.5 w-3.5" /> 10%</span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-semibold block mt-1">registered members</span>
                 </Card>
 
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border transition-all hover:shadow-md">
+                <Card className="group relative overflow-hidden rounded-2xl border border-[#e8e6f1] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-pink-200 hover:shadow-lg hover:shadow-pink-100/50">
+                  <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-pink-50 text-pink-500 transition-colors group-hover:bg-pink-500 group-hover:text-white"><Hammer className="h-5 w-5" /></div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Forge Items</span>
                   <div className="flex items-baseline gap-2 mt-2">
                     <h3 className="text-2xl font-black text-[#110e3d]">{activeRoadmapCount}</h3>
-                    <span className="text-xs font-bold text-emerald-500 flex items-center">📈 12%</span>
+                    <span className="flex items-center gap-1 text-xs font-bold text-emerald-500"><TrendingUp className="h-3.5 w-3.5" /> 12%</span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-semibold block mt-1">active updates</span>
                 </Card>
 
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border transition-all hover:shadow-md">
+                <Card className="group relative overflow-hidden rounded-2xl border border-[#e8e6f1] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-amber-200 hover:shadow-lg hover:shadow-amber-100/50">
+                  <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-500 transition-colors group-hover:bg-amber-500 group-hover:text-white"><Ticket className="h-5 w-5" /></div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">My Active Tickets</span>
                   <div className="flex items-baseline gap-2 mt-2">
                     <h3 className="text-2xl font-black text-[#110e3d]">{myOpenTicketsCount}</h3>
-                    <span className="text-xs font-bold text-rose-500 flex items-center">⚠️ {myOpenTicketsCount > 0 ? "Pending" : "None"}</span>
+                    <span className={`flex items-center gap-1 text-xs font-bold ${myOpenTicketsCount > 0 ? "text-amber-500" : "text-emerald-500"}`}><AlertCircle className="h-3.5 w-3.5" /> {myOpenTicketsCount > 0 ? "Pending" : "All clear"}</span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-semibold block mt-1">help desk requests</span>
+                </Card>
+
+                <Card className="group relative overflow-hidden rounded-2xl border border-[#e8e6f1] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-lg hover:shadow-cyan-100/50">
+                  <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-cyan-500 transition-colors group-hover:bg-cyan-500 group-hover:text-white"><Megaphone className="h-5 w-5" /></div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Broadcasts</span>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <h3 className="text-2xl font-black text-[#110e3d]">{announcementsCount}</h3>
+                    <span className="flex items-center gap-1 text-xs font-bold text-cyan-500"><Radio className="h-3.5 w-3.5" /> Live</span>
+                  </div>
+                  <span className="mt-1 block text-[10px] font-semibold text-slate-400">published realm updates</span>
                 </Card>
               </div>
 
               {/* Sparkline line charts (Row of 3 cards) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
                 {/* Sparkline Card 1 */}
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border flex flex-col justify-between transition-all hover:shadow-md">
+                <Card className="flex flex-col justify-between rounded-2xl border border-[#e8e6f1] bg-white p-5 shadow-sm transition-all hover:border-blue-200 hover:shadow-lg hover:shadow-blue-100/40 lg:col-span-6">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Daily Citizen Activity</span>
                     <div className="flex items-center justify-between mt-1">
@@ -2142,7 +2197,7 @@ export default function Member() {
                       <span className="text-[10px] font-extrabold text-slate-800 bg-[#f4f3f8] px-2 py-0.5 rounded-lg">Realtime</span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] font-bold text-emerald-500">📈 Active</span>
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500"><Activity className="h-3 w-3" /> Active</span>
                       <span className="text-[9px] font-semibold text-slate-400">citizen traffic tracking</span>
                     </div>
                   </div>
@@ -2157,13 +2212,13 @@ export default function Member() {
                   </div>
 
                   <div className="flex justify-between items-center border-t border-[#eae8f5] pt-3 text-[10px] font-bold text-slate-400">
-                    <button onClick={() => setActiveTab("guilds")} className="hover:text-slate-850 flex items-center gap-1">View Members &gt;</button>
+                    <button onClick={() => setActiveTab("guilds")} className="flex items-center gap-1 hover:text-violet-600">View Members <ChevronRight className="h-3 w-3" /></button>
                     <button className="hover:text-slate-850">Live Sync</button>
                   </div>
                 </Card>
 
                 {/* Sparkline Card 2 */}
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border flex flex-col justify-between transition-all hover:shadow-md">
+                <Card className="flex flex-col justify-between rounded-2xl border border-[#e8e6f1] bg-white p-5 shadow-sm transition-all hover:border-pink-200 hover:shadow-lg hover:shadow-pink-100/40 lg:col-span-3">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Forge Project Status</span>
                     <div className="flex items-center justify-between mt-1">
@@ -2171,7 +2226,7 @@ export default function Member() {
                       <span className="text-[10px] font-extrabold text-slate-800 bg-[#f4f3f8] px-2 py-0.5 rounded-lg">Updates</span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] font-bold text-emerald-500">📈 Sync</span>
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500"><Activity className="h-3 w-3" /> Synced</span>
                       <span className="text-[9px] font-semibold text-slate-400">total roadmap milestones</span>
                     </div>
                   </div>
@@ -2186,13 +2241,13 @@ export default function Member() {
                   </div>
 
                   <div className="flex justify-between items-center border-t border-[#eae8f5] pt-3 text-[10px] font-bold text-slate-400">
-                    <button onClick={() => setActiveTab("developments")} className="hover:text-slate-850 flex items-center gap-1">View Forge &gt;</button>
+                    <button onClick={() => setActiveTab("developments")} className="flex items-center gap-1 hover:text-violet-600">View Forge <ChevronRight className="h-3 w-3" /></button>
                     <button className="hover:text-slate-850">Roadmap</button>
                   </div>
                 </Card>
 
                 {/* Sparkline Card 3 */}
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl p-6 border flex flex-col justify-between transition-all hover:shadow-md">
+                <Card className="flex flex-col justify-between rounded-2xl border border-[#e8e6f1] bg-white p-5 shadow-sm transition-all hover:border-violet-200 hover:shadow-lg hover:shadow-violet-100/40 lg:col-span-3">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Broadcast Updates</span>
                     <div className="flex items-center justify-between mt-1">
@@ -2200,7 +2255,7 @@ export default function Member() {
                       <span className="text-[10px] font-extrabold text-slate-800 bg-[#f4f3f8] px-2 py-0.5 rounded-lg">Crier</span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] font-bold text-emerald-500">📈 Pinned</span>
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-violet-500"><Megaphone className="h-3 w-3" /> Pinned</span>
                       <span className="text-[9px] font-semibold text-slate-400">broadcast distribution</span>
                     </div>
                   </div>
@@ -2215,7 +2270,7 @@ export default function Member() {
                   </div>
 
                   <div className="flex justify-between items-center border-t border-[#eae8f5] pt-3 text-[10px] font-bold text-slate-400">
-                    <button onClick={() => setActiveTab("announcements")} className="hover:text-slate-850 flex items-center gap-1">View Crier &gt;</button>
+                    <button onClick={() => setActiveTab("announcements")} className="flex items-center gap-1 hover:text-violet-600">View Crier <ChevronRight className="h-3 w-3" /></button>
                     <button className="hover:text-slate-850">Broadcasts</button>
                   </div>
                 </Card>
@@ -2223,26 +2278,46 @@ export default function Member() {
 
               {/* Announcements Table section */}
               <div className="space-y-4">
-                <h3 className="text-sm font-extrabold text-[#110e3d]">Broadcasts & Announcements</h3>
+                <div className="flex items-end justify-between">
+                  <div>
+                    <h3 className="text-base font-black text-[#110e3d]">Latest broadcasts</h3>
+                    <p className="mt-1 text-[11px] font-semibold text-slate-400">News and important updates from the Arcadia team.</p>
+                  </div>
+                  <button onClick={() => setActiveTab("announcements")} className="hidden items-center gap-1 text-[11px] font-extrabold text-violet-600 hover:text-violet-700 sm:flex">View all <ChevronRight className="h-3.5 w-3.5" /></button>
+                </div>
                 
-                <Card className="bg-white border-[#eae8f5] shadow-sm rounded-3xl border overflow-hidden">
-                  {/* Actions Header bar */}
-                  <div className="p-4 border-b border-[#eae8f5] flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+                <Card className="overflow-hidden rounded-2xl border border-[#e8e6f1] bg-white shadow-sm">
+                  {/* Broadcast toolbar */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eae8f5] bg-slate-50/50 p-4">
                     <div className="flex items-center gap-2">
-                      <input type="checkbox" className="rounded border-slate-350 w-4 h-4 text-[#6366f1] focus:ring-[#6366f1]" defaultChecked />
-                      <span className="text-[11px] font-bold text-slate-600">Select All</span>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-violet-600">
+                        <Radio className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-extrabold text-[#17133f]">Realm newsfeed</p>
+                        <p className="text-[9px] font-semibold text-slate-400">{announcementsCount} published updates</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button className="text-[11px] font-bold text-slate-600 bg-white border border-[#eae8f5] px-3 py-1.5 rounded-xl hover:bg-slate-50 shadow-sm flex items-center gap-1">
-                        🔍 Filters
-                      </button>
-                      <input type="text" placeholder="Search announcements..." className="text-[11px] bg-white border border-[#eae8f5] px-3 py-1.5 rounded-xl shadow-sm focus:outline-none focus:ring-1 focus:ring-[#6366f1] w-48" />
-                      <button className="text-[11px] font-bold text-slate-600 bg-white border border-[#eae8f5] px-3 py-1.5 rounded-xl hover:bg-slate-50 shadow-sm">
-                        ✏️ Edit
-                      </button>
-                      <button className="text-[11px] font-bold text-rose-600 bg-white border border-[#eae8f5] px-3 py-1.5 rounded-xl hover:bg-rose-50 shadow-sm">
-                        🗑️ Delete
-                      </button>
+                    <div className="relative w-full sm:w-64">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="search"
+                        value={broadcastSearch}
+                        onChange={(event) => setBroadcastSearch(event.target.value)}
+                        placeholder="Search broadcasts..."
+                        aria-label="Search broadcasts"
+                        className="w-full rounded-xl border border-[#eae8f5] bg-white py-2 pl-9 pr-9 text-[11px] font-semibold text-slate-700 caret-violet-600 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-violet-300 focus:ring-2 focus:ring-violet-100 [&::-webkit-search-cancel-button]:hidden"
+                      />
+                      {broadcastSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setBroadcastSearch("")}
+                          aria-label="Clear broadcast search"
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -2251,47 +2326,56 @@ export default function Member() {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="border-b border-[#eae8f5] text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                          <th className="p-4 w-12 text-center">Select</th>
-                          <th className="p-4">Announcement Title</th>
-                          <th className="p-4">Content Snippet</th>
+                          <th className="p-4">Broadcast</th>
+                          <th className="p-4">Summary</th>
                           <th className="p-4">Author</th>
-                          <th className="p-4">Posted Date</th>
+                          <th className="p-4 text-right">Published</th>
                         </tr>
                       </thead>
                       <tbody>
                         {announcementsLoading ? (
                           <tr>
-                            <td colSpan={5} className="p-8 text-center text-xs text-slate-400 font-semibold">
+                            <td colSpan={4} className="p-10 text-center text-xs text-slate-400 font-semibold">
                               Loading announcements...
                             </td>
                           </tr>
                         ) : announcements?.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="p-8 text-center text-xs text-slate-400 font-semibold">
+                            <td colSpan={4} className="p-10 text-center text-xs text-slate-400 font-semibold">
                               No announcements active in the realm.
                             </td>
                           </tr>
+                        ) : filteredAnnouncements.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="p-12 text-center">
+                              <Search className="mx-auto h-5 w-5 text-slate-300" />
+                              <p className="mt-2 text-xs font-extrabold text-[#17133f]">No matching broadcasts</p>
+                              <p className="mt-1 text-[10px] font-semibold text-slate-400">Try another title, keyword, or author.</p>
+                              <button onClick={() => setBroadcastSearch("")} className="mt-3 text-[10px] font-extrabold text-violet-600 hover:underline">Clear search</button>
+                            </td>
+                          </tr>
                         ) : (
-                          announcements?.slice(0, 8).map((ann, idx) => (
-                            <tr key={ann.id} className="border-b border-[#eae8f5] last:border-0 hover:bg-slate-50/50 transition-all text-xs font-semibold text-slate-700">
-                              <td className="p-4 text-center">
-                                <input type="checkbox" className="rounded border-slate-350 w-3.5 h-3.5 text-[#6366f1]" defaultChecked={idx === 0} />
-                              </td>
-                              <td className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => setSelectedAnnouncement(ann)}>
-                                <div className="w-8 h-8 rounded-full bg-violet-50 border border-violet-100 flex items-center justify-center text-[#6366f1] text-[12px] font-bold shadow-inner">
-                                  📢
+                          filteredAnnouncements.slice(0, 6).map((ann) => (
+                            <tr key={ann.id} onClick={() => setSelectedAnnouncement(ann)} className="group cursor-pointer border-b border-[#eae8f5] text-xs font-semibold text-slate-700 transition-all last:border-0 hover:bg-violet-50/35">
+                              <td className="p-4">
+                                <div className="flex items-center gap-3">
+                                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${ann.pinned ? "border-violet-200 bg-violet-100 text-violet-600" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+                                    <Megaphone className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="block max-w-[220px] truncate font-extrabold text-[#110e3d] transition-colors group-hover:text-violet-600">{ann.title}</span>
+                                    <span className={`mt-0.5 inline-flex rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${ann.pinned ? "bg-violet-100 text-violet-600" : "bg-slate-100 text-slate-500"}`}>{ann.pinned ? "Pinned" : "Update"}</span>
+                                  </div>
                                 </div>
-                                <div>
-                                  <span className="font-extrabold text-[#110e3d] block group-hover:text-[#6366f1] transition-colors">{ann.title}</span>
-                                  <span className="text-[9px] text-[#6366f1] block">{ann.pinned ? "📌 Pinned" : "Broadcast"}</span>
+                              </td>
+                              <td className="max-w-sm p-4 font-semibold text-slate-500"><p className="line-clamp-2 leading-relaxed">{ann.content}</p></td>
+                              <td className="p-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#17133f] text-white"><Shield className="h-3.5 w-3.5" /></div>
+                                  <span className="font-bold text-slate-600">{ann.authorName || "Arcadia Team"}</span>
                                 </div>
                               </td>
-                              <td className="p-4 text-slate-500 font-bold max-w-xs truncate">{ann.content}</td>
-                              <td className="p-4 text-slate-500 font-bold flex items-center gap-1.5">
-                                <span>🛡️</span>
-                                <span>{ann.authorName || "Administrator"}</span>
-                              </td>
-                              <td className="p-4 text-slate-400 font-bold">
+                              <td className="whitespace-nowrap p-4 text-right font-bold text-slate-400">
                                 {ann.createdAt ? format(new Date(ann.createdAt), 'd MMMM yyyy') : "N/A"}
                               </td>
                             </tr>
@@ -2301,19 +2385,18 @@ export default function Member() {
                     </table>
                   </div>
 
-                  {/* Footer pagination */}
-                  <div className="p-4 border-t border-[#eae8f5] flex items-center justify-between bg-slate-50/50">
-                    <div className="flex items-center gap-1">
-                      <button className="w-8 h-8 rounded-xl border border-[#eae8f5] bg-white flex items-center justify-center text-xs font-bold text-slate-400 hover:text-slate-800 hover:bg-slate-50 shadow-sm">&lt;</button>
-                      <button className="w-8 h-8 rounded-xl border border-[#eae8f5] bg-white flex items-center justify-center text-xs font-bold text-slate-850 hover:bg-slate-50 shadow-sm">1</button>
-                      <span className="px-2 text-slate-400 font-bold text-xs">...</span>
-                      <button className="w-8 h-8 rounded-xl border border-[#eae8f5] bg-white flex items-center justify-center text-xs font-bold text-slate-400 hover:text-slate-800 hover:bg-slate-50 shadow-sm">&gt;</button>
-                    </div>
+                  {/* Footer */}
+                  <div className="flex items-center justify-between border-t border-[#eae8f5] bg-slate-50/50 p-4">
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {normalizedBroadcastSearch
+                        ? `${filteredAnnouncements.length} result${filteredAnnouncements.length === 1 ? "" : "s"} for "${broadcastSearch.trim()}"`
+                        : `Showing ${Math.min(filteredAnnouncements.length, 6)} latest broadcasts`}
+                    </span>
                     <button
                       onClick={() => setActiveTab("announcements")}
-                      className="text-[11px] font-black text-slate-600 bg-white border border-[#eae8f5] px-4 py-2 rounded-xl hover:bg-slate-50 shadow-sm"
+                      className="flex items-center gap-1 rounded-xl border border-[#eae8f5] bg-white px-4 py-2 text-[11px] font-black text-violet-600 shadow-sm transition hover:border-violet-200 hover:bg-violet-50"
                     >
-                      View All Broadcasts
+                      View all broadcasts <ChevronRight className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </Card>
@@ -2323,49 +2406,94 @@ export default function Member() {
 
           {/* Calendar Tab Page (Separate Page) */}
           {activeTab === "calendar" && (
-            <div className="space-y-6 relative">
-              {/* Background decorative glowing circles (Bento/Spline style) */}
-              <div className="absolute -top-10 -left-10 w-96 h-96 bg-violet-500/10 rounded-full blur-[130px] pointer-events-none" />
-              <div className="absolute top-[30%] right-[-10%] w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[150px] pointer-events-none" />
-
-              <div className="flex flex-col gap-1">
-                <h1 className="text-xl font-black text-[#110e3d] flex items-center gap-2">
-                  <CalendarIcon className="w-5.5 h-5.5 text-[#6366f1]" /> Event Calendar & Schedules
-                </h1>
-                <p className="text-xs text-slate-400 font-bold">Keep track of community events, schedules, and active timeslots</p>
+            <div className="relative space-y-5">
+              <div className="relative overflow-hidden rounded-2xl border border-violet-100 bg-gradient-to-r from-violet-50 via-white to-indigo-50 px-6 py-5">
+                <div className="absolute -right-8 -top-14 h-40 w-40 rounded-full bg-violet-200/40 blur-3xl" />
+                <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#6c4df6] text-white shadow-lg shadow-violet-200">
+                      <CalendarIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h1 className="text-xl font-black tracking-tight text-[#110e3d]">Realm calendar</h1>
+                      <p className="mt-1 text-[11px] font-semibold text-slate-400">Events, community activities, and important schedules in one place.</p>
+                    </div>
+                  </div>
+                  <button onClick={() => selectCalendarPreset("Today")} className="w-fit rounded-xl border border-violet-200 bg-white px-4 py-2 text-[11px] font-extrabold text-violet-600 shadow-sm transition hover:bg-violet-50">
+                    Jump to today
+                  </button>
+                </div>
               </div>
 
               {/* Calendar & Scheduling Bento Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
                 {/* Calendar picker */}
-                <Card className="bg-white/80 border-[#eae8f5] shadow-xl shadow-slate-200/40 rounded-3xl lg:col-span-5 flex flex-col items-center justify-center p-6 border border-white/40 backdrop-blur-xl transition-all hover:shadow-2xl">
-                  <CardHeader className="pb-4 w-full px-0 pt-0">
-                    <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
-                      <CalendarIcon className="w-4.5 h-4.5 text-[#6366f1]" /> Event Calendar
-                    </CardTitle>
-                    <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Select a date to filter active time slots</p>
-                  </CardHeader>
-                  <CardContent className="pt-2 w-full flex justify-center p-0">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={setSelectedDate}
-                      className="border border-[#eae8f5] rounded-2xl bg-white shadow-sm p-4 w-full flex justify-center"
-                    />
-                  </CardContent>
+                <Card className="overflow-hidden rounded-2xl border border-[#302b43] bg-[#201d2b] text-white shadow-xl shadow-violet-950/10 lg:col-span-12">
+                  <div className="grid min-h-[390px] md:grid-cols-[210px_1fr]">
+                    <aside className="border-b border-white/10 bg-[#1b1824] p-4 md:border-b-0 md:border-r">
+                      <p className="px-2 pb-3 text-[9px] font-black uppercase tracking-[0.18em] text-white/35">Presets</p>
+                      <div className="grid grid-cols-2 gap-1 md:grid-cols-1">
+                        {["Today", "Yesterday", "Tomorrow", "Next event"].map((preset) => (
+                          <button
+                            key={preset}
+                            onClick={() => selectCalendarPreset(preset)}
+                            className={`rounded-xl px-3 py-2.5 text-left text-[11px] font-extrabold transition-all ${calendarPreset === preset ? "bg-gradient-to-r from-pink-500 to-rose-400 text-white shadow-lg shadow-pink-950/30" : "text-white/55 hover:bg-white/5 hover:text-white"}`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                        <button onClick={() => setCalendarPreset("Custom date")} className={`rounded-xl px-3 py-2.5 text-left text-[11px] font-extrabold transition-all ${calendarPreset === "Custom date" ? "bg-gradient-to-r from-pink-500 to-rose-400 text-white" : "text-white/55 hover:bg-white/5 hover:text-white"}`}>Custom date</button>
+                      </div>
+                      <div className="mt-5 hidden border-t border-white/10 pt-4 md:block">
+                        <p className="text-2xl font-black text-white">{calendarEvents.length}</p>
+                        <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-white/35">Realm events</p>
+                      </div>
+                    </aside>
+                    <div className="p-4 sm:p-6">
+                      <div className="mb-4 flex items-center justify-between">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/35">Selection</p>
+                          <p className="mt-1 text-xs font-bold text-white/70">{selectedDate ? format(selectedDate, "EEEE, MMMM d, yyyy") : "Choose a date"}</p>
+                        </div>
+                        <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-[10px] font-black text-emerald-300">{selectedDate ? format(selectedDate, "MMM d") : "—"}</span>
+                      </div>
+                      <Calendar
+                        mode="single"
+                        numberOfMonths={2}
+                        selected={selectedDate}
+                        onSelect={(date) => { setSelectedDate(date); setCalendarPreset("Custom date"); }}
+                        className="w-full bg-transparent p-0 text-white [--cell-size:2.25rem]"
+                        classNames={{
+                          root: "w-full",
+                          months: "relative flex flex-col gap-8 xl:flex-row xl:justify-around",
+                          month: "flex w-full max-w-sm flex-col gap-4",
+                          caption_label: "text-xs font-extrabold text-white",
+                          weekday: "flex-1 text-[10px] font-bold text-white/30",
+                          day: "group/day relative aspect-square h-full w-full p-0 text-center text-white/70",
+                          today: "rounded-lg bg-white/10 text-white",
+                          outside: "text-white/15",
+                          button_previous: "h-8 w-8 rounded-lg text-white/50 hover:bg-white/10 hover:text-white",
+                          button_next: "h-8 w-8 rounded-lg text-white/50 hover:bg-white/10 hover:text-white"
+                        }}
+                      />
+                    </div>
+                  </div>
                 </Card>
 
                 {/* Events list */}
-                <Card className="bg-white/80 border-[#eae8f5] shadow-xl shadow-slate-200/40 rounded-3xl lg:col-span-7 flex flex-col justify-between border border-white/40 backdrop-blur-xl transition-all hover:shadow-2xl">
-                  <CardHeader className="pb-3">
-                    <div>
-                      <CardTitle className="text-sm font-extrabold text-[#110e3d] flex items-center gap-2">
-                        <Clock className="w-4.5 h-4.5 text-[#6366f1]" /> Events for {selectedDate ? format(selectedDate, 'MMM d, yyyy') : 'Selected Date'}
-                      </CardTitle>
-                      <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Realm scheduled slots and activities</p>
+                <Card className="flex flex-col overflow-hidden rounded-2xl border border-[#e8e6f1] bg-white shadow-sm lg:col-span-12">
+                  <CardHeader className="border-b border-slate-100 bg-slate-50/40 pb-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <CardTitle className="flex items-center gap-2 text-sm font-extrabold text-[#110e3d]">
+                          <Clock className="h-4 w-4 text-[#6366f1]" /> {selectedDate ? format(selectedDate, 'EEEE, MMMM d') : 'Selected date'}
+                        </CardTitle>
+                        <p className="mt-1 text-[11px] font-semibold text-slate-400">Realm scheduled slots and activities</p>
+                      </div>
+                      <span className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-extrabold text-slate-500">{selectedDate ? format(selectedDate, "yyyy") : format(new Date(), "yyyy")}</span>
                     </div>
                   </CardHeader>
-                  <CardContent className="flex-1 overflow-y-auto max-h-[450px] min-h-[350px] space-y-3">
+                  <CardContent className="flex min-h-[360px] flex-1 flex-col space-y-3 overflow-y-auto p-5">
                     {calendarEventsLoading ? (
                       <div className="space-y-2">
                         <Skeleton className="h-16 w-full rounded-2xl" />
@@ -2379,21 +2507,25 @@ export default function Member() {
 
                       if (eventsOnSelectedDate.length === 0) {
                         return (
-                          <div className="flex flex-col items-center justify-center h-full text-center py-12 text-xs text-slate-400 font-semibold space-y-4">
-                            <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 border border-[#eae8f5]">
-                              📅
+                          <div className="flex h-full flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-10 text-center text-xs font-semibold text-slate-400">
+                            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-violet-500 shadow-sm ring-1 ring-slate-100">
+                              <CalendarIcon className="h-6 w-6" />
                             </div>
-                            <div className="space-y-1">
-                              <p className="font-extrabold text-[#110e3d]">No events scheduled for this day</p>
-                              <p className="text-[10px] text-slate-400">Try selecting another date or check upcoming events below.</p>
+                            <div>
+                              <p className="font-extrabold text-[#110e3d]">Your schedule is clear</p>
+                              <p className="mt-1 text-[10px] text-slate-400">There are no realm events planned for this date.</p>
                             </div>
                             {upcomingEvents.length > 0 && (
-                              <button
-                                onClick={() => setSelectedDate(new Date(upcomingEvents[0].eventDate))}
-                                className="text-[10px] text-white bg-[#6366f1] px-3.5 py-1.5 rounded-xl hover:bg-indigo-600 font-bold transition-all shadow-md shadow-indigo-500/10"
-                              >
-                                Next scheduled event: {upcomingEvents[0].title} ({format(new Date(upcomingEvents[0].eventDate), 'MMM d')})
-                              </button>
+                              <div className="mt-5 w-full max-w-sm rounded-xl border border-violet-100 bg-white p-3 text-left shadow-sm">
+                                <p className="text-[9px] font-black uppercase tracking-wider text-violet-500">Next event</p>
+                                <div className="mt-1 flex items-center justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-[11px] font-extrabold text-[#110e3d]">{upcomingEvents[0].title}</p>
+                                    <p className="mt-0.5 text-[9px] font-semibold text-slate-400">{format(new Date(upcomingEvents[0].eventDate), 'EEEE, MMM d')}</p>
+                                  </div>
+                                  <button onClick={() => setSelectedDate(new Date(upcomingEvents[0].eventDate))} className="shrink-0 rounded-lg bg-violet-600 px-3 py-1.5 text-[9px] font-extrabold text-white hover:bg-violet-700">View date</button>
+                                </div>
+                              </div>
                             )}
                           </div>
                         );
@@ -2403,12 +2535,12 @@ export default function Member() {
                         <div
                           key={ev.id}
                           onClick={() => setSelectedCalendarEvent(ev)}
-                          className="p-4 bg-slate-50 border border-[#eae8f5] rounded-2xl hover:border-violet-200 hover:bg-violet-50/20 transition-all cursor-pointer group flex items-center justify-between"
+                          className="group flex cursor-pointer items-center justify-between rounded-2xl border border-[#eae8f5] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md"
                         >
                           <div className="space-y-1 min-w-0 flex-1 pr-4">
                             <h4 className="text-xs font-extrabold text-[#110e3d] truncate group-hover:text-[#6366f1] transition-colors">{ev.title}</h4>
                             <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
-                              <span>⏰ {ev.startTime} - {ev.endTime}</span>
+                              <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {ev.startTime} - {ev.endTime}</span>
                             </p>
                             {ev.description && (
                               <p className="text-[10px] text-slate-500 truncate leading-relaxed mt-0.5">{ev.description}</p>
